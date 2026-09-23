@@ -1,0 +1,5 @@
+Jane Doe
+jane@example.com
++65 9123 4567
+Skills
+C++, Linux, SQLite

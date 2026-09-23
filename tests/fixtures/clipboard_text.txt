@@ -1,0 +1,1 @@
+PasteIt fixture text for saving, pasting, and action ranking.

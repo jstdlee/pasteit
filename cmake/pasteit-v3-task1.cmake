@@ -1,0 +1,5 @@
+if (PASTIT_BUILD_TESTS)
+    add_executable(djev_payload_budget_test tests/djev_payload_budget_test.cpp)
+    target_link_libraries(djev_payload_budget_test PRIVATE pastit_core)
+    add_test(NAME djev_payload_budget_test COMMAND djev_payload_budget_test)
+endif()
