@@ -127,6 +127,9 @@ ClipboardItem ClipboardStore::put(const ClipboardData& data) {
         case ContentKind::Json:
             item.tags.push_back(SemanticTag::Json);
             break;
+        case ContentKind::DateTime:
+            item.tags.push_back(SemanticTag::DateTime);
+            break;
         case ContentKind::Unknown:
             break;
     }

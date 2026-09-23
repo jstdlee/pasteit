@@ -1,6 +1,7 @@
 #include "history/path_history_store.hpp"
 #include "util/json.hpp"
 #include "util/path_utf8.hpp"
+#include "util/replace_file.hpp"
 #include <fstream>
 #include <sstream>
 namespace pastit {
@@ -17,6 +18,11 @@ PathHistoryLoadResult PathHistoryStore::load()const{
 bool PathHistoryStore::save(const PathHistory& history,std::string& error)const{
  std::error_code ec;std::filesystem::create_directories(path_.parent_path(),ec);if(ec){error=ec.message();return false;}
  auto tmp=path_;tmp+=".tmp";std::ofstream out(tmp,std::ios::trunc);if(!out){error="Could not open path history.";return false;}
- out<<'[';const auto items=history.recent(limit_);for(std::size_t i=0;i<items.size();++i){const auto& v=items[i];if(i)out<<',';out<<"{\"path\":"<<json_quote(path_to_utf8_string(v.path))<<",\"kind\":"<<json_quote(v.kind==PathKind::Directory?"directory":"file")<<",\"source\":"<<json_quote(v.source)<<",\"last_seen_ms\":"<<v.last_seen_ms<<'}';}out<<"]\n";out.flush();if(!out){error="Could not write path history.";return false;}out.close();std::filesystem::rename(tmp,path_,ec);if(ec){std::filesystem::remove(tmp);error=ec.message();return false;}error.clear();return true;
+ out<<'[';const auto items=history.recent(limit_);for(std::size_t i=0;i<items.size();++i){const auto& v=items[i];if(i)out<<',';out<<"{\"path\":"<<json_quote(path_to_utf8_string(v.path))<<",\"kind\":"<<json_quote(v.kind==PathKind::Directory?"directory":"file")<<",\"source\":"<<json_quote(v.source)<<",\"last_seen_ms\":"<<v.last_seen_ms<<'}';}out<<"]\n";
+ out.flush();if(!out){error="Could not write path history.";return false;}
+ out.close();if(!out){error="Could not close path history.";return false;}
+ replace_file(tmp,path_,ec);
+ if(ec){std::error_code ignored;std::filesystem::remove(tmp,ignored);error=ec.message();return false;}
+ error.clear();return true;
 }
 }

@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iomanip>
 #include <regex>
+#include <set>
 #include <sstream>
 
 namespace pastit {
@@ -232,10 +233,11 @@ std::string strip_ip_token_punctuation(std::string_view token) {
 std::optional<std::string> ip_value_from(std::string_view source_text) {
     static const std::regex ipv4_pattern(R"((^|[^0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})(?=$|[^0-9.]))");
     const std::string value{source_text};
+    std::set<std::string> candidates;
     for (std::sregex_iterator it(value.begin(), value.end(), ipv4_pattern), end; it != end; ++it) {
         const auto candidate = (*it)[2].str();
         if (valid_ipv4_value(candidate)) {
-            return candidate;
+            candidates.insert(candidate);
         }
     }
 
@@ -243,11 +245,13 @@ std::optional<std::string> ip_value_from(std::string_view source_text) {
     std::string token;
     while (input >> token) {
         auto candidate = strip_ip_token_punctuation(token);
-        if (candidate.find(':') != std::string::npos) {
-            return candidate;
+        if (candidate.find(':') != std::string::npos &&
+            detect_fast_content(ContentKind::Text, candidate).ip) {
+            candidates.insert(candidate);
         }
     }
-    return std::nullopt;
+    if (candidates.size() != 1) return std::nullopt;
+    return *candidates.begin();
 }
 
 std::string join_strings(const std::vector<std::string>& values, std::string_view separator) {
@@ -424,12 +428,12 @@ void add_path_fast_actions(ActionCatalog& catalog, const ClipboardItem& item, co
     }
 }
 
-void add_ip_actions(ActionCatalog& catalog, const ClipboardItem& item, const FastContentSignals& signals,
-                    const std::string& source_text) {
-    if (!signals.ip) {
-        return;
-    }
-    const auto ip = ip_value_from(source_text).value_or(trim_copy(source_text));
+void add_ip_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::string& source_text) {
+    // Keep the network actions visible to Djev even when the local detector
+    // cannot confidently isolate an address. An empty target is deliberately
+    // rejected by the executor instead of falling back to arbitrary clipboard
+    // prose as a host name.
+    const auto ip = ip_value_from(source_text).value_or(std::string{});
     const std::map<std::string, std::string> parameters{{"ip", ip}};
     add(catalog, item, ActionKind::PingIp, "", "Ping IP",
         "Measure reachability and latency for this IP address", "network", parameters);
@@ -493,11 +497,15 @@ void add_github_actions(ActionCatalog& catalog, const ClipboardItem& item, const
         "Copy the normalized GitHub SSH remote URL", "git_url", repo_parameters);
 }
 
-void add_datetime_actions(ActionCatalog& catalog, const ClipboardItem& item, const FastContentSignals& signals) {
-    if (!signals.date_time || !signals.date_time_value) {
-        return;
-    }
-    const auto& value = *signals.date_time_value;
+void add_datetime_actions(ActionCatalog& catalog, const ClipboardItem& item, const FastContentSignals& signals,
+                          const std::string& source_text) {
+    const auto value = signals.date_time_value.value_or(DateTimeValue{
+        .original = source_text,
+        .normalized = source_text,
+        .source_zone = {},
+        .epoch_seconds = 0,
+        .has_epoch = false,
+    });
     std::map<std::string, std::string> parameters{
         {"original", value.original},
         {"normalized", value.normalized.empty() ? value.original : value.normalized},
@@ -614,9 +622,9 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 }
                 add_contact_actions(catalog, item, targets, signals);
                 add_resume_actions(catalog, item, targets, source_text);
-                add_ip_actions(catalog, item, signals, source_text);
+                add_ip_actions(catalog, item, source_text);
                 add_github_actions(catalog, item, targets, signals, source_text);
-                add_datetime_actions(catalog, item, signals);
+                add_datetime_actions(catalog, item, signals, source_text);
                 add_diagram_action(catalog, item, signals, source_text);
                 add_qr_action(catalog, item, signals, source_text);
                 add_prompt_actions(catalog, item, templates, provider, signals);

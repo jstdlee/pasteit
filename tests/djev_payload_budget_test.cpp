@@ -78,6 +78,19 @@ bool retained_targets_are_represented(
 }  // namespace
 
 int main() {
+    auto datetime_request = base_request("req_datetime_kind", "clip_datetime_kind");
+    datetime_request.snapshot.clipboard_items.front().kind = pastit::ContentKind::DateTime;
+    datetime_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+        .id = "datetime-kind-action",
+        .kind = pastit::ActionKind::ConvertTimezone,
+        .source_ref = "clip_datetime_kind",
+        .label = "Convert timezone",
+        .description = "Convert this date/time",
+        .enabled = true,
+    });
+    const auto datetime_payload = pastit::DjevClient::build_payload(datetime_request, "jev-test");
+    assert(datetime_payload.find(R"("kind":"datetime")") != std::string::npos);
+
     pastit::DecisionRequest request;
     request.protocol_version = 1;
     request.request_id = "req_budget";

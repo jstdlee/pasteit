@@ -104,6 +104,8 @@ std::string content_kind_name(ContentKind kind) {
             return "url";
         case ContentKind::Email:
             return "email";
+        case ContentKind::DateTime:
+            return "datetime";
         case ContentKind::Image:
             return "image";
         case ContentKind::Path:

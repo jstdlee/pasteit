@@ -94,7 +94,8 @@ bool copyable_text(std::string_view value, bool wrapped) {
 #endif
 }
 
-bool input_text_string(const char* label, std::string& value, bool multiline, int extra_flags) {
+bool input_text_string(const char* label, std::string& value, bool multiline,
+                       int extra_flags, float multiline_height) {
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
     if (value.capacity() < value.size() + 256) {
         value.reserve(value.size() + 256);
@@ -121,9 +122,11 @@ bool input_text_string(const char* label, std::string& value, bool multiline, in
     if (!multiline) {
         ImGui::SetNextItemWidth(-1.0F);
     }
-    const auto flags = static_cast<ImGuiInputTextFlags>(extra_flags) | ImGuiInputTextFlags_CallbackResize;
-    const auto editor_height = static_cast<float>(multiline_editor_visible_rows(value)) *
-                               ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().FramePadding.y;
+    const auto flags = static_cast<ImGuiInputTextFlags>(extra_flags) | ImGuiInputTextFlags_CallbackResize |
+        (multiline ? ImGuiInputTextFlags_WordWrap : 0);
+    const auto editor_height = multiline_height != 0.0F ? multiline_height
+        : static_cast<float>(multiline_editor_visible_rows(value)) *
+              ImGui::GetTextLineHeightWithSpacing() + ImGui::GetStyle().FramePadding.y;
     const bool changed = multiline
         ? ImGui::InputTextMultiline(widget_label.c_str(), value.data(), value.capacity() + 1, ImVec2(-1.0F, editor_height), flags,
                                     resize_string_callback, &value)
@@ -135,6 +138,7 @@ bool input_text_string(const char* label, std::string& value, bool multiline, in
     (void)value;
     (void)multiline;
     (void)extra_flags;
+    (void)multiline_height;
     return false;
 #endif
 }

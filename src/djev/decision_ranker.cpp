@@ -5,7 +5,8 @@
 namespace pastit {
 
 std::vector<RankedAction> rank_top_actions(const DecisionResponse& response, const ActionCatalog& catalog, std::size_t limit,
-                                           const ActionPreferenceWeights& preferences) {
+                                           const ActionPreferenceWeights& preferences,
+                                           const ActionRankingContext& context) {
     if (!response.valid) {
         return {};
     }
@@ -18,7 +19,7 @@ std::vector<RankedAction> rank_top_actions(const DecisionResponse& response, con
         }
         ranked.push_back(RankedAction{
             .action = *action,
-            .probability = std::clamp(probability + action_preference_bonus(preferences, *action), 0.0, 1.0),
+            .probability = std::clamp(probability + action_preference_bonus(preferences, *action, context), 0.0, 1.0),
             .selected = id == response.choice,
             .confidence = response.confidence,
         });

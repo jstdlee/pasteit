@@ -70,8 +70,8 @@ if (PASTIT_BUILD_DESKTOP AND PASTIT_FETCH_DESKTOP_DEPS AND PASTIT_DESKTOP_PLATFO
         GIT_TAG 3.4
         GIT_SHALLOW TRUE)
     FetchContent_Declare(imgui
-        URL https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b-docking.zip
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        URL https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b-docking.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP FALSE)
     FetchContent_Declare(stb_image
         URL https://raw.githubusercontent.com/nothings/stb/5736b15f7ea0ffb08dd38af21067c314d6a3aae9/stb_image.h
         DOWNLOAD_NO_EXTRACT TRUE)
@@ -191,6 +191,7 @@ add_library(pastit_core
     src/ui/multi_viewport.cpp
     src/ui/provider_test_request.cpp
     src/util/json.cpp
+    src/util/replace_file.cpp
 )
 
 find_package(ZLIB QUIET)

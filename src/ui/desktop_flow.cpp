@@ -1,9 +1,11 @@
 #include "ui/desktop_flow.hpp"
 #include "decision/candidate_selector.hpp"
+#include "detect/fast_content_detector.hpp"
 #include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
 #include <iomanip>
 #include <iterator>
 #include <set>
@@ -44,6 +46,25 @@ bool contains_algorithm(const std::vector<std::string>& algorithms, std::string_
     return std::any_of(algorithms.begin(), algorithms.end(), [&](const auto& value) {
         return lowercase_ascii(value) == expected;
     });
+}
+
+std::string ranking_text(const ClipboardItem& item) {
+    if (item.blob_path.empty()) return item.preview;
+    std::ifstream input(item.blob_path, std::ios::binary);
+    if (!input) return item.preview;
+    std::string text(8192, '\0');
+    input.read(text.data(), static_cast<std::streamsize>(text.size()));
+    text.resize(static_cast<std::size_t>(input.gcount()));
+    return text;
+}
+
+double local_match_bonus(std::string_view object, std::string_view input, std::uint64_t full_size) {
+    if (object.empty() || input.empty() || input.find(object) == std::string_view::npos) return 0.0;
+    const auto denominator = std::max<std::uint64_t>(full_size, input.size());
+    const double coverage = std::clamp(static_cast<double>(object.size()) /
+                                           static_cast<double>(denominator),
+                                       0.0, 1.0);
+    return std::clamp(0.01 + 0.04 * coverage, 0.0, 0.05);
 }
 
 }  // namespace
@@ -96,6 +117,58 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
     add_default(input.downloads.resume_directory,"default_download","configured-download",default_download_refs);
 
     batch.catalog = build_catalog(snapshot, input.prompt_templates, input.general_llm);
+    if (!snapshot.clipboard_items.empty()) {
+        const auto& item = snapshot.clipboard_items.front();
+        batch.ranking_context.input_kind = item.kind;
+        const auto local_text = ranking_text(item);
+        const auto signals = detect_fast_content(item.kind, local_text);
+        if (item.kind == ContentKind::Image) {
+            batch.ranking_context.local_action_bonus[ActionKind::AnnotateImage] = 0.04;
+        }
+        if (signals.date_time_value.has_value()) {
+            const auto bonus = local_match_bonus(signals.date_time_value->original, local_text, item.size_bytes);
+            for (const auto kind : {ActionKind::ConvertTimezone, ActionKind::ToUnixTimestamp,
+                                    ActionKind::CopyNormalizedDateTime}) {
+                batch.ranking_context.local_action_bonus[kind] = bonus;
+            }
+        }
+        if (signals.ip) {
+            for (const auto& action : batch.catalog.actions) {
+                if (action.kind != ActionKind::PingIp && action.kind != ActionKind::TraceRouteIp &&
+                    action.kind != ActionKind::ReverseDnsIp && action.kind != ActionKind::DigIp &&
+                    action.kind != ActionKind::NetworkDiagnosticReport) continue;
+                const auto target = action.parameters.find("ip");
+                if (target != action.parameters.end()) {
+                    batch.ranking_context.local_action_bonus[action.kind] =
+                        local_match_bonus(target->second, local_text, item.size_bytes);
+                }
+            }
+        }
+        if (signals.code) {
+            for (const auto& action : batch.catalog.actions) {
+                if (action.kind == ActionKind::TransformText &&
+                    action.parameters.find("content_signal") != action.parameters.end() &&
+                    action.parameters.at("content_signal") == "code") {
+                    batch.ranking_context.local_action_bonus_by_id[action.id] = 0.03;
+                    break;
+                }
+            }
+        }
+        const auto newest_prompt = std::find_if(input.prompt_templates.rbegin(), input.prompt_templates.rend(),
+                                                [](const PromptTemplate& prompt) { return prompt.enabled; });
+        if (newest_prompt != input.prompt_templates.rend()) {
+            for (const auto& action : batch.catalog.actions) {
+                const auto template_id = action.parameters.find("template_id");
+                if (action.kind == ActionKind::TransformText && template_id != action.parameters.end() &&
+                    template_id->second == newest_prompt->id) {
+                    // Keep the latest enabled template represented even when
+                    // many prompt actions compete for the fixed Djev payload cap.
+                    batch.ranking_context.local_action_bonus_by_id[action.id] = 0.05;
+                    break;
+                }
+            }
+        }
+    }
     const bool show_sha256 = contains_algorithm(input.hash.default_algorithms, "sha256");
     const bool show_sha512 = contains_algorithm(input.hash.default_algorithms, "sha512");
     std::erase_if(batch.catalog.actions, [&](const ActionInstance& action) {
@@ -125,7 +198,8 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
         const bool url_download = action.kind == ActionKind::DownloadUrl || action.kind == ActionKind::SaveUrlFile;
         if (default_download_refs.contains(action.target_ref) && !url_download) action.enabled = false;
     }
-    const auto candidates = select_djev_candidates(batch.catalog, snapshot, 26, input.action_preferences);
+    const auto candidates = select_djev_candidates(batch.catalog, snapshot, 26, input.action_preferences,
+                                                    batch.ranking_context);
     snapshot.available_actions = candidates.actions;
     return batch;
 }

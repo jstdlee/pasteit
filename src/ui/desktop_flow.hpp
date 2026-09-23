@@ -35,6 +35,7 @@ struct DesktopDecisionBatch {
     DecisionRequest request;
     ActionCatalog catalog;
     ProviderSettings general_llm;
+    ActionRankingContext ranking_context;
 };
 
 bool mermaid_action_requires_generation(const ActionInstance& action);

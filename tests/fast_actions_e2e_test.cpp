@@ -1,5 +1,6 @@
 #include "app/download_job.hpp"
 #include "decision/candidate_selector.hpp"
+#include "djev/djev_client.hpp"
 #include "executor/action_executor.hpp"
 #include "executor/fast_action_executor.hpp"
 #include "storage/clipboard_store.hpp"
@@ -316,6 +317,89 @@ int main() {
         const auto timezone = find_kind(batch.catalog, ActionKind::ConvertTimezone);
         assert(timezone.has_value());
         assert(timezone->parameters.at("target_zone") == "Asia/Singapore");
+    }
+
+    {
+        auto input = base_input(root);
+        input.clipboard_items = {item("current_mixed_text", ContentKind::Text,
+                                      "Please investigate this host: 192.0.2.10", 1000)};
+        const auto batch = build_desktop_decision(input);
+        const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
+        assert(has_kind(request_catalog, ActionKind::PingIp));
+        assert(has_kind(request_catalog, ActionKind::TraceRouteIp));
+        assert(has_kind(request_catalog, ActionKind::NetworkDiagnosticReport));
+        const auto ping = find_kind(request_catalog, ActionKind::PingIp);
+        assert(ping.has_value());
+        assert(ping->parameters.at("ip") == "192.0.2.10");
+        assert(has_kind(request_catalog, ActionKind::ConvertTimezone));
+    }
+
+    {
+        auto input = base_input(root);
+        input.clipboard_items = {item("current_unrecognized_text", ContentKind::Text,
+                                      "Please handle this copied note", 1000)};
+        const auto batch = build_desktop_decision(input);
+        const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
+        assert(has_kind(request_catalog, ActionKind::PingIp));
+        assert(has_kind(request_catalog, ActionKind::ConvertTimezone));
+    }
+
+    {
+        auto input = base_input(root);
+        input.clipboard_items = {item("current_ambiguous_ip", ContentKind::Text,
+                                      "Check 192.0.2.10 and 192.0.2.11", 1000)};
+        const auto batch = build_desktop_decision(input);
+        const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
+        const auto ping = find_kind(request_catalog, ActionKind::PingIp);
+        assert(ping.has_value());
+        assert(ping->parameters.at("ip").empty());
+    }
+
+    {
+        auto exact_input = base_input(root);
+        exact_input.clipboard_items = {item("exact_ip", ContentKind::Text, "192.0.2.10", 1000)};
+        const auto exact = build_desktop_decision(exact_input);
+        auto embedded_input = base_input(root);
+        embedded_input.clipboard_items = {item("embedded_ip", ContentKind::Text,
+                                               "Please check this note for target 192.0.2.10, thanks", 1000)};
+        const auto embedded = build_desktop_decision(embedded_input);
+        assert(exact.ranking_context.local_action_bonus.at(ActionKind::PingIp) >
+               embedded.ranking_context.local_action_bonus.at(ActionKind::PingIp));
+        assert(embedded.ranking_context.local_action_bonus.at(ActionKind::PingIp) > 0.0);
+    }
+
+    {
+        auto input = base_input(root);
+        input.clipboard_items = {item("current_image_candidate", ContentKind::Image, "", 1000)};
+        const auto batch = build_desktop_decision(input);
+        const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
+        const auto annotate = find_kind(request_catalog, ActionKind::AnnotateImage);
+        assert(annotate.has_value());
+        assert(batch.request.snapshot.available_actions.front().kind == ActionKind::AnnotateImage);
+        const auto payload = DjevClient::build_payload(batch.request, "jev-test");
+        assert(payload.find(annotate->id) != std::string::npos);
+        assert(payload.find(R"("kind":"image")") != std::string::npos);
+    }
+
+    {
+        auto input = base_input(root);
+        for (int index = 0; index < 40; ++index) {
+            input.prompt_templates.push_back(PromptTemplate{
+                .id = "saved-prompt-" + std::to_string(index),
+                .name = "Saved prompt " + std::to_string(index),
+                .system_prompt = "Apply this instruction to {text}",
+                .temperature = 0.2,
+                .enabled = true,
+            });
+        }
+        input.clipboard_items = {item("current_prompt_text", ContentKind::Text, "newly added prompt", 1000)};
+        const auto batch = build_desktop_decision(input);
+        const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
+        const auto action = request_catalog.find_by_kind_and_label(ActionKind::TransformText, "Saved prompt 39");
+        assert(action.has_value());
+        assert(action->parameters.at("template_id") == "saved-prompt-39");
+        const auto payload = DjevClient::build_payload(batch.request, "jev-test");
+        assert(payload.find(action->id) != std::string::npos);
     }
 
     {

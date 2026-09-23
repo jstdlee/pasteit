@@ -1,6 +1,8 @@
 #include "ui/settings_model.hpp"
+#include "config/settings_store.hpp"
 
 #include <cassert>
+#include <filesystem>
 #include <vector>
 
 int main(){
@@ -40,4 +42,30 @@ int main(){
     assert(model.working().djev.api_key=="changed");
     model.reset(pastit::SettingsSection::FastActions);
     assert(model.working().annotation.export_format=="svg");
+
+    const auto root = std::filesystem::temp_directory_path() / "pastit-settings-exit-test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    pastit::SettingsStore store(root / "settings.json");
+    auto applied = pastit::default_settings();
+    applied.default_image_directory = root;
+    applied.default_text_directory = root;
+    applied.action_preferences["kind:0"] = 0.12;
+    auto draft = applied;
+    draft.language = pastit::UiLanguage::SimplifiedChinese;
+    draft.window_opacity = 0.72F;
+    draft.action_preferences.clear(); // The UI draft predates a runtime preference update.
+    assert(pastit::save_settings_on_exit(store, applied, draft, error));
+    const auto reloaded = store.load();
+    assert(reloaded.loaded_from_disk);
+    assert(reloaded.settings.language == pastit::UiLanguage::SimplifiedChinese);
+    assert(reloaded.settings.window_opacity == 0.72F);
+    assert(reloaded.settings.action_preferences.at("kind:0") == 0.12);
+    draft.djev.endpoint.clear();
+    assert(!pastit::save_settings_on_exit(store, applied, draft, error));
+    assert(!error.empty());
+    const auto fallback = store.load();
+    assert(fallback.settings.language == applied.language);
+    assert(fallback.settings.action_preferences.at("kind:0") == 0.12);
+    std::filesystem::remove_all(root);
 }

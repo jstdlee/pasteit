@@ -71,7 +71,9 @@ std::string uri_escape_path(std::string_view value) {
     std::ostringstream out;
     out << std::uppercase << std::hex;
     for (const unsigned char ch : value) {
-        const bool safe = std::isalnum(ch) != 0 || ch == '-' || ch == '_' || ch == '.' || ch == '~' ||
+        const bool ascii_alphanumeric = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                                        (ch >= '0' && ch <= '9');
+        const bool safe = ascii_alphanumeric || ch == '-' || ch == '_' || ch == '.' || ch == '~' ||
                           ch == '/' || ch == ':';
         if (safe) {
             out << static_cast<char>(ch);
@@ -220,22 +222,22 @@ HGLOBAL global_copy(const void* data, std::size_t size) {
     return global;
 }
 
-std::vector<std::byte> dib_from_png(const std::vector<std::byte>& png) {
+std::vector<std::byte> dib_from_encoded_image(const std::vector<std::byte>& image) {
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
-    if (png.size() > static_cast<std::size_t>(INT_MAX)) {
+    if (image.size() > static_cast<std::size_t>(INT_MAX)) {
         return {};
     }
     int width = 0;
     int height = 0;
     int channels = 0;
-    if (!stbi_info_from_memory(reinterpret_cast<const stbi_uc*>(png.data()),
-                               static_cast<int>(png.size()), &width, &height, &channels) ||
+    if (!stbi_info_from_memory(reinterpret_cast<const stbi_uc*>(image.data()),
+                               static_cast<int>(image.size()), &width, &height, &channels) ||
         width <= 0 || height <= 0 ||
         static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height) > 16U * 1024U * 1024U) {
         return {};
     }
-    stbi_uc* pixels = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(png.data()),
-                                             static_cast<int>(png.size()), &width, &height, &channels, 4);
+    stbi_uc* pixels = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(image.data()),
+                                             static_cast<int>(image.size()), &width, &height, &channels, 4);
     if (pixels == nullptr || width <= 0 || height <= 0) {
         stbi_image_free(pixels);
         return {};
@@ -273,7 +275,7 @@ std::vector<std::byte> dib_from_png(const std::vector<std::byte>& png) {
     stbi_image_free(pixels);
     return dib;
 #else
-    (void)png;
+    (void)image;
     return {};
 #endif
 }
@@ -363,6 +365,7 @@ std::optional<std::filesystem::path> recent_shortcut_target(const std::filesyste
 
 WindowsDesktopServices::WindowsDesktopServices() {
     png_format_ = RegisterClipboardFormatW(L"PNG");
+    jpeg_format_ = RegisterClipboardFormatW(L"JFIF");
     clipboard_sequence_ = GetClipboardSequenceNumber();
     if (ensure_message_window()) {
         AddClipboardFormatListener(message_window_);
@@ -452,6 +455,9 @@ std::optional<ClipboardCapture> WindowsDesktopServices::poll_clipboard() {
     if (!captured && png_format_ != 0 && IsClipboardFormatAvailable(png_format_)) {
         captured = capture_clipboard_format(png_format_, "image/png");
     }
+    if (!captured && jpeg_format_ != 0 && IsClipboardFormatAvailable(jpeg_format_)) {
+        captured = capture_clipboard_format(jpeg_format_, "image/jpeg");
+    }
     if (!captured && IsClipboardFormatAvailable(CF_DIBV5)) {
         captured = capture_dib(CF_DIBV5);
     }
@@ -522,7 +528,10 @@ bool WindowsDesktopServices::publish_image(const std::vector<std::byte>& bytes, 
     std::vector<std::byte> dib;
     if (mime_type == "image/png") {
         format = png_format_;
-        dib = dib_from_png(bytes);
+        dib = dib_from_encoded_image(bytes);
+    } else if (mime_type == "image/jpeg" || mime_type == "image/jpg") {
+        format = jpeg_format_;
+        dib = dib_from_encoded_image(bytes);
     } else if (mime_type == "image/dib") {
         format = CF_DIB;
     } else if (mime_type == "image/bmp" && bytes.size() > sizeof(BITMAPFILEHEADER)) {

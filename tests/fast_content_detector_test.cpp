@@ -29,6 +29,7 @@ int main() {
     assert(has_field(contact.contact_fields, "phone", "+44 20 1234 5678"));
 
     assert(detect_fast_content(ContentKind::Text, "connect 192.0.2.10").ip);
+    assert(detect_fast_content(ContentKind::Text, "same target 192.0.2.10 appears again: 192.0.2.10").ip);
     assert(detect_fast_content(ContentKind::Text, "route to 2001:db8::1").ip);
     assert(detect_fast_content(ContentKind::Url, "https://github.com/acme/widget").github_url);
     assert(detect_fast_content(ContentKind::Url, "https://github.com/acme/widget.git?tab=readme#usage").github_url);
@@ -42,6 +43,10 @@ int main() {
     assert(iso_time.date_time_value->normalized == "2026-09-21T08:30:00Z");
     assert(iso_time.date_time_value->source_zone == "UTC");
     assert(iso_time.date_time_value->has_epoch);
+    const auto embedded_unix = detect_fast_content(ContentKind::Text, "log note: epoch 1726907400 copied here");
+    assert(embedded_unix.date_time);
+    assert(embedded_unix.date_time_value->original == "1726907400");
+    assert(embedded_unix.date_time_value->has_epoch);
     assert(detect_fast_content(ContentKind::Text, "2024-02-29T08:30:00+14:00").date_time);
     assert(!detect_fast_content(ContentKind::Text, "2026-02-30T08:30:00Z").date_time);
     assert(!detect_fast_content(ContentKind::Text, "2023-02-29T08:30:00Z").date_time);

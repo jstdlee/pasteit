@@ -8,6 +8,7 @@
 #include <ctime>
 #include <iterator>
 #include <regex>
+#include <set>
 #include <sstream>
 
 namespace pastit {
@@ -217,12 +218,12 @@ bool is_valid_ipv6(std::string_view raw) {
 
 bool detect_ip(std::string_view text) {
     const std::string value{text};
-    int valid_count = 0;
+    std::set<std::string> candidates;
 
     static const std::regex ipv4_pattern(R"((^|[^0-9.])((?:[0-9]{1,3}\.){3}[0-9]{1,3})($|[^0-9.]))");
     for (std::sregex_iterator it(value.begin(), value.end(), ipv4_pattern), end; it != end; ++it) {
         if (is_valid_ipv4((*it)[2].str())) {
-            ++valid_count;
+            candidates.insert((*it)[2].str());
         }
     }
 
@@ -230,11 +231,11 @@ bool detect_ip(std::string_view text) {
     std::string token;
     while (input >> token) {
         if (is_valid_ipv6(token)) {
-            ++valid_count;
+            candidates.insert(strip_ip_punctuation(token));
         }
     }
 
-    return valid_count == 1;
+    return candidates.size() == 1;
 }
 
 bool detect_github_url(std::string_view text) {
@@ -390,7 +391,6 @@ std::string format_utc(std::int64_t epoch_seconds) {
 
 std::optional<DateTimeValue> detect_date_time_value(std::string_view text) {
     const std::string value{text};
-    const auto trimmed = trim(text);
 
     static const std::regex iso_pattern(
         R"(\b([0-9]{4})-([0-9]{2})-([0-9]{2})[T ]([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?(Z|[+-][0-9]{2}:[0-9]{2})\b)");
@@ -441,19 +441,23 @@ std::optional<DateTimeValue> detect_date_time_value(std::string_view text) {
         }
     }
 
-    static const std::regex unix_pattern(R"(^[0-9]{10}(?:[0-9]{3})?$)");
-    if (std::regex_match(trimmed, unix_pattern)) {
+    static const std::regex unix_pattern(R"((^|[^0-9])([0-9]{10}(?:[0-9]{3})?)(?=$|[^0-9]))");
+    std::optional<DateTimeValue> unix_value;
+    for (std::sregex_iterator it(value.begin(), value.end(), unix_pattern), end; it != end; ++it) {
+        const auto timestamp = (*it)[2].str();
         std::int64_t epoch = 0;
-        const auto result = std::from_chars(trimmed.data(), trimmed.data() + trimmed.size(), epoch);
-        if (result.ec == std::errc{} && result.ptr == trimmed.data() + trimmed.size()) {
-            if (trimmed.size() == 13) {
+        const auto result = std::from_chars(timestamp.data(), timestamp.data() + timestamp.size(), epoch);
+        if (result.ec == std::errc{} && result.ptr == timestamp.data() + timestamp.size()) {
+            if (timestamp.size() == 13) {
                 epoch /= 1000;
             }
             if (epoch >= 946684800 && epoch <= 4102444800LL) {
-                return DateTimeValue{trimmed, format_utc(epoch), "Unix", epoch, true};
+                if (unix_value.has_value() && unix_value->original != timestamp) return std::nullopt;
+                unix_value = DateTimeValue{timestamp, format_utc(epoch), "Unix", epoch, true};
             }
         }
     }
+    if (unix_value.has_value()) return unix_value;
 
     static const std::regex rfc_pattern(
         R"(\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+([0-9]{1,2})\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*)\s+([0-9]{4})\s+([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?\s+(GMT|UTC|[+-][0-9]{4})\b)",

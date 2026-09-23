@@ -7,6 +7,7 @@
 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
+#include <imgui_internal.h>
 
 namespace {
 class ClipboardPlatform final : public pastit::PlatformServices {
@@ -90,6 +91,54 @@ int main() {
     assert(std::string{ImGui::GetClipboardText()} == *clipboard.owned && "paste must read app-owned text without GLFW");
     clipboard.owned.reset();
     assert(std::string{ImGui::GetClipboardText()} == "external text");
+
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+    ImGui::SetNextWindowSize(ImVec2(600.0F, 400.0F));
+    ImGui::Begin("Result editor size", nullptr, ImGuiWindowFlags_NoDecoration);
+    const ImVec2 result_space = ImGui::GetContentRegionAvail();
+    std::string result_text = "Short response";
+    pastit::input_text_string("##result", result_text, true, 0, -1.0F);
+    const ImVec2 result_size = ImGui::GetItemRectSize();
+    assert(result_size.x >= result_space.x - 2.0F);
+    assert(result_size.y >= result_space.y - 2.0F);
+    ImGui::End();
+    ImGui::Render();
+
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+    ImGui::SetNextWindowSize(ImVec2(600.0F, 400.0F));
+    ImGui::Begin("Edit editor size", nullptr, ImGuiWindowFlags_NoDecoration);
+    std::string prompt_text = "Short prompt";
+    const float footer_height = 3.0F * ImGui::GetFrameHeightWithSpacing();
+    pastit::input_text_string("System prompt", prompt_text, true, 0, -footer_height);
+    const float remaining_height = ImGui::GetContentRegionAvail().y;
+    assert(ImGui::GetItemRectSize().x >= ImGui::GetContentRegionAvail().x - 2.0F);
+    assert(remaining_height >= footer_height - ImGui::GetStyle().ItemSpacing.y - 2.0F);
+    assert(remaining_height <= footer_height + ImGui::GetStyle().ItemSpacing.y + 2.0F);
+    ImGui::End();
+    ImGui::Render();
+
+    const auto wrapped_height = [&](const char* title, float width, int flags) {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+        ImGui::SetNextWindowSize(ImVec2(width, 120.0F));
+        ImGui::Begin(title, nullptr, ImGuiWindowFlags_NoDecoration);
+        std::string long_line(300, 'a');
+        pastit::input_text_string("##wrapped", long_line, true, flags, 80.0F);
+        ImGuiWindow* wrap_window = ImGui::GetCurrentWindow();
+        assert(wrap_window->DC.ChildWindows.Size == 1);
+        const ImGuiWindow* text_area = wrap_window->DC.ChildWindows[0];
+        const float text_height = text_area->DC.CursorMaxPos.y - text_area->DC.CursorStartPos.y;
+        assert(long_line == std::string(300, 'a') && "soft wrapping must not change stored text");
+        ImGui::End();
+        ImGui::Render();
+        return text_height;
+    };
+    const float narrow_height = wrapped_height("Editable wrapped text", 220.0F, 0);
+    const float wide_height = wrapped_height("Read-only wrapped text", 420.0F, ImGuiInputTextFlags_ReadOnly);
+    assert(narrow_height > wide_height && "text must reflow to the available width");
+    assert(wide_height > ImGui::GetTextLineHeight() * 3.0F && "read-only text must wrap too");
     ImGui::DestroyContext();
 #endif
 }

@@ -3,6 +3,7 @@
 #include "storage/clipboard_store.hpp"
 #include "util/json.hpp"
 #include "util/utf8.hpp"
+#include "util/replace_file.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -35,6 +36,8 @@ std::string kind_name(ContentKind kind) {
             return "path";
         case ContentKind::Json:
             return "json";
+        case ContentKind::DateTime:
+            return "datetime";
         case ContentKind::Unknown:
             return "unknown";
     }
@@ -48,6 +51,7 @@ std::optional<ContentKind> parse_kind(const std::string& value) {
     if (value == "image") return ContentKind::Image;
     if (value == "path") return ContentKind::Path;
     if (value == "json") return ContentKind::Json;
+    if (value == "datetime") return ContentKind::DateTime;
     if (value == "unknown") return ContentKind::Unknown;
     return std::nullopt;
 }
@@ -70,6 +74,8 @@ std::string tag_name(SemanticTag tag) {
             return "json";
         case SemanticTag::Resume:
             return "resume";
+        case SemanticTag::DateTime:
+            return "datetime";
     }
     return "plain_text";
 }
@@ -83,6 +89,7 @@ std::optional<SemanticTag> parse_tag(const std::string& value) {
     if (value == "file_uri") return SemanticTag::FileUri;
     if (value == "json") return SemanticTag::Json;
     if (value == "resume") return SemanticTag::Resume;
+    if (value == "datetime") return SemanticTag::DateTime;
     return std::nullopt;
 }
 
@@ -521,9 +528,14 @@ ClipboardHistorySaveResult ClipboardHistoryStore::save(std::vector<ClipboardItem
             result.error = "Could not write clipboard history manifest.";
             return result;
         }
+        out.close();
+        if (!out) {
+            result.error = "Could not close clipboard history manifest.";
+            return result;
+        }
     }
 
-    std::filesystem::rename(tmp_path, manifest_path_, ec);
+    replace_file(tmp_path, manifest_path_, ec);
     if (ec) {
         std::filesystem::remove(tmp_path);
         result.error = ec.message();

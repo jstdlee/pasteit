@@ -44,6 +44,7 @@ private:
     HWND message_window_ = nullptr;
     HWND popup_window_ = nullptr;
     UINT png_format_ = 0;
+    UINT jpeg_format_ = 0;
     DWORD clipboard_sequence_ = 0;
     bool clipboard_dirty_ = true;
     bool shortcut_activated_ = false;

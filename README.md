@@ -1,16 +1,16 @@
 # PasteIt
 
-PasteIt is a local Linux/X11 clipboard action popup. It observes clipboard content, builds deterministic local action instances, asks a local Djev endpoint to rank a bounded request-local catalog, and executes only fixed native actions. V2 also supports editable text transformations through a separately configured OpenAI-compatible provider.
+PasteIt is a local Linux/X11 and Windows clipboard action popup. It observes clipboard content, builds deterministic local action instances, asks a local Djev endpoint to rank a bounded request-local catalog, and executes only fixed native actions. V2 also supports editable text transformations through a separately configured OpenAI-compatible provider.
 
 ## Build Prerequisites
 
 - CMake 3.20+
 - A C++20 compiler
-- X11/OpenGL development headers for the desktop popup
-- HTTP(S) downloads use libcurl when its development headers are installed, or the `curl` executable on Linux when they are not.
+- X11/OpenGL development headers on Linux, or a Windows SDK and OpenGL toolchain on Windows, for the desktop popup
+- HTTP(S) downloads use libcurl when its development headers are installed, the `curl` executable on Linux when they are not, and WinHTTP on Windows.
 - `mmdc` is optional for an in-window Mermaid image. The offline Mermaid browser bundle and native C++ QR encoder are included in the app build.
 
-GLFW 3.4, Dear ImGui 1.91.9b-docking, and `stb_image.h` are fetched automatically by CMake at pinned revisions, matching the earlier `imgui_hf_demo` build. The docking tag supplies Dear ImGui's multi-viewport platform-window support; they do not need to be installed system-wide. On Debian/Ubuntu systems without development headers, prepare a project-private sysroot without `sudo`:
+GLFW 3.4, Dear ImGui 1.92.9b-docking, and `stb_image.h` are fetched automatically by CMake at pinned revisions. The docking tag supplies Dear ImGui's multi-viewport platform-window support; they do not need to be installed system-wide. On Debian/Ubuntu systems without development headers, prepare a project-private sysroot without `sudo`:
 
 ```bash
 ./scripts/bootstrap-local-deps.sh
@@ -33,7 +33,7 @@ Wait for port 8011 to report healthy, then run `./build/djev_live_integration` t
 
 ## Settings and General LLM
 
-Settings are saved atomically in `settings.json` beside the executable; data/history lives under its `data/` subdirectory. The Settings tab groups language, opacity, default image/text directories, and history controls under General. It also configures the Jev-compatible endpoint/model/key and a separate OpenAI-compatible endpoint/model/key. The editable General LLM model field is paired with a dropdown loaded from the provider's `/v1/models` endpoint; a failed refresh leaves the manually entered model unchanged. A base general-LLM URL is normalized to `/v1/chat/completions`; a complete endpoint is used unchanged. OpenCode Go endpoints automatically receive a per-request `x-opencode-session` header.
+Settings are loaded from `settings.json` beside the executable on startup and saved atomically on normal exit, including valid edits still open in Settings; data/history lives under its `data/` subdirectory. The Settings tab groups language, opacity, default image/text directories, and history controls under General. It also configures the Jev-compatible endpoint/model/key and a separate OpenAI-compatible endpoint/model/key. The editable General LLM model field is paired with a dropdown loaded from the provider's `/v1/models` endpoint; a failed refresh leaves the manually entered model unchanged. A base general-LLM URL is normalized to `/v1/chat/completions`; a complete endpoint is used unchanged. OpenCode Go endpoints automatically receive a per-request `x-opencode-session` header.
 
 The Fast actions settings section configures the optional `mmdc` path and arguments, QR error correction/margin/scale, download resume directory, `.part` retention on cancel, terminal command argv, hash actions shown by default, source/target time zones, and annotation save directory. When `mmdc` is available, Mermaid renders an in-window PNG; otherwise it exports self-contained offline HTML and keeps the source available. QR renders an in-window native PNG. Annotation export is currently SVG-only; PNG/JPG preferences are normalized to SVG rather than writing SVG bytes with a raster suffix. Terminal profile and 24-hour date display are shown as stored preferences until a platform adapter consumes them.
 
@@ -71,10 +71,10 @@ An optional `openai_live_integration` uses `GENERAL_LLM_URL`, `GENERAL_LLM_MODEL
 - Local path and `file://`: copy into a recent directory, move into a recent directory, open Terminal at the containing directory, and hash regular files with the enabled SHA-256/SHA-512 defaults; the redundant Copy Path action is omitted because the path is already in the clipboard
 - JSON: raw save, pretty copy, and pretty save
 - Resume-like text: copy extracted fields, copy extracted JSON, and save extracted JSON
-- IP addresses: ping, traceroute, reverse DNS, dig, and a combined report. Linux maps these to argv calls for `ping -c 4`, `traceroute`, `getent hosts`, and `dig`; clipboard text is never shell-concatenated.
+- IP addresses: ping, traceroute, reverse DNS, dig, and a combined report. Linux maps these to argv calls for `ping -c 4`, `traceroute`, `getent hosts`, and `dig`; Windows uses `ping`, `tracert`, and `nslookup`. Clipboard text is never shell-concatenated.
 - Date/time values: timezone conversion, Unix timestamp conversion, and normalized copy. The Settings tab supplies the default source and target zones used by the desktop catalog.
 
-URL downloads run through a `DownloadManager` and write `<target>.part` until completion. Resume reuses an existing `.part` file, sends a Range request from its current size, appends only after a valid `206 Partial Content`, and safely restarts when the server answers `200 OK` without range support. Pause preserves `.part`; Cancel preserves or discards it according to the Settings toggle. Linux uses libcurl when development headers are present and a streamed, argv-only `curl` process when they are absent.
+URL downloads run through a `DownloadManager` and write `<target>.part` until completion. Resume reuses an existing `.part` file, sends a Range request from its current size, appends only after a valid `206 Partial Content`, and safely restarts when the server answers `200 OK` without range support. Pause preserves `.part`; Cancel preserves or discards it according to the Settings toggle. Linux uses libcurl when development headers are present and a streamed, argv-only `curl` process when they are absent. Windows streams HTTP(S) downloads through WinHTTP.
 
 Mermaid PNGs from optional `mmdc` appear in the independent result window. The fallback HTML includes the pinned JavaScript bundle and opens in a normal browser without a network connection or Chromium download. QR PNGs are generated in-process using Project Nayuki's C++ library and appear in the independent QR window. If a renderer fails, its result window still exposes the copyable source or payload.
 
@@ -84,17 +84,17 @@ Compose opens the local `mailto:` handler. Direct email sending is enabled only 
 
 ## Desktop Popup
 
-`pastit` is the desktop entry point. A per-user advisory lock prevents duplicate V2 processes. Start it once, then press `Ctrl+Alt+F` to capture the focused X11 target and open the popup. The movable, opacity-configurable popup shows the top eight Djev/fallback actions; click one or use Up/Down and Enter. The root window is a normal decorated window, so other applications can cover it; Escape closes without executing.
+`pastit` is the desktop entry point. A per-user lock prevents duplicate V2 processes. Start it once, then press `Ctrl+Alt+F` to capture the focused target and open the popup. The movable, opacity-configurable popup shows the top eight Djev/fallback actions; click one or use Up/Down and Enter. The root window is a normal decorated window, so other applications can cover it; Escape closes without executing.
 
 The Smart Actions tab abbreviates large text and uses image thumbnails. Enabled text prompt templates are ranked directly in the same action list as paste/save actions. The persistent Clipboard History tab retains the newest 50 text or image records; rows use content-type icons and open a detail view with the complete selectable/copyable text, while image details use the original stored bytes. Text metadata is sanitized and truncated only at UTF-8 character boundaries, and legacy malformed previews are normalized when history loads. The Recent Paths tab uses a resizable wide path column; long row paths preserve their prefix and filename suffix while abbreviating the middle with `...`. Row details put path operations in a top toolbar and use a scrollable body so long paths and actions remain reachable. Runtime recent-path sources are named file managers (such as Nautilus) and existing bash/zsh history paths; `proc-fd` records are filtered from both loaded and displayed history.
 
-Displayed labels and read-only values are click-to-copy; editable single-line and multiline fields keep normal selection/Ctrl+C behavior. Multiline editors size themselves from three through ten visible rows and scroll beyond ten. Clipboard writes made by ImGui are routed through the X11 clipboard watcher, avoiding the event-loop stall that occurred when the app tried to synchronously read a GLFW-owned selection.
+Displayed labels and read-only values are click-to-copy; editable single-line and multiline fields keep normal selection/Ctrl+C behavior. Multiline editors size themselves from three through ten visible rows and scroll beyond ten. On Linux, clipboard writes made by ImGui are routed through the X11 clipboard watcher, avoiding the event-loop stall that occurred when the app tried to synchronously read a GLFW-owned selection. Windows uses the Win32 clipboard adapter.
 
-Save, download, copy, and move actions open a confirmation window with an editable destination and a generated `yyyyMMddHH-NN.ext` filename. The Linux Browse button uses Zenity or KDialog when available. Successful file operations stay visible and expose a copyable output path.
+Save, download, copy, and move actions open a confirmation window with an editable destination and a generated `yyyyMMddHH-NN.ext` filename. The Linux Browse button uses Zenity or KDialog when available; Windows uses its native folder picker. Successful file operations stay visible and expose a copyable output path.
 
 File confirmation, image preview, AI result, prompt-parameter, prompt-template detail/edit/delete, clipboard-history detail, recent-path detail, contact tables, network reports, Mermaid/QR previews, download progress, hash results, and annotation tools are independent native platform windows. Newly opened auxiliary windows request focus and are positioned above the root popup; they have no transient-parent relationship. The Settings page is a main tab, with General buttons to keep only the latest ten path/clipboard records or delete all history. The main popup remains in its own GLFW viewport and uses the native decorated title bar for dragging, with no redundant target/footer labels.
 
-English and Simplified Chinese UI strings are supported. On Linux the app prefers Noto Sans CJK and falls back visibly when no CJK font is available. Platform-independent configuration, decision, AI, history, executor, renderer, download, hash, annotation, date/time, and view-model modules are isolated from the Linux/X11 backend. Future Windows and macOS ports can provide their own terminal, network command, process, renderer, timezone, and file-picker adapters without changing catalog or executor contracts.
+English and Simplified Chinese UI strings are supported. On Linux the app prefers Noto Sans CJK and falls back visibly when no CJK font is available; Windows looks for installed CJK fonts. Platform-independent configuration, decision, AI, history, executor, renderer, download, hash, annotation, date/time, and view-model modules share the same implementation. Linux and Windows provide native clipboard, focus, terminal, network command, process, timezone, and file-picker adapters.
 
 For a launch-time visual smoke test:
 

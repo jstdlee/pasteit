@@ -265,6 +265,13 @@ int main() {
     FakeServices services;
     FastActionExecutor executor(services);
 
+    auto unresolved_ip = action(ActionKind::PingIp);
+    unresolved_ip.parameters["ip"] = "";
+    const auto unresolved_result = executor.execute(unresolved_ip, context);
+    assert(unresolved_result.status == ExecutionStatus::Failed);
+    assert(unresolved_result.message == "network target missing");
+    assert(services.probes.empty());
+
     auto terminal = action(ActionKind::OpenTerminalAtPath);
     terminal.parameters["working_directory"] = (root / "target").string();
     assert(executor.execute(terminal, context).status == ExecutionStatus::Completed);

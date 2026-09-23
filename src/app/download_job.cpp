@@ -1,15 +1,23 @@
 #include "app/download_job.hpp"
+#include "storage/path_history.hpp"
+#include "util/replace_file.hpp"
 
 #include <array>
 #include <charconv>
 #include <cctype>
 #include <fstream>
+#include <limits>
 #include <mutex>
 #include <thread>
 #include <vector>
 
 #if defined(PASTIT_HAS_CURL)
 #include <curl/curl.h>
+#elif defined(_WIN32)
+#include "platform/windows/windows_strings.hpp"
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <winhttp.h>
 #elif !defined(_WIN32)
 #include <cerrno>
 #include <csignal>
@@ -36,7 +44,6 @@ std::uint64_t file_size_or_zero(const std::filesystem::path& path) {
     return error ? 0 : size;
 }
 
-#if defined(PASTIT_HAS_CURL) || !defined(_WIN32)
 std::string_view trim_header(std::string_view value) {
     while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
     while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
@@ -51,6 +58,7 @@ std::optional<std::uint64_t> parse_number(std::string_view value) {
         ? std::optional<std::uint64_t>{number} : std::nullopt;
 }
 
+#if defined(PASTIT_HAS_CURL) || !defined(_WIN32)
 bool header_name_is(std::string_view line, std::string_view name) {
     if (line.size() <= name.size() || line[name.size()] != ':') return false;
     for (std::size_t i = 0; i < name.size(); ++i) {
@@ -58,14 +66,15 @@ bool header_name_is(std::string_view line, std::string_view name) {
     }
     return true;
 }
+#endif
 
-struct CurlHeaders {
+struct ParsedDownloadHeaders {
     DownloadResponse response;
     std::optional<std::uint64_t> content_length;
     bool valid_range = false;
 };
 
-void parse_content_range(std::string_view value, CurlHeaders& headers) {
+void parse_content_range(std::string_view value, ParsedDownloadHeaders& headers) {
     value = trim_header(value);
     if (!value.starts_with("bytes ")) return;
     value.remove_prefix(6);
@@ -80,6 +89,135 @@ void parse_content_range(std::string_view value, CurlHeaders& headers) {
     if (total && *end >= *total) return;
     if (total) headers.response.total_size = *total;
     headers.valid_range = true;
+}
+
+#if defined(_WIN32) && !defined(PASTIT_HAS_CURL)
+struct WinHttpDownloadHandle {
+    HINTERNET value = nullptr;
+    explicit WinHttpDownloadHandle(HINTERNET handle) : value(handle) {}
+    ~WinHttpDownloadHandle() { if (value != nullptr) WinHttpCloseHandle(value); }
+    WinHttpDownloadHandle(const WinHttpDownloadHandle&) = delete;
+    WinHttpDownloadHandle& operator=(const WinHttpDownloadHandle&) = delete;
+    explicit operator bool() const { return value != nullptr; }
+};
+
+std::optional<std::string> winhttp_header(HINTERNET request, const wchar_t* name) {
+    DWORD size = 0;
+    if (WinHttpQueryHeaders(request, WINHTTP_QUERY_CUSTOM, name, WINHTTP_NO_OUTPUT_BUFFER,
+                            &size, WINHTTP_NO_HEADER_INDEX) || GetLastError() != ERROR_INSUFFICIENT_BUFFER ||
+        size < sizeof(wchar_t)) {
+        return std::nullopt;
+    }
+    std::wstring value(size / sizeof(wchar_t), L'\0');
+    if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_CUSTOM, name, value.data(),
+                             &size, WINHTTP_NO_HEADER_INDEX)) {
+        return std::nullopt;
+    }
+    value.resize(size / sizeof(wchar_t));
+    return std::string(value.begin(), value.end());
+}
+
+DownloadResponse stream_with_winhttp(
+    const DownloadRequest& request, const std::atomic_bool& cancelled,
+    const std::function<bool(const DownloadResponse&)>& on_headers,
+    const std::function<bool(std::string_view)>& on_chunk) {
+    if (!request.url.starts_with("http://") && !request.url.starts_with("https://")) {
+        return {.error = "unsupported download URL scheme"};
+    }
+    const auto url = utf8_to_wide(request.url);
+    if (url.empty() || url.size() > std::numeric_limits<DWORD>::max()) {
+        return {.error = "download URL is not valid UTF-8"};
+    }
+    URL_COMPONENTS components{};
+    components.dwStructSize = sizeof(components);
+    components.dwSchemeLength = static_cast<DWORD>(-1);
+    components.dwHostNameLength = static_cast<DWORD>(-1);
+    components.dwUrlPathLength = static_cast<DWORD>(-1);
+    components.dwExtraInfoLength = static_cast<DWORD>(-1);
+    if (!WinHttpCrackUrl(url.c_str(), static_cast<DWORD>(url.size()), 0, &components) ||
+        components.lpszHostName == nullptr || components.dwHostNameLength == 0 ||
+        (components.nScheme != INTERNET_SCHEME_HTTP && components.nScheme != INTERNET_SCHEME_HTTPS)) {
+        return {.error = "download URL is invalid"};
+    }
+    const std::wstring host{components.lpszHostName, components.dwHostNameLength};
+    std::wstring path = components.dwUrlPathLength == 0 ? L"/" :
+        std::wstring{components.lpszUrlPath, components.dwUrlPathLength};
+    if (components.dwExtraInfoLength > 0) {
+        path.append(components.lpszExtraInfo, components.dwExtraInfoLength);
+    }
+    WinHttpDownloadHandle session{WinHttpOpen(L"PasteIt/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                             WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)};
+    if (!session) return {.error = "WinHttpOpen failed"};
+    WinHttpSetTimeouts(session.value, 30000, 30000, 30000, 30000);
+    WinHttpDownloadHandle connection{WinHttpConnect(session.value, host.c_str(), components.nPort, 0)};
+    if (!connection) return {.error = "WinHttpConnect failed"};
+    const DWORD flags = components.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
+    WinHttpDownloadHandle http_request{WinHttpOpenRequest(connection.value, L"GET", path.c_str(), nullptr,
+                                                          WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags)};
+    if (!http_request) return {.error = "WinHttpOpenRequest failed"};
+    if (request.range_start > 0) {
+        const auto range = L"Range: bytes=" + std::to_wstring(request.range_start) + L"-\r\n";
+        if (!WinHttpAddRequestHeaders(http_request.value, range.c_str(), static_cast<DWORD>(range.size()),
+                                      WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE)) {
+            return {.error = "could not set download range"};
+        }
+    }
+    if (cancelled.load()) return {.error = "cancelled"};
+    if (!WinHttpSendRequest(http_request.value, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(http_request.value, nullptr)) {
+        return {.error = "WinHTTP download request failed"};
+    }
+    DWORD status = 0;
+    DWORD status_size = sizeof(status);
+    if (!WinHttpQueryHeaders(http_request.value, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_size, WINHTTP_NO_HEADER_INDEX)) {
+        return {.error = "could not read download status"};
+    }
+    ParsedDownloadHeaders parsed;
+    parsed.response.status_code = static_cast<int>(status);
+    if (const auto content_range = winhttp_header(http_request.value, L"Content-Range")) {
+        parse_content_range(*content_range, parsed);
+    }
+    if (const auto content_length = winhttp_header(http_request.value, L"Content-Length")) {
+        parsed.content_length = parse_number(*content_length);
+    }
+    if (status < 200 || status >= 300) {
+        parsed.response.error = "HTTP " + std::to_string(status);
+        return parsed.response;
+    }
+    if (status == 206 && !parsed.valid_range) {
+        return {.error = "download response has an invalid Content-Range"};
+    }
+    parsed.response.range_supported = status == 206;
+    if (parsed.response.total_size == 0 && parsed.content_length) {
+        parsed.response.total_size = *parsed.content_length +
+            (status == 206 ? parsed.response.range_start.value_or(0) : 0);
+    }
+    if (!on_headers(parsed.response)) return {.error = "download sink rejected headers"};
+    std::array<char, 16 * 1024> buffer{};
+    std::uint64_t received = 0;
+    while (!cancelled.load()) {
+        DWORD available = 0;
+        if (!WinHttpQueryDataAvailable(http_request.value, &available)) {
+            return {.error = "WinHttpQueryDataAvailable failed"};
+        }
+        if (available == 0) break;
+        const DWORD to_read = std::min<DWORD>(available, static_cast<DWORD>(buffer.size()));
+        DWORD read = 0;
+        if (!WinHttpReadData(http_request.value, buffer.data(), to_read, &read) || read == 0) {
+            return {.error = "WinHttpReadData failed"};
+        }
+        if (!on_chunk(std::string_view{buffer.data(), read})) {
+            return {.error = "download sink rejected bytes"};
+        }
+        received += read;
+    }
+    if (cancelled.load()) return {.error = "cancelled"};
+    if (parsed.response.total_size == 0) {
+        parsed.response.total_size = received + (status == 206 ? request.range_start : 0);
+    }
+    return parsed.response;
 }
 #endif
 
@@ -133,7 +271,7 @@ DownloadResponse stream_with_curl_process(
     }
 
     DownloadResponse response;
-    CurlHeaders parsed;
+    ParsedDownloadHeaders parsed;
     std::string header_buffer;
     bool accepted = false;
     bool rejected = false;
@@ -242,8 +380,11 @@ public:
                             const std::function<bool(std::string_view)>& on_chunk) override {
         constexpr std::string_view file_prefix = "file://";
         if (request.url.starts_with(file_prefix)) {
-            const std::filesystem::path path{request.url.substr(file_prefix.size())};
-            std::ifstream input(path, std::ios::binary);
+            const auto path = path_from_file_uri(request.url);
+            if (!path) {
+                return {.status_code = 0, .error = "invalid file URL"};
+            }
+            std::ifstream input(*path, std::ios::binary);
             if (!input) {
                 return {.status_code = 404, .body = {}, .error = "source file not found", .range_start = {}};
             }
@@ -286,7 +427,7 @@ public:
             const std::atomic_bool* cancelled = nullptr;
             const std::function<bool(const DownloadResponse&)>* on_headers = nullptr;
             const std::function<bool(std::string_view)>* on_chunk = nullptr;
-            CurlHeaders headers;
+            ParsedDownloadHeaders headers;
             bool accepted_headers = false;
             bool sink_rejected = false;
             std::uint64_t received = 0;
@@ -386,8 +527,7 @@ public:
 #if !defined(_WIN32)
         return stream_with_curl_process(request, cancelled, on_headers, on_chunk);
 #else
-        (void)cancelled;
-        return {.status_code = 0, .body = {}, .error = "HTTP download transport requires libcurl", .range_start = {}};
+        return stream_with_winhttp(request, cancelled, on_headers, on_chunk);
 #endif
 #endif
     }
@@ -651,7 +791,7 @@ void DownloadManager::spawn_worker(const std::shared_ptr<JobControl>& control) {
             if (control->cancel_requested.load()) {
                 // The requested stop wins over a transfer that just completed.
             } else {
-                std::filesystem::rename(part_path, final_path, error);
+                replace_file(part_path, final_path, error);
                 if (error) {
                     control->job.status = DownloadStatus::Failed;
                     control->job.error = error.message();

@@ -912,7 +912,7 @@ int run_desktop_runtime() {
         if (!follow_up) {
             // Keep the key semantic so regenerated action ids do not erase the
             // user's local ranking bias.
-            record_action_preference(settings.action_preferences, *action);
+            record_action_preference(settings.action_preferences, *action, active_batch.ranking_context);
             std::string preference_save_error;
             if (!settings_store.save(settings, preference_save_error) && diagnostics) {
                 std::cerr << "PasteIt action preference save failed: " << preference_save_error << '\n';
@@ -1089,8 +1089,13 @@ int run_desktop_runtime() {
             const auto active_focus = platform->focused_context();
             const auto& current_target = active_focus.window_id == popup_window_id ? target_context : active_focus;
             const auto current = make_batch(current_target, active_batch.request.request_id);
+            active_batch.ranking_context.djev_proposed_kind.reset();
+            if (const auto proposed = active_batch.catalog.find(response.choice); proposed.has_value()) {
+                active_batch.ranking_context.djev_proposed_kind = proposed->kind;
+            }
             const auto prepared = prepare_popup_decision(active_batch.request, response, active_batch.catalog,
-                                                         current.request.snapshot, settings.action_preferences);
+                                                         current.request.snapshot, settings.action_preferences,
+                                                         active_batch.ranking_context);
             if (prepared.status == DecisionSessionStatus::Ready) {
                 popup_model = build_popup_model(active_batch.request.snapshot, prepared.ranked);
                 decision_status = prepared.message == "ranked" ? "Ranked by local Djev" : prepared.message;
@@ -1518,7 +1523,9 @@ int run_desktop_runtime() {
                     bool edit_open = true; ImGui::SetNextWindowClass(&auxiliary_window_class); ImGui::SetNextWindowSize(ImVec2(600,440),ImGuiCond_FirstUseEver);
                     if (ImGui::Begin(prompt_edit_title.c_str(), &edit_open)) {
                         input_text_string(tr(ui_language,UiTextKey::TemplateName).c_str(), prompt_panel_model.draft->name);
-                        input_text_string(tr(ui_language,UiTextKey::SystemPrompt).c_str(), prompt_panel_model.draft->system_prompt, true);
+                        const float edit_footer_height = 3.0F * ImGui::GetFrameHeightWithSpacing();
+                        input_text_string(tr(ui_language,UiTextKey::SystemPrompt).c_str(),
+                                          prompt_panel_model.draft->system_prompt, true, 0, -edit_footer_height);
                         ImGui::Checkbox(tr(ui_language,UiTextKey::Enabled).c_str(), &prompt_panel_model.draft->enabled);
                         float temperature = static_cast<float>(prompt_panel_model.draft->temperature);
                         if (ImGui::SliderFloat(tr(ui_language,UiTextKey::Temperature).c_str(), &temperature, 0.0F, 2.0F)) prompt_panel_model.draft->temperature = temperature;
@@ -1539,8 +1546,8 @@ int run_desktop_runtime() {
             }
             if (!settings_status.empty()) copyable_text(settings_status, true);
             if (ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())) {
-                SettingsModel validator(settings); validator.working() = settings_draft; AppSettings candidate = settings; std::string error;
-                if (validator.save(candidate, error) && settings_store.save(candidate, error)) {
+                AppSettings candidate = settings; std::string error;
+                if (save_settings_draft(settings_store, settings, settings_draft, candidate, error)) {
                     const bool llm_endpoint_changed = settings.general_llm.endpoint != candidate.general_llm.endpoint;
                     const bool djev_changed = settings.djev.endpoint != candidate.djev.endpoint ||
                                               settings.djev.model_id != candidate.djev.model_id ||
@@ -1847,10 +1854,10 @@ int run_desktop_runtime() {
                     job->focus_pending = false;
                 }
                 if(job->panel.running)copyable_text(tr(ui_language,UiTextKey::Generating));
-                ImGui::BeginChild("ai-result-body", ImVec2(0.0F, -ImGui::GetFrameHeightWithSpacing() * 3.5F), true,
+                ImGui::BeginChild("ai-result-body", ImVec2(0.0F, -ImGui::GetFrameHeightWithSpacing()), true,
                                   ImGuiWindowFlags_HorizontalScrollbar);
                 if(!job->panel.error.empty())copyable_text(job->panel.error, true);
-                input_text_string("##ai-result",job->panel.editable_text,true);
+                input_text_string("##ai-result",job->panel.editable_text,true,0,-1.0F);
                 ImGui::EndChild();
                 if(ImGui::Button(tr(ui_language,UiTextKey::CopyResult).c_str()))platform->copy_text(job->panel.editable_text);
                 if(ImGui::Button(tr(ui_language,UiTextKey::ReplaceClipboard).c_str()))platform->publish_text(job->panel.editable_text);
@@ -1913,7 +1920,17 @@ int run_desktop_runtime() {
                     }
                     if(prompt_panel_model.modal==PromptTemplateModal::Edit&&prompt_panel_model.draft){
                         bool edit_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);ImGui::SetNextWindowSize(ImVec2(600,440),ImGuiCond_FirstUseEver);
-                        if(ImGui::Begin(prompt_edit_title.c_str(),&edit_open)){input_text_string(tr(ui_language,UiTextKey::TemplateName).c_str(),prompt_panel_model.draft->name);input_text_string(tr(ui_language,UiTextKey::SystemPrompt).c_str(),prompt_panel_model.draft->system_prompt,true);ImGui::Checkbox(tr(ui_language,UiTextKey::Enabled).c_str(),&prompt_panel_model.draft->enabled);float temperature=static_cast<float>(prompt_panel_model.draft->temperature);if(ImGui::SliderFloat(tr(ui_language,UiTextKey::Temperature).c_str(),&temperature,0,2))prompt_panel_model.draft->temperature=temperature;if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){const auto result=save_prompt_template_edit(prompt_panel_model,service);if(result.error.empty())edit_open=false;}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str()))edit_open=false;}ImGui::End();
+                        if(ImGui::Begin(prompt_edit_title.c_str(),&edit_open)){
+                            input_text_string(tr(ui_language,UiTextKey::TemplateName).c_str(),prompt_panel_model.draft->name);
+                            const float edit_footer_height=3.0F*ImGui::GetFrameHeightWithSpacing();
+                            input_text_string(tr(ui_language,UiTextKey::SystemPrompt).c_str(),
+                                              prompt_panel_model.draft->system_prompt,true,0,-edit_footer_height);
+                            ImGui::Checkbox(tr(ui_language,UiTextKey::Enabled).c_str(),&prompt_panel_model.draft->enabled);
+                            float temperature=static_cast<float>(prompt_panel_model.draft->temperature);
+                            if(ImGui::SliderFloat(tr(ui_language,UiTextKey::Temperature).c_str(),&temperature,0,2))prompt_panel_model.draft->temperature=temperature;
+                            if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){const auto result=save_prompt_template_edit(prompt_panel_model,service);if(result.error.empty())edit_open=false;}
+                            ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str()))edit_open=false;
+                        }ImGui::End();
                         if(!edit_open&&prompt_panel_model.modal!=PromptTemplateModal::None)cancel_prompt_template_modal(prompt_panel_model);
                     }
                     if(prompt_panel_model.modal==PromptTemplateModal::Delete){
@@ -1930,7 +1947,7 @@ int run_desktop_runtime() {
                 if(ImGui::SmallButton("Mermaid homepage##aux"))platform->open_uri("https://mermaid.js.org/");ImGui::SameLine();
                 if(ImGui::SmallButton("QR library homepage##aux"))platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
                 if(!settings_status.empty())copyable_text(settings_status,true);
-                if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){SettingsModel validator(settings);validator.working()=settings_draft;AppSettings candidate=settings;std::string error;if(validator.save(candidate,error)&&settings_store.save(candidate,error)){settings=candidate;settings_draft=settings;if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window,settings.window_opacity);djev_client=DjevClient(settings.djev.endpoint,settings.djev.model_id,DjevClient::kDefaultTimeout,{},settings.djev.api_key);fast_action_executor.set_renderer_settings(settings.renderers);download_manager.set_options({.keep_part_files_on_cancel=settings.downloads.keep_part_files});annotation_panel.export_directory=settings.annotation.save_directory;annotation_panel.export_format=settings.annotation.export_format;
+                if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){AppSettings candidate=settings;std::string error;if(save_settings_draft(settings_store,settings,settings_draft,candidate,error)){settings=candidate;settings_draft=settings;if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window,settings.window_opacity);djev_client=DjevClient(settings.djev.endpoint,settings.djev.model_id,DjevClient::kDefaultTimeout,{},settings.djev.api_key);fast_action_executor.set_renderer_settings(settings.renderers);download_manager.set_options({.keep_part_files_on_cancel=settings.downloads.keep_part_files});annotation_panel.export_directory=settings.annotation.save_directory;annotation_panel.export_format=settings.annotation.export_format;
                     platform->apply_settings(settings);
                     settings_status=tr(ui_language,UiTextKey::Saved);show_settings=false;}else settings_status=error;}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str())){settings_draft=settings;show_settings=false;}
             }ImGui::End();
@@ -1961,6 +1978,10 @@ int run_desktop_runtime() {
         }
     }
 
+    std::string settings_save_error;
+    if (!save_settings_on_exit(settings_store, settings, settings_draft, settings_save_error)) {
+        std::cerr << "Could not save all settings on exit: " << settings_save_error << '\n';
+    }
     preview_texture.clear();
     history_texture.clear();
     pending_decision.wait_all();

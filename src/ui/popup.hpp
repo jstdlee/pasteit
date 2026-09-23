@@ -28,6 +28,7 @@ struct PopupModel {
 PopupModel build_popup_model(const DecisionSnapshot& snapshot, const std::vector<RankedAction>& ranked_actions);
 PreparedDecision prepare_popup_decision(const DecisionRequest& request, const DecisionResponse& response,
                                         const ActionCatalog& catalog, const DecisionSnapshot& current_snapshot,
-                                        const ActionPreferenceWeights& preferences = {});
+                                        const ActionPreferenceWeights& preferences = {},
+                                        const ActionRankingContext& context = {});
 
 }  // namespace pastit

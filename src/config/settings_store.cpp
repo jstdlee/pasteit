@@ -3,6 +3,7 @@
 #include "platform/app_paths.hpp"
 #include "util/json.hpp"
 #include "util/path_utf8.hpp"
+#include "util/replace_file.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -205,7 +206,8 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
     out.flush();
     if (!out) { error = "Could not write settings file."; return false; }
     out.close();
-    std::filesystem::rename(temporary, path_, ec);
+    if (!out) { error = "Could not close settings file."; return false; }
+    replace_file(temporary, path_, ec);
     if (ec) { std::filesystem::remove(temporary); error = ec.message(); return false; }
     error.clear(); return true;
 }

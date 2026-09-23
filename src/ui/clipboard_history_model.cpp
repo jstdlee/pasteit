@@ -25,6 +25,8 @@ std::string type_label(ContentKind kind) {
             return "Path";
         case ContentKind::Json:
             return "JSON";
+        case ContentKind::DateTime:
+            return "Date/time";
         case ContentKind::Unknown:
             return "Unknown";
     }
@@ -39,6 +41,7 @@ std::string type_icon(ContentKind kind) {
         case ContentKind::Image: return "▧";
         case ContentKind::Path: return "⌂";
         case ContentKind::Json: return "{}";
+        case ContentKind::DateTime: return "◷";
         case ContentKind::Unknown: return "?";
     }
     return "?";

@@ -2,6 +2,7 @@
 
 #include "storage/path_history.hpp"
 #include "util/json.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -80,7 +81,7 @@ DetectionResult detect_content(const std::vector<std::string>& mime_types, std::
         return result;
     }
 
-    const std::filesystem::path maybe_path{value};
+    const std::filesystem::path maybe_path = path_from_utf8_string(value);
     if (!value.empty() && maybe_path.is_absolute()) {
         result.kind = ContentKind::Path;
         result.tags = {SemanticTag::Path};

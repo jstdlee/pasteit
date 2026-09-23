@@ -30,6 +30,51 @@ int main() {
     for (int count = 0; count < 20; ++count) record_action_preference(preferences, second);
     assert(action_preference_bonus(preferences, second) <= 0.2);
 
+    ActionInstance annotate_image;
+    annotate_image.id = "annotate-current-image";
+    annotate_image.kind = ActionKind::AnnotateImage;
+    annotate_image.source_ref = "clip-image";
+    ActionRankingContext image_after_save{
+        .input_kind = ContentKind::Image,
+        .djev_proposed_kind = ActionKind::SaveImageFile,
+    };
+    ActionPreferenceWeights contextual_preferences;
+    for (int count = 0; count < 12; ++count) {
+        record_action_preference(contextual_preferences, annotate_image, image_after_save);
+    }
+    const auto contextual_bonus = action_preference_bonus(contextual_preferences, annotate_image, image_after_save);
+    const ActionRankingContext unrelated_text{
+        .input_kind = ContentKind::Text,
+        .djev_proposed_kind = ActionKind::SaveTextFile,
+    };
+    const ActionRankingContext image_with_other_proposal{
+        .input_kind = ContentKind::Image,
+        .djev_proposed_kind = ActionKind::AnnotateImage,
+    };
+    const ActionRankingContext same_proposal_different_input{
+        .input_kind = ContentKind::Text,
+        .djev_proposed_kind = ActionKind::SaveImageFile,
+    };
+    assert(contextual_bonus > action_preference_bonus(contextual_preferences, annotate_image, unrelated_text));
+    assert(contextual_bonus > action_preference_bonus(contextual_preferences, annotate_image,
+                                                       image_with_other_proposal));
+    assert(contextual_bonus > action_preference_bonus(contextual_preferences, annotate_image,
+                                                       same_proposal_different_input));
+    assert(contextual_bonus <= 0.15);
+    ActionInstance save_image = annotate_image;
+    save_image.id = "save-current-image";
+    save_image.kind = ActionKind::SaveImageFile;
+    ActionCatalog image_catalog{{annotate_image, save_image}};
+    DecisionResponse image_response;
+    image_response.valid = true;
+    image_response.choice = save_image.id;
+    image_response.probabilities[annotate_image.id] = 0.60;
+    image_response.probabilities[save_image.id] = 0.61;
+    const auto contextual_ranked = rank_top_actions(image_response, image_catalog, 5,
+                                                     contextual_preferences, image_after_save);
+    assert(contextual_ranked.front().action.kind == ActionKind::AnnotateImage);
+    assert(contextual_ranked.front().probability <= 0.76);
+
     ActionCatalog catalog;
     catalog.actions = {first, second};
     DecisionResponse response;
