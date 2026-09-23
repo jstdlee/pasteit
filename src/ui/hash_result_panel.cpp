@@ -1,6 +1,7 @@
 #include "ui/hash_result_panel.hpp"
 
 #include "ui/imgui_widgets.hpp"
+#include "util/path_utf8.hpp"
 
 #include <sstream>
 
@@ -21,7 +22,7 @@ FastActionPanelModel build_hash_result_panel_model(const HashResultState& state)
     const auto& active = state.active();
     std::ostringstream text;
     text << "Algorithm: " << hash_label(active.algorithm) << '\n'
-         << "Path: " << active.path.string() << '\n';
+         << "Path: " << path_to_utf8_string(active.path) << '\n';
     if (!active.digest.empty()) {
         text << "Digest: " << active.digest << '\n';
     }
@@ -33,7 +34,7 @@ FastActionPanelModel build_hash_result_panel_model(const HashResultState& state)
     model.toolbar = {
         {.id = "copy_digest", .label = "Copy digest", .value = active.digest, .enabled = !active.digest.empty()},
         {.id = "copy_algorithm_path", .label = "Copy algorithm path",
-         .value = hash_label(active.algorithm) + "  " + active.path.string()},
+         .value = hash_label(active.algorithm) + "  " + path_to_utf8_string(active.path)},
     };
     model.status_text = active.error;
     model.primary_text = text.str();

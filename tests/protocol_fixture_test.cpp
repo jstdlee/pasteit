@@ -26,10 +26,7 @@ std::vector<std::string> ids_for(const pastit::ActionCatalog& catalog) {
 }
 
 pastit::DecisionSnapshot fixture_snapshot() {
-    auto fixture_root = std::filesystem::path{"tests"} / "fixtures";
-    if (!std::filesystem::exists(fixture_root / "clipboard_text.txt")) {
-        fixture_root = std::filesystem::path{".."} / "tests" / "fixtures";
-    }
+    const auto fixture_root = std::filesystem::path{__FILE__}.parent_path() / "fixtures";
     assert(std::filesystem::exists(fixture_root / "clipboard_text.txt"));
     assert(std::filesystem::exists(fixture_root / "sample_resume.txt"));
     assert(std::filesystem::exists(fixture_root / "sample.json"));

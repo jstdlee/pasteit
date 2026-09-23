@@ -9,9 +9,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cctype>
 #include <ctime>
+#include <exception>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -214,13 +216,14 @@ std::optional<std::int64_t> to_epoch_utc(std::tm parsed) {
     return static_cast<std::int64_t>(value);
 }
 
-std::optional<std::int64_t> to_epoch_local(std::tm parsed) {
-    const auto value = std::mktime(&parsed);
-    if (value == static_cast<time_t>(-1)) {
-        return std::nullopt;
+#if defined(_MSC_VER)
+const std::chrono::time_zone* named_zone(std::string_view name) {
+    if (name == "local" || name == "Local") {
+        return std::chrono::current_zone();
     }
-    return static_cast<std::int64_t>(value);
+    return std::chrono::locate_zone(name);
 }
+#endif
 
 std::string hex_digest(const unsigned char* bytes, std::size_t size) {
     std::ostringstream output;
@@ -345,7 +348,26 @@ std::optional<std::int64_t> WindowsFastActionServices::parse_datetime(std::strin
             if (utc_suffix || is_explicit_utc_zone(source_zone)) {
                 return to_epoch_utc(*parsed);
             }
-            return to_epoch_local(*parsed);
+#if defined(_MSC_VER)
+            try {
+                using namespace std::chrono;
+                const year_month_day date{year{parsed->tm_year + 1900},
+                                          month{static_cast<unsigned>(parsed->tm_mon + 1)},
+                                          std::chrono::day{static_cast<unsigned>(parsed->tm_mday)}};
+                if (!date.ok()) {
+                    return std::nullopt;
+                }
+                const auto local = local_days{date} + hours{parsed->tm_hour} +
+                                   minutes{parsed->tm_min} + seconds{parsed->tm_sec};
+                return named_zone(source_zone)->to_sys(local).time_since_epoch().count();
+            } catch (const std::exception&) {
+                return std::nullopt;
+            }
+#else
+            // MinGW's standard library may not provide the C++20 time-zone
+            // database. Report unsupported rather than using local time.
+            return std::nullopt;
+#endif
         }
     }
     return std::nullopt;
@@ -354,20 +376,45 @@ std::optional<std::int64_t> WindowsFastActionServices::parse_datetime(std::strin
 std::string WindowsFastActionServices::format_datetime(std::int64_t epoch_seconds, std::string_view target_zone) {
     const auto value = static_cast<time_t>(epoch_seconds);
     std::tm parsed{};
-    const bool utc = is_explicit_utc_zone(target_zone);
-    if (utc) {
+    if (is_explicit_utc_zone(target_zone)) {
         if (gmtime_s(&parsed, &value) != 0) {
             return {};
         }
-    } else if (localtime_s(&parsed, &value) != 0) {
+        std::array<char, 64> buffer{};
+        if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%dT%H:%M:%SZ", &parsed) == 0) {
+            return {};
+        }
+        return buffer.data();
+    }
+
+#if defined(_MSC_VER)
+    try {
+        using namespace std::chrono;
+        const auto* zone = named_zone(target_zone);
+        const sys_seconds instant{seconds{epoch_seconds}};
+        const auto local = zone->to_local(instant);
+        const auto local_day = floor<days>(local);
+        const year_month_day date{sys_days{local_day.time_since_epoch()}};
+        const hh_mm_ss clock{local - local_day};
+        const auto offset = zone->get_info(instant).offset.count();
+        const auto offset_minutes = static_cast<std::int64_t>(offset < 0 ? -offset : offset) / 60;
+        std::ostringstream out;
+        out << std::setfill('0') << std::setw(4) << int(date.year()) << '-'
+            << std::setw(2) << unsigned(date.month()) << '-'
+            << std::setw(2) << unsigned(date.day()) << 'T'
+            << std::setw(2) << clock.hours().count() << ':'
+            << std::setw(2) << clock.minutes().count() << ':'
+            << std::setw(2) << clock.seconds().count()
+            << (offset < 0 ? '-' : '+')
+            << std::setw(2) << offset_minutes / 60
+            << std::setw(2) << offset_minutes % 60;
+        return out.str();
+    } catch (const std::exception&) {
         return {};
     }
-    std::array<char, 64> buffer{};
-    const char* format = utc ? "%Y-%m-%dT%H:%M:%SZ" : "%Y-%m-%dT%H:%M:%S%z";
-    if (std::strftime(buffer.data(), buffer.size(), format, &parsed) == 0) {
-        return {};
-    }
-    return buffer.data();
+#else
+    return {};
+#endif
 }
 
 std::string WindowsFastActionServices::hash_file(const std::filesystem::path& path, HashAlgorithm algorithm) {

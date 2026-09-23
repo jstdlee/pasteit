@@ -9,6 +9,12 @@
 int main() {
     using namespace pastit;
 
+    ActionInstance mermaid_action;
+    mermaid_action.kind = ActionKind::DrawMermaidDiagram;
+    assert(mermaid_action_requires_generation(mermaid_action));
+    mermaid_action.parameters["mermaid_source"] = "direct";
+    assert(!mermaid_action_requires_generation(mermaid_action));
+
     ClipboardItem current_text{
         .ref = "clip_current_text",
         .mime_types = {"text/plain"},

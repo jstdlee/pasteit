@@ -1,4 +1,5 @@
 #include "ui/imgui_widgets.hpp"
+#include "platform/platform_services.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -14,6 +15,28 @@ constexpr std::size_t kMinimumEditorRows = 3;
 constexpr std::size_t kMaximumEditorRows = 10;
 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
+PlatformServices* clipboard_platform = nullptr;
+const char* (*fallback_get_clipboard)(ImGuiContext*) = nullptr;
+void (*fallback_set_clipboard)(ImGuiContext*, const char*) = nullptr;
+std::string owned_clipboard_cache;
+
+const char* get_clipboard_text(ImGuiContext* context) {
+    if (clipboard_platform != nullptr) {
+        if (auto owned = clipboard_platform->owned_clipboard_text()) {
+            owned_clipboard_cache = std::move(*owned);
+            return owned_clipboard_cache.c_str();
+        }
+    }
+    return fallback_get_clipboard == nullptr ? "" : fallback_get_clipboard(context);
+}
+
+void set_clipboard_text(ImGuiContext* context, const char* text) {
+    if (clipboard_platform == nullptr ||
+        !clipboard_platform->copy_text(text == nullptr ? std::string_view{} : std::string_view{text})) {
+        if (fallback_set_clipboard != nullptr) fallback_set_clipboard(context, text);
+    }
+}
+
 int resize_string_callback(ImGuiInputTextCallbackData* data) {
     if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
         auto* value = static_cast<std::string*>(data->UserData);
@@ -25,6 +48,23 @@ int resize_string_callback(ImGuiInputTextCallbackData* data) {
 #endif
 
 }  // namespace
+
+void install_imgui_clipboard_bridge(PlatformServices& platform) {
+#if defined(PASTIT_HAS_DESKTOP_DEPS)
+    auto& io = ImGui::GetPlatformIO();
+    if (io.Platform_GetClipboardTextFn != get_clipboard_text) {
+        fallback_get_clipboard = io.Platform_GetClipboardTextFn;
+    }
+    if (io.Platform_SetClipboardTextFn != set_clipboard_text) {
+        fallback_set_clipboard = io.Platform_SetClipboardTextFn;
+    }
+    clipboard_platform = &platform;
+    io.Platform_GetClipboardTextFn = get_clipboard_text;
+    io.Platform_SetClipboardTextFn = set_clipboard_text;
+#else
+    (void)platform;
+#endif
+}
 
 std::size_t multiline_editor_row_count(std::string_view value) {
     return 1U + static_cast<std::size_t>(std::count(value.begin(), value.end(), '\n'));
@@ -66,7 +106,14 @@ bool input_text_string(const char* label, std::string& value, bool multiline, in
         ? "##input-" + label_text
         : label_text.substr(marker);
     if (!visible_label.empty()) {
-        copyable_text(visible_label);
+        // A default Selectable fills the available row and steals clicks from
+        // the input placed beside it. Keep the copy target to the label text.
+        const float label_width = ImGui::CalcTextSize(visible_label.c_str()).x;
+        if (ImGui::Selectable(visible_label.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick,
+                              ImVec2(label_width, 0.0F))) {
+            ImGui::SetClipboardText(visible_label.c_str());
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to copy");
         if (!multiline) {
             ImGui::SameLine();
         }

@@ -1,4 +1,5 @@
 #include "ui/file_operation_confirmation_panel.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 
@@ -6,11 +7,11 @@ namespace pastit {
 namespace {
 
 std::string shortcut_label(const PathLocation& destination) {
-    const auto filename = destination.path.filename().string();
+    const auto filename = path_to_utf8_string(destination.path.filename());
     if (!filename.empty()) {
         return filename;
     }
-    return destination.path.string();
+    return path_to_utf8_string(destination.path);
 }
 
 }  // namespace
@@ -22,10 +23,10 @@ FileOperationConfirmationPanelModel build_file_operation_confirmation_panel_mode
     model.source_ref = draft.source_ref;
     model.source_preview = state.source_preview;
     model.action_label = draft.frozen_action.label;
-    model.directory = draft.destination.string();
+    model.directory = path_to_utf8_string(draft.destination);
     model.filename = draft.filename;
     if (!draft.destination.empty() && !draft.filename.empty()) {
-        model.output_preview = (draft.destination / draft.filename).string();
+        model.output_preview = path_to_utf8_string(draft.destination / path_from_utf8_string(draft.filename));
     }
     model.validation_error = draft.validation_error;
     model.can_confirm = state.can_confirm;
@@ -34,7 +35,7 @@ FileOperationConfirmationPanelModel build_file_operation_confirmation_panel_mode
         model.shortcuts.push_back({
             .ref = destination.ref,
             .label = shortcut_label(destination),
-            .path = destination.path.string(),
+            .path = path_to_utf8_string(destination.path),
             .source = destination.source,
             .selected = destination.path == draft.destination,
         });

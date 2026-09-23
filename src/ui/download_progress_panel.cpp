@@ -1,6 +1,7 @@
 #include "ui/download_progress_panel.hpp"
 
 #include "ui/imgui_widgets.hpp"
+#include "util/path_utf8.hpp"
 
 #include <sstream>
 
@@ -48,8 +49,8 @@ FastActionPanelModel build_download_progress_panel_model(const DownloadManager& 
     }
     std::ostringstream detail;
     detail << "URL: " << job->url << '\n'
-           << "Destination: " << job->final_path.string() << '\n'
-           << "Partial: " << job->part_path.string() << '\n'
+           << "Destination: " << path_to_utf8_string(job->final_path) << '\n'
+           << "Partial: " << path_to_utf8_string(job->part_path) << '\n'
            << "State: " << download_status_label(job->status) << '\n'
            << "Downloaded: " << bytes_label(job->downloaded);
     if (job->total > 0) {
@@ -91,7 +92,7 @@ void draw_download_progress_panel(DownloadManager& manager,
         if (ImGui::Button("Cancel")) manager.cancel(job_id);
         ImGui::SameLine();
         if (const auto job = manager.get(job_id); job.has_value() && ImGui::Button("Copy path")) {
-            ImGui::SetClipboardText(job->final_path.string().c_str());
+            ImGui::SetClipboardText(path_to_utf8_string(job->final_path).c_str());
         }
         ImGui::BeginChild("download-progress-body", ImVec2(0.0F, 0.0F), true,
                           ImGuiWindowFlags_HorizontalScrollbar);

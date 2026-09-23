@@ -49,6 +49,9 @@ public:
     virtual bool open_path(const std::filesystem::path& path) = 0;
     virtual bool open_uri(std::string_view uri) = 0;
     virtual bool copy_text(std::string_view text) = 0;
+    // If this process owns the clipboard, return its text without a synchronous
+    // request that would wait for this same UI thread to serve the selection.
+    virtual std::optional<std::string> owned_clipboard_text() const { return std::nullopt; }
     virtual bool move_popup_by(int delta_x, int delta_y) = 0;
     virtual bool set_popup_opacity(float opacity) = 0;
     virtual std::vector<std::filesystem::path> preferred_ui_fonts() = 0;

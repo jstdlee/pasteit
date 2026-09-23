@@ -1,9 +1,12 @@
 #include "actions/action_catalog.hpp"
 
+#include "ai/mermaid_prompt.hpp"
 #include "ai/prompt_expander.hpp"
 #include "detect/fast_content_detector.hpp"
 #include "detect/resume_detector.hpp"
+#include "storage/path_history.hpp"
 #include "util/json.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -355,7 +358,7 @@ void add_resume_actions(ActionCatalog& catalog, const ClipboardItem& item, const
         "Copy all locally extracted resume fields as JSON", "resume_json");
     for (const auto& target : targets) {
         add(catalog, item, ActionKind::SaveResumeFile, target.ref, "Save resume JSON",
-            "Save locally extracted resume fields as JSON to " + target.path.string(), "resume_json");
+            "Save locally extracted resume fields as JSON to " + path_to_utf8_string(target.path), "resume_json");
     }
 }
 
@@ -382,7 +385,7 @@ void add_contact_actions(ActionCatalog& catalog, const ClipboardItem& item, cons
     }
     for (const auto& target : targets) {
         add(catalog, item, ActionKind::SaveContactAsJson, target.ref, "Save contact JSON",
-            "Save locally extracted contact fields as JSON to " + target.path.string(), "contact_json",
+            "Save locally extracted contact fields as JSON to " + path_to_utf8_string(target.path), "contact_json",
             {{"contact_json", json}, {"field_count", std::to_string(signals.contact_fields.size())}});
     }
 }
@@ -392,21 +395,32 @@ void add_path_fast_actions(ActionCatalog& catalog, const ClipboardItem& item, co
     if (text.empty()) {
         return;
     }
-    const std::filesystem::path path{text};
+    const auto uri_paths = paths_from_uri_list(text);
+    if (uri_paths.size() > 1 || (uri_paths.empty() &&
+        (text.find_first_of("\r\n") != std::string::npos || text.rfind("file://", 0) == 0))) {
+        return;
+    }
+    const auto path = uri_paths.empty() ? path_from_utf8_string(text) : uri_paths.front();
     std::error_code ec;
     const auto status = std::filesystem::status(path, ec);
+    if (ec || !std::filesystem::exists(status)) {
+        return;
+    }
     const bool regular_file = !ec && std::filesystem::is_regular_file(status);
+    if (!regular_file && !std::filesystem::is_directory(status)) {
+        return;
+    }
     const auto working_directory = regular_file ? path.parent_path() : path;
     add(catalog, item, ActionKind::OpenTerminalAtPath, "", "Open terminal here",
         "Open a terminal with its working directory set to this path location", "terminal",
-        {{"path", path.string()}, {"working_directory", working_directory.string()}});
+        {{"path", path_to_utf8_string(path)}, {"working_directory", path_to_utf8_string(working_directory)}});
     if (regular_file) {
         add(catalog, item, ActionKind::HashSha256, "", "Hash SHA-256",
             "Calculate the SHA-256 digest for this file path", "hash",
-            {{"path", path.string()}, {"algorithm", "SHA-256"}});
+            {{"path", path_to_utf8_string(path)}, {"algorithm", "SHA-256"}});
         add(catalog, item, ActionKind::HashSha512, "", "Hash SHA-512",
             "Calculate the SHA-512 digest for this file path", "hash",
-            {{"path", path.string()}, {"algorithm", "SHA-512"}});
+            {{"path", path_to_utf8_string(path)}, {"algorithm", "SHA-512"}});
     }
 }
 
@@ -465,7 +479,7 @@ void add_github_actions(ActionCatalog& catalog, const ClipboardItem& item, const
     for (const auto& target : targets) {
         auto parameters = repo_parameters;
         parameters["destination_ref"] = target.ref;
-        parameters["destination_directory"] = target.path.string();
+        parameters["destination_directory"] = path_to_utf8_string(target.path);
         add(catalog, item, ActionKind::CloneGithubHttps, target.ref, "Clone GitHub HTTPS",
             "Clone this GitHub repository into the selected destination using its HTTPS remote URL", "git_clone",
             parameters);
@@ -519,12 +533,18 @@ void add_qr_action(ActionCatalog& catalog, const ClipboardItem& item, const Fast
         {{"payload", payload}, {"payload_bytes", std::to_string(payload.size())}});
 }
 
-void add_diagram_action(ActionCatalog& catalog, const ClipboardItem& item, const FastContentSignals& signals) {
+void add_diagram_action(ActionCatalog& catalog, const ClipboardItem& item, const FastContentSignals& signals,
+                        std::string_view source_text) {
     if (!signals.diagram) {
         return;
     }
-    add(catalog, item, ActionKind::DrawMermaidDiagram, "", "Draw Mermaid diagram",
-        "Generate Mermaid diagram source from this relationship-like text", "mermaid");
+    if (has_supported_mermaid_header(source_text)) {
+        add(catalog, item, ActionKind::DrawMermaidDiagram, "", "Render Mermaid source",
+            "Render this clipboard Mermaid source directly", "mermaid", {{"mermaid_source", "direct"}});
+    } else {
+        add(catalog, item, ActionKind::DrawMermaidDiagram, "", "Draw Mermaid diagram",
+            "Generate Mermaid diagram source from this relationship-like text", "mermaid");
+    }
 }
 
 void add_prompt_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::vector<PromptTemplate>& templates,
@@ -590,14 +610,14 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 add(catalog, item, ActionKind::PasteText, "", "Paste text", "Paste clipboard text into the focused target", "raw");
                 for (const auto& target : targets) {
                     add(catalog, item, ActionKind::SaveTextFile, target.ref, "Save text",
-                        "Save clipboard text to " + target.path.string(), "raw");
+                        "Save clipboard text to " + path_to_utf8_string(target.path), "raw");
                 }
                 add_contact_actions(catalog, item, targets, signals);
                 add_resume_actions(catalog, item, targets, source_text);
                 add_ip_actions(catalog, item, signals, source_text);
                 add_github_actions(catalog, item, targets, signals, source_text);
                 add_datetime_actions(catalog, item, signals);
-                add_diagram_action(catalog, item, signals);
+                add_diagram_action(catalog, item, signals, source_text);
                 add_qr_action(catalog, item, signals, source_text);
                 add_prompt_actions(catalog, item, templates, provider, signals);
                 break;
@@ -607,7 +627,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                     "Write the original image bytes to a temporary file and copy its path", "temporary");
                 for (const auto& target : targets) {
                     add(catalog, item, ActionKind::SaveImageFile, target.ref, "Save image",
-                        "Save original image bytes to " + target.path.string(), "raw");
+                    "Save original image bytes to " + path_to_utf8_string(target.path), "raw");
                 }
                 add(catalog, item, ActionKind::AnnotateImage, "", "Annotate image",
                     "Open the image annotation tools for this clipboard image", "annotation");
@@ -617,9 +637,9 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 add(catalog, item, ActionKind::OpenUrl, "", "Open URL", "Open the URL with the desktop browser", "raw");
                 for (const auto& target : targets) {
                     add(catalog, item, ActionKind::DownloadUrl, target.ref, "Download URL",
-                        "Download URL bytes to " + target.path.string(), "download");
+                        "Download URL bytes to " + path_to_utf8_string(target.path), "download");
                     add(catalog, item, ActionKind::SaveUrlFile, target.ref, "Save URL file",
-                        "Download the URL response bytes to " + target.path.string(), "download");
+                        "Download the URL response bytes to " + path_to_utf8_string(target.path), "download");
                 }
                 add_github_actions(catalog, item, targets, signals, source_text);
                 add_qr_action(catalog, item, signals, source_text);
@@ -630,16 +650,16 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 add(catalog, item, ActionKind::SendEmail, "", "Send email", "Send through a configured local mail adapter", "adapter", {}, false);
                 for (const auto& target : targets) {
                     add(catalog, item, ActionKind::SaveEmailFile, target.ref, "Save email file",
-                        "Save an .eml representation to " + target.path.string(), "eml");
+                        "Save an .eml representation to " + path_to_utf8_string(target.path), "eml");
                 }
                 add_qr_action(catalog, item, signals, source_text);
                 break;
             case ContentKind::Path:
                 for (const auto& target : targets) {
                     add(catalog, item, ActionKind::CopyPathToDirectory, target.ref, "Copy to directory",
-                        "Copy the path item into " + target.path.string(), "filesystem");
+                        "Copy the path item into " + path_to_utf8_string(target.path), "filesystem");
                     add(catalog, item, ActionKind::MovePath, target.ref, "Move to directory",
-                        "Move the path item into " + target.path.string(), "filesystem");
+                        "Move the path item into " + path_to_utf8_string(target.path), "filesystem");
                 }
                 add_path_fast_actions(catalog, item, source_text);
                 break;
@@ -648,7 +668,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                     add(catalog, item, ActionKind::PasteText, "", "Paste text", "Paste clipboard text into the focused target", "raw");
                     for (const auto& target : targets) {
                         add(catalog, item, ActionKind::SaveTextFile, target.ref, "Save text",
-                            "Save clipboard text to " + target.path.string(), "raw");
+                            "Save clipboard text to " + path_to_utf8_string(target.path), "raw");
                     }
                     break;
                 }
@@ -656,9 +676,9 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 add(catalog, item, ActionKind::PrettyJson, "", "Copy pretty JSON", "Copy JSON with two-space indentation", "pretty");
                 for (const auto& target : targets) {
                     add(catalog, item, ActionKind::SaveJsonFile, target.ref, "Save JSON",
-                        "Save raw JSON to " + target.path.string(), "raw");
+                        "Save raw JSON to " + path_to_utf8_string(target.path), "raw");
                     add(catalog, item, ActionKind::SaveJsonPrettyFile, target.ref, "Save pretty JSON",
-                        "Save pretty JSON to " + target.path.string(), "pretty");
+                        "Save pretty JSON to " + path_to_utf8_string(target.path), "pretty");
                 }
                 break;
             case ContentKind::Unknown:

@@ -2,7 +2,7 @@
 
 Date: 2026-09-21
 
-Status: Design approved in conversation; written specification pending review before implementation.
+Status: Implemented in the working tree on 2026-09-23. Linux desktop and headless builds pass; Windows runtime verification remains pending.
 
 ## Context
 

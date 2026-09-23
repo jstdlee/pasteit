@@ -30,6 +30,7 @@
 #include "storage/path_history.hpp"
 #include "util/path_utf8.hpp"
 #include "ui/desktop_flow.hpp"
+#include "ui/decision_future_slot.hpp"
 #include "ui/ai_result_panel.hpp"
 #include "ui/font_loader.hpp"
 #include "ui/image_preview_panel.hpp"
@@ -63,6 +64,7 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -304,6 +306,17 @@ bool load_image_texture(const std::vector<std::byte>& bytes, ImageTexture& textu
     return true;
 }
 
+bool load_image_texture_file(const std::filesystem::path& path, ImageTexture& texture) {
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) return false;
+    const auto size = input.tellg();
+    if (size <= 0 || size > 64 * 1024 * 1024) return false;
+    std::vector<std::byte> bytes(static_cast<std::size_t>(size));
+    input.seekg(0);
+    input.read(reinterpret_cast<char*>(bytes.data()), size);
+    return input && load_image_texture(bytes, texture);
+}
+
 std::string bytes_as_text(const std::vector<std::byte>& bytes) {
     return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 }
@@ -403,14 +416,6 @@ std::string action_row_text(const PopupRow& row) {
     return label.str();
 }
 
-PlatformServices* imgui_clipboard_platform = nullptr;
-
-void imgui_set_clipboard_text(void*, const char* text) {
-    if (imgui_clipboard_platform != nullptr) {
-        (void)imgui_clipboard_platform->copy_text(text == nullptr ? std::string_view{} : std::string_view{text});
-    }
-}
-
 #endif
 
 }  // namespace
@@ -503,8 +508,7 @@ int run_desktop_runtime() {
         glfwTerminate();
         return 1;
     }
-    imgui_clipboard_platform = platform.get();
-    ImGui::GetIO().SetClipboardTextFn = imgui_set_clipboard_text;
+    install_imgui_clipboard_bridge(*platform);
 
     ClipboardStore clipboard_store;
     ClipboardHistoryStore clipboard_history_store(ClipboardStore::default_data_dir());
@@ -531,11 +535,14 @@ int run_desktop_runtime() {
     DjevClient djev_client(settings.djev.endpoint, settings.djev.model_id, DjevClient::kDefaultTimeout, {},
                            settings.djev.api_key);
     OpenAiCompatibleClient llm_client;
-    std::optional<std::future<DecisionResponse>> pending_decision;
+    DecisionFutureSlot pending_decision;
     std::vector<std::unique_ptr<GenerationJob>> generation_jobs;
     PromptParameterDialog prompt_parameter_dialog;
     std::map<std::string, std::map<std::string, std::string>> prompt_parameter_memory;
     std::optional<std::future<std::string>> pending_provider_test;
+    bool pending_provider_test_is_djev = false;
+    std::string djev_test_status;
+    std::string llm_test_status;
     std::optional<std::future<ModelListResult>> pending_model_list;
     std::vector<std::string> general_llm_models;
     std::string model_list_endpoint;
@@ -546,7 +553,11 @@ int run_desktop_runtime() {
     AuxiliaryPanelWindow mermaid_panel;
     AuxiliaryPanelWindow qr_panel;
     RendererPreviewPanelState mermaid_preview_state;
+    ImageTexture mermaid_result_texture;
+    std::filesystem::path mermaid_result_texture_path;
     RendererPreviewPanelState qr_preview_state;
+    ImageTexture qr_result_texture;
+    std::filesystem::path qr_result_texture_path;
     AuxiliaryPanelWindow download_panel;
     AuxiliaryPanelWindow hash_panel;
     ImageAnnotationPanelState annotation_panel;
@@ -745,12 +756,12 @@ int run_desktop_runtime() {
         }
         if (active_batch.catalog.actions.empty()) {
             decision_status = "Clipboard is empty or unsupported";
-            pending_decision.reset();
+            pending_decision.clear();
         } else {
             decision_status = "Djev is ranking actions…";
             const auto request = active_batch.request;
-            pending_decision.emplace(std::async(std::launch::async, [&djev_client, request] {
-                return djev_client.decide(request);
+            pending_decision.replace(std::async(std::launch::async, [client = djev_client, request] {
+                return client.decide(request);
             }));
         }
         position_popup(window);
@@ -950,7 +961,7 @@ int run_desktop_runtime() {
             };
             return;
         }
-        if (action->kind == ActionKind::DrawMermaidDiagram) {
+        if (mermaid_action_requires_generation(*action)) {
             if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
                 execution_status = "General LLM provider is not configured";
                 return;
@@ -1062,10 +1073,9 @@ int run_desktop_runtime() {
             open_popup();
         }
 
-        if (pending_decision.has_value() &&
-            pending_decision->wait_for(std::chrono::milliseconds{0}) == std::future_status::ready) {
-            const auto response = pending_decision->get();
-            pending_decision.reset();
+        pending_decision.reap();
+        if (auto ready = pending_decision.take_ready()) {
+            const auto response = std::move(*ready);
             if (diagnostics) {
                 std::cerr << "PasteIt Djev response request=" << response.request_id
                           << " valid=" << (response.valid ? "true" : "false")
@@ -1131,7 +1141,9 @@ int run_desktop_runtime() {
         }
         if (pending_provider_test.has_value() &&
             pending_provider_test->wait_for(std::chrono::milliseconds{0}) == std::future_status::ready) {
-            settings_status = pending_provider_test->get();
+            auto& result_status = pending_provider_test_is_djev ? djev_test_status : llm_test_status;
+            try { result_status = pending_provider_test->get(); }
+            catch (const std::exception& error) { result_status = error.what(); }
             pending_provider_test.reset();
         }
         if (pending_model_list.has_value() &&
@@ -1162,7 +1174,7 @@ int run_desktop_runtime() {
         std::optional<PromptVariables> activated_prompt_variables;
         const auto auxiliary_window_class = independent_window_class();
         if (popup_visible) {
-        ImGui::SetNextWindowBgAlpha(settings.window_opacity);
+        ImGui::SetNextWindowBgAlpha(settings_draft.window_opacity);
         const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(main_viewport->Pos);
         ImGui::SetNextWindowSize(main_viewport->Size);
@@ -1195,7 +1207,7 @@ int run_desktop_runtime() {
         ImGui::Separator();
 
         if (popup_model.rows.empty()) {
-            copyable_text(pending_decision.has_value() ? tr(ui_language,UiTextKey::WaitingDjev) : tr(ui_language,UiTextKey::NoRankedActions));
+            copyable_text(pending_decision.pending() ? tr(ui_language,UiTextKey::WaitingDjev) : tr(ui_language,UiTextKey::NoRankedActions));
         } else {
             if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
                 selected_row = std::max(0, selected_row - 1);
@@ -1318,7 +1330,8 @@ int run_desktop_runtime() {
                 if (ImGui::Combo(tr(ui_language,UiTextKey::Language).c_str(), &language, languages, 3)) {
                     settings_draft.language = static_cast<UiLanguage>(language);
                 }
-                ImGui::SliderFloat(tr(ui_language,UiTextKey::Opacity).c_str(), &settings_draft.window_opacity, 0.55F, 1.0F);
+                if (ImGui::SliderFloat(tr(ui_language,UiTextKey::Opacity).c_str(), &settings_draft.window_opacity, 0.55F, 1.0F) &&
+                    !platform->set_popup_opacity(settings_draft.window_opacity)) glfwSetWindowOpacity(window, settings_draft.window_opacity);
                 auto image_dir = path_to_utf8_string(settings_draft.default_image_directory);
                 if (input_text_string(tr(ui_language,UiTextKey::DefaultImageDirectory).c_str(), image_dir)) settings_draft.default_image_directory = path_from_utf8_string(image_dir);
                 auto text_dir = path_to_utf8_string(settings_draft.default_text_directory);
@@ -1332,6 +1345,8 @@ int run_desktop_runtime() {
                 input_text_string(tr(ui_language,UiTextKey::DjevModel).c_str(), settings_draft.djev.model_id);
                 input_text_string(tr(ui_language,UiTextKey::DjevApiKey).c_str(), settings_draft.djev.api_key, false, ImGuiInputTextFlags_Password);
                 if (ImGui::Button(tr(ui_language,UiTextKey::TestDjev).c_str()) && !pending_provider_test) {
+                    pending_provider_test_is_djev = true;
+                    djev_test_status = "Testing…";
                     const auto provider = settings_draft.djev;
                     const auto language_copy = ui_language;
                     pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
@@ -1339,6 +1354,8 @@ int run_desktop_runtime() {
                         return result.valid ? tr(language_copy,UiTextKey::DjevTestSucceeded) : tr(language_copy,UiTextKey::DjevTestFailed) + result.error;
                     }));
                 }
+                ImGui::SameLine();
+                if (!djev_test_status.empty()) ImGui::TextUnformatted(djev_test_status.c_str());
             }
             if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::GeneralLlm).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                 input_text_string(tr(ui_language,UiTextKey::LlmEndpoint).c_str(), settings_draft.general_llm.endpoint);
@@ -1370,6 +1387,8 @@ int run_desktop_runtime() {
                 if (!model_list_status.empty()) copyable_text(tr(ui_language,UiTextKey::ModelListFailed) + model_list_status, true);
                 input_text_string(tr(ui_language,UiTextKey::LlmApiKey).c_str(), settings_draft.general_llm.api_key, false, ImGuiInputTextFlags_Password);
                 if (ImGui::Button(tr(ui_language,UiTextKey::TestGeneralLlm).c_str()) && !pending_provider_test) {
+                    pending_provider_test_is_djev = false;
+                    llm_test_status = "Testing…";
                     const auto provider = settings_draft.general_llm;
                     const auto language_copy = ui_language;
                     pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
@@ -1378,20 +1397,28 @@ int run_desktop_runtime() {
                         return result.ok ? tr(language_copy,UiTextKey::GeneralLlmTestSucceeded) : tr(language_copy,UiTextKey::GeneralLlmTestFailed) + result.error;
                     }));
                 }
+                ImGui::SameLine();
+                if (!llm_test_status.empty()) ImGui::TextUnformatted(llm_test_status.c_str());
             }
             if (ImGui::CollapsingHeader("Fast actions", ImGuiTreeNodeFlags_DefaultOpen)) {
-                auto mermaid_path = path_to_utf8_string(settings_draft.renderers.mermaid_cli_path);
-                if (input_text_string("Mermaid CLI path (optional)", mermaid_path)) {
-                    settings_draft.renderers.mermaid_cli_path = path_from_utf8_string(mermaid_path);
+                ImGui::TextUnformatted("Mermaid uses mmdc for an in-window image when available; offline HTML is the fallback.");
+                if (ImGui::SmallButton("Mermaid homepage")) platform->open_uri("https://mermaid.js.org/");
+                auto mermaid_cli = path_to_utf8_string(settings_draft.renderers.mermaid_cli_path);
+                if (input_text_string("Mermaid CLI path (optional)", mermaid_cli)) {
+                    settings_draft.renderers.mermaid_cli_path = path_from_utf8_string(mermaid_cli);
                 }
-                auto mermaid_args = join_argv(settings_draft.renderers.mermaid_arguments);
+                std::string mermaid_args;
+                for (const auto& arg : settings_draft.renderers.mermaid_arguments) {
+                    if (!mermaid_args.empty()) mermaid_args += ' ';
+                    mermaid_args += arg;
+                }
                 if (input_text_string("Mermaid CLI arguments", mermaid_args)) {
-                    settings_draft.renderers.mermaid_arguments = split_argv_field(mermaid_args);
+                    std::istringstream args(mermaid_args);
+                    settings_draft.renderers.mermaid_arguments.assign(
+                        std::istream_iterator<std::string>{args}, std::istream_iterator<std::string>{});
                 }
-                auto qr_path = path_to_utf8_string(settings_draft.renderers.qrencode_path);
-                if (input_text_string("qrencode path (optional)", qr_path)) {
-                    settings_draft.renderers.qrencode_path = path_from_utf8_string(qr_path);
-                }
+                ImGui::TextUnformatted("QR codes use the native Project Nayuki library.");
+                if (ImGui::SmallButton("QR library homepage")) platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
                 input_text_string("QR error correction (L/M/Q/H)", settings_draft.renderers.qr_error_correction);
                 ImGui::SliderInt("QR margin", &settings_draft.renderers.qr_margin, 0, 10);
                 ImGui::SliderInt("QR scale", &settings_draft.renderers.qr_scale, 1, 64);
@@ -1521,7 +1548,7 @@ int run_desktop_runtime() {
                     settings = candidate; settings_draft = settings; settings_status = tr(ui_language,UiTextKey::Saved);
                     if (llm_endpoint_changed) { general_llm_models.clear(); model_list_endpoint.clear(); model_list_status.clear(); }
                     (void)platform->set_popup_opacity(settings.window_opacity);
-                    if (djev_changed && !pending_decision) {
+                    if (djev_changed) {
                         djev_client = DjevClient(settings.djev.endpoint, settings.djev.model_id,
                                                  DjevClient::kDefaultTimeout, {}, settings.djev.api_key);
                     }
@@ -1689,9 +1716,21 @@ int run_desktop_runtime() {
 
         if (mermaid_panel.open && fast_action_executor.renderer_result().has_value() &&
             fast_action_executor.renderer_result()->active().kind == RendererResultKind::Mermaid) {
+            const auto& rendered = fast_action_executor.renderer_result()->active();
+            if (rendered.status == RendererResultStatus::Ready && rendered.output_path &&
+                rendered.output_path->extension() == ".png" &&
+                mermaid_result_texture_path != *rendered.output_path) {
+                mermaid_result_texture_path = *rendered.output_path;
+                mermaid_result_texture.clear();
+                if (load_image_texture_file(*rendered.output_path, mermaid_result_texture)) {
+                    mermaid_preview_state.mode = RendererPreviewPanelState::Mode::Preview;
+                }
+            }
             ImGui::SetNextWindowClass(&auxiliary_window_class);
             draw_mermaid_preview_panel(*fast_action_executor.renderer_result(), mermaid_preview_state,
                                        mermaid_panel.open, mermaid_panel.focus_pending,
+                                       mermaid_result_texture.id, mermaid_result_texture.width,
+                                       mermaid_result_texture.height,
                                        [platform = platform.get()](const std::filesystem::path& path) {
                                            return platform->open_path(path);
                                        });
@@ -1699,9 +1738,19 @@ int run_desktop_runtime() {
 
         if (qr_panel.open && fast_action_executor.renderer_result().has_value() &&
             fast_action_executor.renderer_result()->active().kind == RendererResultKind::Qr) {
+            const auto& rendered = fast_action_executor.renderer_result()->active();
+            if (rendered.status == RendererResultStatus::Ready && rendered.output_path &&
+                qr_result_texture_path != *rendered.output_path) {
+                qr_result_texture_path = *rendered.output_path;
+                qr_result_texture.clear();
+                if (load_image_texture_file(*rendered.output_path, qr_result_texture)) {
+                    qr_preview_state.mode = RendererPreviewPanelState::Mode::Preview;
+                }
+            }
             ImGui::SetNextWindowClass(&auxiliary_window_class);
             draw_qr_preview_panel(*fast_action_executor.renderer_result(), qr_preview_state,
                                   qr_panel.open, qr_panel.focus_pending,
+                                  qr_result_texture.id, qr_result_texture.width, qr_result_texture.height,
                                   [platform = platform.get()](const std::filesystem::path& path) {
                                       return platform->open_path(path);
                                   });
@@ -1815,11 +1864,12 @@ int run_desktop_runtime() {
             const auto settings_title=tr(ui_language,UiTextKey::Settings)+"##settings";
             if (ImGui::Begin(settings_title.c_str(),&show_settings)) {
                 int language=static_cast<int>(settings_draft.language);const char* languages[]={"System","English","简体中文"};if(ImGui::Combo(tr(ui_language,UiTextKey::Language).c_str(),&language,languages,3))settings_draft.language=static_cast<UiLanguage>(language);
-                ImGui::SliderFloat(tr(ui_language,UiTextKey::Opacity).c_str(),&settings_draft.window_opacity,0.55F,1.0F);
+                if(ImGui::SliderFloat(tr(ui_language,UiTextKey::Opacity).c_str(),&settings_draft.window_opacity,0.55F,1.0F)&&
+                   !platform->set_popup_opacity(settings_draft.window_opacity))glfwSetWindowOpacity(window,settings_draft.window_opacity);
                 auto image_dir=path_to_utf8_string(settings_draft.default_image_directory);if(input_text_string(tr(ui_language,UiTextKey::DefaultImageDirectory).c_str(),image_dir))settings_draft.default_image_directory=path_from_utf8_string(image_dir);
                 auto text_dir=path_to_utf8_string(settings_draft.default_text_directory);if(input_text_string(tr(ui_language,UiTextKey::DefaultTextDirectory).c_str(),text_dir))settings_draft.default_text_directory=path_from_utf8_string(text_dir);
-                if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::Djev).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){input_text_string(tr(ui_language,UiTextKey::DjevEndpoint).c_str(),settings_draft.djev.endpoint);input_text_string(tr(ui_language,UiTextKey::DjevModel).c_str(),settings_draft.djev.model_id);input_text_string(tr(ui_language,UiTextKey::DjevApiKey).c_str(),settings_draft.djev.api_key,false,ImGuiInputTextFlags_Password);if(ImGui::Button(tr(ui_language,UiTextKey::TestDjev).c_str())&&!pending_provider_test){const auto provider=settings_draft.djev;const auto request=provider_test_request();const auto language=ui_language;pending_provider_test.emplace(std::async(std::launch::async,[provider,request,language]{const auto result=DjevClient(provider.endpoint,provider.model_id,DjevClient::kDefaultTimeout,{},provider.api_key).decide(request);return result.valid?tr(language,UiTextKey::DjevTestSucceeded):tr(language,UiTextKey::DjevTestFailed)+result.error;}));}}
-                if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::GeneralLlm).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){input_text_string(tr(ui_language,UiTextKey::LlmEndpoint).c_str(),settings_draft.general_llm.endpoint);input_text_string(tr(ui_language,UiTextKey::LlmModel).c_str(),settings_draft.general_llm.model_id);input_text_string(tr(ui_language,UiTextKey::LlmApiKey).c_str(),settings_draft.general_llm.api_key,false,ImGuiInputTextFlags_Password);if(ImGui::Button(tr(ui_language,UiTextKey::TestGeneralLlm).c_str())&&!pending_provider_test){const auto provider=settings_draft.general_llm;const auto language=ui_language;pending_provider_test.emplace(std::async(std::launch::async,[provider,language]{OpenAiCompatibleClient client;const auto result=client.generate({.request_id="settings-test",.endpoint=provider.endpoint,.api_key=provider.api_key,.model_id=provider.model_id,.system_message="Return OK.",.user_message="OK",.temperature=0.0,.timeout=std::chrono::milliseconds{5000}});return result.ok?tr(language,UiTextKey::GeneralLlmTestSucceeded):tr(language,UiTextKey::GeneralLlmTestFailed)+result.error;}));}}
+                if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::Djev).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){input_text_string(tr(ui_language,UiTextKey::DjevEndpoint).c_str(),settings_draft.djev.endpoint);input_text_string(tr(ui_language,UiTextKey::DjevModel).c_str(),settings_draft.djev.model_id);input_text_string(tr(ui_language,UiTextKey::DjevApiKey).c_str(),settings_draft.djev.api_key,false,ImGuiInputTextFlags_Password);if(ImGui::Button(tr(ui_language,UiTextKey::TestDjev).c_str())&&!pending_provider_test){pending_provider_test_is_djev=true;djev_test_status="Testing…";const auto provider=settings_draft.djev;const auto request=provider_test_request();const auto language=ui_language;pending_provider_test.emplace(std::async(std::launch::async,[provider,request,language]{const auto result=DjevClient(provider.endpoint,provider.model_id,DjevClient::kDefaultTimeout,{},provider.api_key).decide(request);return result.valid?tr(language,UiTextKey::DjevTestSucceeded):tr(language,UiTextKey::DjevTestFailed)+result.error;}));}ImGui::SameLine();if(!djev_test_status.empty())ImGui::TextUnformatted(djev_test_status.c_str());}
+                if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::GeneralLlm).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){input_text_string(tr(ui_language,UiTextKey::LlmEndpoint).c_str(),settings_draft.general_llm.endpoint);input_text_string(tr(ui_language,UiTextKey::LlmModel).c_str(),settings_draft.general_llm.model_id);input_text_string(tr(ui_language,UiTextKey::LlmApiKey).c_str(),settings_draft.general_llm.api_key,false,ImGuiInputTextFlags_Password);if(ImGui::Button(tr(ui_language,UiTextKey::TestGeneralLlm).c_str())&&!pending_provider_test){pending_provider_test_is_djev=false;llm_test_status="Testing…";const auto provider=settings_draft.general_llm;const auto language=ui_language;pending_provider_test.emplace(std::async(std::launch::async,[provider,language]{OpenAiCompatibleClient client;const auto result=client.generate({.request_id="settings-test",.endpoint=provider.endpoint,.api_key=provider.api_key,.model_id=provider.model_id,.system_message="Return OK.",.user_message="OK",.temperature=0.0,.timeout=std::chrono::milliseconds{5000}});return result.ok?tr(language,UiTextKey::GeneralLlmTestSucceeded):tr(language,UiTextKey::GeneralLlmTestFailed)+result.error;}));}ImGui::SameLine();if(!llm_test_status.empty())ImGui::TextUnformatted(llm_test_status.c_str());}
                 if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::PromptTemplates).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){
                     PromptTemplateService service(settings_draft.prompt_templates);
                     if (prompt_panel_model.modal == PromptTemplateModal::None) {
@@ -1873,14 +1923,18 @@ int run_desktop_runtime() {
                     }
                     if(ImGui::Button(tr(ui_language,UiTextKey::NewTemplate).c_str())){std::string error;if(const auto created=service.create("New Prompt","Transform {text}",0.2,error)){prompt_panel_model=build_prompt_templates_panel_model(settings_draft.prompt_templates);begin_prompt_template_edit(prompt_panel_model,created->id);}}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::RestoreDefaults).c_str())){service.restore_defaults();prompt_panel_model=build_prompt_templates_panel_model(settings_draft.prompt_templates);}
                 }
-                if(ImGui::Button(tr(ui_language,UiTextKey::ResetGeneral).c_str())){const auto defaults=default_settings();settings_draft.language=defaults.language;settings_draft.window_opacity=defaults.window_opacity;}ImGui::SameLine();
+                if(ImGui::Button(tr(ui_language,UiTextKey::ResetGeneral).c_str())){const auto defaults=default_settings();settings_draft.language=defaults.language;settings_draft.window_opacity=defaults.window_opacity;if(!platform->set_popup_opacity(settings_draft.window_opacity))glfwSetWindowOpacity(window,settings_draft.window_opacity);}ImGui::SameLine();
                 if(ImGui::Button(tr(ui_language,UiTextKey::ResetPaths).c_str())){const auto defaults=default_settings();settings_draft.default_image_directory=defaults.default_image_directory;settings_draft.default_text_directory=defaults.default_text_directory;}ImGui::SameLine();
                 if(ImGui::Button(tr(ui_language,UiTextKey::ResetProviders).c_str())){const auto defaults=default_settings();settings_draft.djev=defaults.djev;settings_draft.general_llm=defaults.general_llm;}
+                ImGui::Separator();ImGui::TextUnformatted("Mermaid: self-contained offline HTML");
+                if(ImGui::SmallButton("Mermaid homepage##aux"))platform->open_uri("https://mermaid.js.org/");ImGui::SameLine();
+                if(ImGui::SmallButton("QR library homepage##aux"))platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
                 if(!settings_status.empty())copyable_text(settings_status,true);
-                if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){SettingsModel validator(settings);validator.working()=settings_draft;AppSettings candidate=settings;std::string error;if(validator.save(candidate,error)&&settings_store.save(candidate,error)){settings=candidate;settings_draft=settings;if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window,settings.window_opacity);if(!pending_decision)djev_client=DjevClient(settings.djev.endpoint,settings.djev.model_id,DjevClient::kDefaultTimeout,{},settings.djev.api_key);fast_action_executor.set_renderer_settings(settings.renderers);download_manager.set_options({.keep_part_files_on_cancel=settings.downloads.keep_part_files});annotation_panel.export_directory=settings.annotation.save_directory;annotation_panel.export_format=settings.annotation.export_format;
+                if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){SettingsModel validator(settings);validator.working()=settings_draft;AppSettings candidate=settings;std::string error;if(validator.save(candidate,error)&&settings_store.save(candidate,error)){settings=candidate;settings_draft=settings;if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window,settings.window_opacity);djev_client=DjevClient(settings.djev.endpoint,settings.djev.model_id,DjevClient::kDefaultTimeout,{},settings.djev.api_key);fast_action_executor.set_renderer_settings(settings.renderers);download_manager.set_options({.keep_part_files_on_cancel=settings.downloads.keep_part_files});annotation_panel.export_directory=settings.annotation.save_directory;annotation_panel.export_format=settings.annotation.export_format;
                     platform->apply_settings(settings);
                     settings_status=tr(ui_language,UiTextKey::Saved);show_settings=false;}else settings_status=error;}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str())){settings_draft=settings;show_settings=false;}
             }ImGui::End();
+            if(!show_settings){settings_draft=settings;if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window,settings.window_opacity);}
         }
 
         if (!popup_visible && !has_any_auxiliary_window()) {
@@ -1909,9 +1963,7 @@ int run_desktop_runtime() {
 
     preview_texture.clear();
     history_texture.clear();
-    if (pending_decision.has_value()) {
-        pending_decision->wait();
-    }
+    pending_decision.wait_all();
     for (auto& job : generation_jobs) if (job->pending.has_value()) job->pending->wait();
     if (pending_provider_test.has_value()) pending_provider_test->wait();
     if (pending_model_list.has_value()) pending_model_list->wait();

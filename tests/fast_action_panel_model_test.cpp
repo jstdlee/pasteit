@@ -45,16 +45,7 @@ bool has_command(const pastit::FastActionPanelModel& model, std::string_view lab
 }
 
 std::filesystem::path sample_png_fixture() {
-    const std::filesystem::path candidates[] = {
-        "tests/fixtures/sample.png",
-        "../tests/fixtures/sample.png",
-    };
-    for (const auto& candidate : candidates) {
-        if (std::filesystem::exists(candidate)) {
-            return candidate;
-        }
-    }
-    return candidates[0];
+    return std::filesystem::path{__FILE__}.parent_path() / "fixtures" / "sample.png";
 }
 
 }  // namespace
@@ -166,7 +157,7 @@ int main() {
             .payload = "flowchart LR\nA-->B\n",
             .available = true,
             .status = RendererResultStatus::Ready,
-            .output_path = std::filesystem::temp_directory_path() / "pastit-definitely-missing-mermaid.svg",
+            .output_path = std::filesystem::temp_directory_path() / "pastit-definitely-missing-mermaid.html",
             .error = {},
         });
         const auto model = build_mermaid_preview_panel_model(state);
@@ -175,7 +166,8 @@ int main() {
     }
 
     {
-        const auto root = std::filesystem::temp_directory_path() / "pastit-panel-command-test";
+        const auto root = std::filesystem::temp_directory_path() /
+            ("pastit-panel-command-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(root);
         const auto source = root / "diagram.mmd";
         const FastActionPanelCommand save_source{.id = "save_source", .label = "Save source",
@@ -185,15 +177,16 @@ int main() {
         assert(std::string((std::istreambuf_iterator<char>(source_file)), {}) == save_source.value);
         assert(!save_panel_command(save_source, source, false, ".mmd").success);
         assert(!save_panel_command(save_source, root / "wrong.txt", false, ".mmd").success);
-        const auto rendered = root / "rendered.svg";
+        const auto rendered = root / "rendered.html";
         {
             std::ofstream stream(rendered);
-            stream << "<svg><rect></svg>";
+            stream << "<html><script src=\"https://cdn.example/mermaid.js\"></script></html>";
         }
         assert(!rendered_output_decodes(RendererResultKind::Mermaid, rendered));
         {
             std::ofstream stream(rendered);
-            stream << "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>";
+            stream << "<!doctype html><html><pre class=\"mermaid\">graph TD</pre>"
+                      "<script>mermaid.initialize({startOnLoad:false});mermaid.run()</script></html>";
         }
         assert(rendered_output_decodes(RendererResultKind::Mermaid, rendered));
         RendererPreviewPanelState panel;
@@ -205,14 +198,14 @@ int main() {
                                                   .kind = PanelCommandKind::ShowSource};
         assert(panel.select_view(source_view, true));
         assert(panel.mode == RendererPreviewPanelState::Mode::Source);
-        const auto image = root / "diagram.svg";
-        const FastActionPanelCommand save_image{.id = "save_rendered", .label = "Save rendered SVG",
+        const auto image = root / "diagram.html";
+        const FastActionPanelCommand save_image{.id = "save_rendered", .label = "Save rendered HTML",
             .value = rendered.string(), .kind = PanelCommandKind::SaveRenderedOutput};
-        assert(save_panel_command(save_image, image, false, ".svg").success);
+        assert(save_panel_command(save_image, image, false, ".html").success);
         std::ifstream image_file(image);
-        assert(std::string((std::istreambuf_iterator<char>(image_file)), {}).find("<svg") != std::string::npos);
-        assert(!save_panel_command(save_image, image, false, ".svg").success);
-        assert(save_panel_command(save_image, image, true, ".svg").success);
+        assert(std::string((std::istreambuf_iterator<char>(image_file)), {}).find("<html>") != std::string::npos);
+        assert(!save_panel_command(save_image, image, false, ".html").success);
+        assert(save_panel_command(save_image, image, true, ".html").success);
         panel.destination = (root / "queued.mmd").string();
         assert(panel.save(save_source, ".mmd"));
         assert(panel.pending_save.has_value());
@@ -222,6 +215,21 @@ int main() {
         }
         assert(!panel.pending_save.has_value());
         assert(panel.status_text.find("Saved:") != std::string::npos);
+        assert(panel.save(save_image, ".html"));
+        assert(panel.destination == (root / "queued.html").string());
+        for (int attempt = 0; attempt < 100 && panel.pending_save.has_value(); ++attempt) {
+            panel.poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        assert(!panel.pending_save.has_value());
+        assert(std::filesystem::is_regular_file(root / "queued.html"));
+        assert(panel.status_text.find("Saved:") != std::string::npos);
+        assert(panel.save(save_source, ".mmd"));
+        assert(panel.destination == (root / "queued.mmd").string());
+        while (panel.pending_save.has_value()) {
+            panel.poll();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
         std::filesystem::remove_all(root);
     }
 

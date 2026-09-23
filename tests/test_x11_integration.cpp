@@ -75,6 +75,7 @@ int main() {
 
     const std::string expected = "pasteit-x11-selection-roundtrip";
     assert(writer.set_text(expected));
+    assert(writer.owned_text_if_current() == expected);
 
     auto captured = capture_from(writer, reader);
     assert(captured.has_value());
@@ -86,6 +87,7 @@ int main() {
         std::byte{0x0d}, std::byte{0x0a}, std::byte{0x1a}, std::byte{0x0a},
     };
     assert(writer.set_image(png, "image/png"));
+    assert(writer.owned_text_if_current() == std::string{});
 
     captured = capture_from(writer, reader);
     assert(captured.has_value());

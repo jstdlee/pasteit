@@ -33,8 +33,7 @@ std::vector<std::byte> bytes(std::string_view text) {
 }
 
 std::filesystem::path sample_png_fixture() {
-    if (std::filesystem::exists("tests/fixtures/sample.png")) return "tests/fixtures/sample.png";
-    return "../tests/fixtures/sample.png";
+    return std::filesystem::path{__FILE__}.parent_path() / "fixtures" / "sample.png";
 }
 
 pastit::ClipboardItem put_text(pastit::ClipboardStore& store,
@@ -98,7 +97,7 @@ public:
     std::string format_datetime(std::int64_t epoch_seconds, std::string_view target_zone) override {
         formatted_epoch = epoch_seconds;
         formatted_zone = std::string{target_zone};
-        return "1970-01-01T00:02:03Z";
+        return formatted_value;
     }
 
     std::string hash_file(const std::filesystem::path& path, pastit::HashAlgorithm algorithm) override {
@@ -145,6 +144,7 @@ public:
     std::string parsed_zone;
     std::int64_t formatted_epoch = 0;
     std::string formatted_zone;
+    std::string formatted_value = "1970-01-01T00:02:03Z";
     std::filesystem::path hashed_path;
     pastit::HashAlgorithm hashed_algorithm = pastit::HashAlgorithm::Sha256;
     std::vector<std::vector<std::string>> argv_calls;
@@ -310,6 +310,12 @@ int main() {
     assert(services.formatted_zone == "Asia/Singapore");
     assert(executor.date_time_result()->copy_text() == "1970-01-01T00:02:03Z");
 
+    services.formatted_value.clear();
+    const auto unsupported_zone = executor.execute(datetime, context);
+    assert(unsupported_zone.status == ExecutionStatus::Failed);
+    assert(!unsupported_zone.output_clipboard_ref.has_value());
+    services.formatted_value = "1970-01-01T00:02:03Z";
+
     const auto hash_file = root / "hash.txt";
     {
         std::ofstream output(hash_file);
@@ -350,6 +356,19 @@ int main() {
     assert(executor.renderer_result()->active().available);
     assert(executor.renderer_result()->active().output_path.has_value());
     assert(std::filesystem::exists(*executor.renderer_result()->active().output_path));
+
+    const std::string direct_source =
+        "sequenceDiagram\n    participant Alice\n    participant Bob\n"
+        "    Alice->>Bob: Hello\n    Bob-->>Alice: Hi\n";
+    const auto direct_item = put_text(store, direct_source, ContentKind::Text);
+    auto direct_action = action(ActionKind::DrawMermaidDiagram, direct_item.ref);
+    direct_action.parameters["mermaid_source"] = "direct";
+    assert(executor.execute(direct_action, context).status == ExecutionStatus::Executing);
+    const auto direct_done = poll_until_done(executor, context).front();
+    assert(direct_done.status == ExecutionStatus::Completed);
+    assert(executor.renderer_result()->active().payload == direct_source);
+    assert(executor.renderer_result()->active().available);
+    assert(store.read_text(*direct_done.output_clipboard_ref) == direct_source);
 
     MermaidNormalizationResult generated_mermaid;
     generated_mermaid.raw_source = "Here is the diagram:\n```mermaid\nflowchart LR\n  LLM --> Renderer\n```";
@@ -401,7 +420,7 @@ int main() {
     assert(executor.render_generated_mermaid(mermaid, context, mermaid.source_ref, "A -> B", generated_mermaid).status ==
            ExecutionStatus::Executing);
     (void)poll_until_done(executor, context);
-    assert(executor.renderer_result()->active().status == RendererResultStatus::Unavailable);
+    assert(executor.renderer_result()->active().status == RendererResultStatus::Ready);
     assert(executor.renderer_result()->active().generated_mermaid->clipboard_source_ref == mermaid_source.ref);
     assert(executor.renderer_result()->active().generated_mermaid->original_clipboard_source == "A -> B");
     assert(executor.renderer_result()->active().generated_mermaid->raw_model_response == generated_mermaid.raw_source);
@@ -426,21 +445,22 @@ int main() {
     services.render_mode = FakeServices::RenderMode::MissingTool;
     assert(executor.execute(mermaid, context).status == ExecutionStatus::Executing);
     (void)poll_until_done(executor, context);
-    assert(!executor.renderer_result()->active().available);
-    assert(!executor.renderer_result()->active().output_path.has_value());
+    assert(executor.renderer_result()->active().available);
+    assert(executor.renderer_result()->active().output_path.has_value());
     assert(executor.renderer_result()->copy_text() == "graph TD\n  A --> B\n");
 
     services.render_mode = FakeServices::RenderMode::SuccessWithoutOutput;
     assert(executor.execute(qr, context).status == ExecutionStatus::Executing);
     (void)poll_until_done(executor, context);
-    assert(!executor.renderer_result()->active().available);
-    assert(!executor.renderer_result()->active().output_path.has_value());
+    assert(executor.renderer_result()->active().available);
+    assert(executor.renderer_result()->active().output_path.has_value());
 
     services.render_mode = FakeServices::RenderMode::CorruptOutput;
     assert(executor.execute(qr, context).status == ExecutionStatus::Executing);
     (void)poll_until_done(executor, context);
-    assert(!executor.renderer_result()->active().available);
-    assert(!executor.renderer_result()->active().output_path.has_value());
+    assert(executor.renderer_result()->active().available);
+    assert(executor.renderer_result()->active().output_path.has_value());
+    assert(!services.argv_calls.empty());
 
     const auto explain_source = put_text(store, "std::vector<int> values;", ContentKind::Text);
     auto explain = action(ActionKind::ExplainCode, explain_source.ref);
@@ -547,11 +567,10 @@ int main() {
         assert(started.status == ExecutionStatus::Executing);
         blocking_services.wait_started();
         assert(async_executor.poll(context).empty());
-        assert(async_executor.renderer_result()->active().status == RendererResultStatus::Rendering);
         blocking_services.release();
         const auto completed = poll_until_done(async_executor, context);
         assert(completed.front().status == ExecutionStatus::Completed);
-        assert(async_executor.renderer_result()->active().status == RendererResultStatus::Unavailable);
+        assert(async_executor.renderer_result()->active().status == RendererResultStatus::Ready);
         assert(async_executor.renderer_result()->copy_text() == "graph TD\n  A --> B\n");
     }
 

@@ -162,6 +162,7 @@ add_library(pastit_core
     src/history/path_history_store.cpp
     src/net/http_client.cpp
     src/render/external_renderer.cpp
+    third_party/qrcodegen/qrcodegen.cpp
     src/storage/clipboard_store.cpp
     src/storage/path_history.cpp
     src/ui/desktop_app.cpp
@@ -206,6 +207,9 @@ target_include_directories(pastit_core
 )
 
 target_compile_features(pastit_core PUBLIC cxx_std_20)
+target_include_directories(pastit_core PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/qrcodegen
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stb)
 
 if (CMAKE_DL_LIBS)
     target_link_libraries(pastit_core PUBLIC ${CMAKE_DL_LIBS})
@@ -248,6 +252,10 @@ add_executable(pastit src/main.cpp)
 target_link_libraries(pastit PRIVATE pastit_core)
 target_compile_features(pastit PRIVATE cxx_std_20)
 install(TARGETS pastit RUNTIME DESTINATION bin)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/mermaid.min.js
+               ${CMAKE_CURRENT_BINARY_DIR}/mermaid.min.js COPYONLY)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/mermaid.min.js DESTINATION bin)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/MERMAID_LICENSE DESTINATION bin)
 
 if (PASTIT_BUILD_TESTS)
     include(CTest)
@@ -331,6 +339,14 @@ if (PASTIT_BUILD_TESTS)
     target_link_libraries(ui_text_helpers_test PRIVATE pastit_core)
     add_test(NAME ui_text_helpers_test COMMAND ui_text_helpers_test)
 
+    add_executable(recent_paths_panel_id_test tests/recent_paths_panel_id_test.cpp)
+    target_link_libraries(recent_paths_panel_id_test PRIVATE pastit_core)
+    add_test(NAME recent_paths_panel_id_test COMMAND recent_paths_panel_id_test)
+
+    add_executable(recent_paths_type_icon_test tests/recent_paths_type_icon_test.cpp)
+    target_link_libraries(recent_paths_type_icon_test PRIVATE pastit_core)
+    add_test(NAME recent_paths_type_icon_test COMMAND recent_paths_type_icon_test)
+
     if (NOT WIN32)
         add_executable(linux_recent_paths_test tests/linux_recent_paths_test.cpp)
         target_link_libraries(linux_recent_paths_test PRIVATE pastit_core)
@@ -383,6 +399,10 @@ if (PASTIT_BUILD_TESTS)
     add_executable(decision_session_test tests/decision_session_test.cpp)
     target_link_libraries(decision_session_test PRIVATE pastit_core)
     add_test(NAME decision_session_test COMMAND decision_session_test)
+
+    add_executable(decision_future_slot_test tests/decision_future_slot_test.cpp)
+    target_link_libraries(decision_future_slot_test PRIVATE pastit_core)
+    add_test(NAME decision_future_slot_test COMMAND decision_future_slot_test)
 
     add_executable(executor_test tests/executor_test.cpp)
     target_link_libraries(executor_test PRIVATE pastit_core)

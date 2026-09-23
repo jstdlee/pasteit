@@ -1,6 +1,8 @@
 #include "djev/decision_session.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <string>
 
 int main() {
     using namespace pastit;
@@ -81,4 +83,42 @@ int main() {
     const auto request_only = prepare_ranked_decision(request, extra_probability, catalog, request.snapshot);
     assert(request_only.ranked.size() == 1);
     assert(request_only.ranked.front().action.id == "a_paste");
+
+    // The selected action must remain visible even when eight alternatives
+    // have larger ranking scores.
+    auto crowded = request;
+    auto crowded_response = response;
+    crowded_response.probabilities["a_paste"] = 0.01;
+    for (int index = 0; index < 8; ++index) {
+        auto alternative = request.snapshot.available_actions.front();
+        alternative.id = "alternative_" + std::to_string(index);
+        crowded.snapshot.available_actions.push_back(alternative);
+        crowded_response.probabilities[alternative.id] = 0.90 - index * 0.1;
+    }
+    const auto crowded_result = prepare_ranked_decision(crowded, crowded_response,
+                                                        ActionCatalog{crowded.snapshot.available_actions},
+                                                        crowded.snapshot);
+    assert(crowded_result.ranked.size() == kDisplayedActionLimit);
+    assert(std::any_of(crowded_result.ranked.begin(), crowded_result.ranked.end(), [](const auto& ranked) {
+        return ranked.selected && ranked.action.id == "a_paste";
+    }));
+
+    auto mermaid_request = crowded;
+    auto direct_mermaid = request.snapshot.available_actions.front();
+    direct_mermaid.id = "a_mermaid";
+    direct_mermaid.kind = ActionKind::DrawMermaidDiagram;
+    direct_mermaid.parameters["mermaid_source"] = "direct";
+    mermaid_request.snapshot.available_actions.push_back(direct_mermaid);
+    auto mermaid_response = crowded_response;
+    mermaid_response.choice = "alternative_0";
+    mermaid_response.probabilities[direct_mermaid.id] = 0.01;
+    const auto mermaid_ranked = prepare_ranked_decision(
+        mermaid_request, mermaid_response, ActionCatalog{mermaid_request.snapshot.available_actions},
+        mermaid_request.snapshot);
+    assert(mermaid_ranked.ranked.size() == kDisplayedActionLimit);
+    assert(mermaid_ranked.ranked.front().action.id == "a_mermaid");
+    assert(mermaid_ranked.ranked.front().probability == 0.01);
+    assert(std::any_of(mermaid_ranked.ranked.begin(), mermaid_ranked.ranked.end(), [](const auto& ranked) {
+        return ranked.selected && ranked.action.id == "alternative_0";
+    }));
 }

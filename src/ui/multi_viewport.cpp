@@ -2,6 +2,7 @@
 
 #include "ui/imgui_widgets.hpp"
 #include "app/renderer_result_state.hpp"
+#include "util/path_utf8.hpp"
 
 #include <chrono>
 #include <fstream>
@@ -39,7 +40,7 @@ PanelSaveResult save_panel_command(const FastActionPanelCommand& command,
         } else if (std::filesystem::exists(destination) && !confirm_overwrite) {
             result.error = "Destination exists; confirm overwrite to save";
         } else if (command.kind == PanelCommandKind::SaveRenderedOutput) {
-            const std::filesystem::path source{command.value};
+            const auto source = path_from_utf8_string(command.value);
             const auto kind = required_extension == ".png" ? RendererResultKind::Qr : RendererResultKind::Mermaid;
             if (!rendered_output_decodes(kind, source)) {
                 result.error = "Rendered output is missing or invalid";
@@ -79,7 +80,11 @@ bool RendererPreviewPanelState::select_view(const FastActionPanelCommand& comman
 bool RendererPreviewPanelState::save(const FastActionPanelCommand& command, std::string_view extension) {
     if (pending_save.has_value()) return false;
     status_text = "Saving...";
-    const auto path = std::filesystem::path{destination};
+    auto path = path_from_utf8_string(destination);
+    if (!path.empty() && path.extension() != extension) {
+        path.replace_extension(extension);
+        destination = path_to_utf8_string(path);
+    }
     const auto overwrite = confirm_overwrite;
     pending_save.emplace(std::async(std::launch::async,
         [command, path, overwrite, extension = std::string(extension)] {
@@ -104,7 +109,7 @@ void RendererPreviewPanelState::poll() {
     if (pending_save && pending_save->wait_for(0ms) == std::future_status::ready) {
         try {
             const auto result = pending_save->get();
-            status_text = result.success ? "Saved: " + result.destination.string() : "Save failed: " + result.error;
+            status_text = result.success ? "Saved: " + path_to_utf8_string(result.destination) : "Save failed: " + result.error;
         } catch (const std::exception& error) {
             status_text = std::string{"Save failed: "} + error.what();
         }

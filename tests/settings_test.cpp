@@ -46,13 +46,14 @@ int main() {
     const auto missing = store.load();
     assert(!missing.loaded_from_disk);
     assert(!missing.settings.prompt_templates.empty());
+    assert(missing.settings.djev.model_id == "typed-decisions");
 
     {
         ScopedEnv xdg_config("XDG_CONFIG_HOME", root / "xdg-config");
         ScopedEnv xdg_data("XDG_DATA_HOME", root / "xdg-data");
         ScopedEnv home("HOME", root / "home");
-        assert(pastit::app_settings_path() == root / "xdg-config" / "pastit" / "settings.json");
-        assert(pastit::app_data_dir() == root / "xdg-data" / "pastit");
+        assert(pastit::app_settings_path() == pastit::executable_directory() / "settings.json");
+        assert(pastit::app_data_dir() == pastit::executable_directory() / "data");
     }
 
     auto settings = pastit::default_settings();

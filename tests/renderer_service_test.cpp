@@ -1,4 +1,5 @@
 #include "config/settings_store.hpp"
+#include "app/renderer_result_state.hpp"
 #include "platform/fast_action_services.hpp"
 #include "render/renderer_service.hpp"
 
@@ -30,6 +31,10 @@ public:
                 std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
                 mermaid_inputs.push_back(text);
             }
+            if (argv[i] == "-o" && !mermaid_fixture.empty()) {
+                std::filesystem::copy_file(mermaid_fixture, argv[i + 1],
+                                           std::filesystem::copy_options::overwrite_existing);
+            }
         }
         return next_output;
     }
@@ -37,6 +42,7 @@ public:
     pastit::ProcessOutput next_output{.exit_code = 127, .stderr_text = "execvp failed"};
     std::vector<std::vector<std::string>> argv_calls;
     std::vector<std::string> mermaid_inputs;
+    std::filesystem::path mermaid_fixture;
 };
 
 std::filesystem::path make_unique_temp_dir(std::string_view name) {
@@ -69,48 +75,91 @@ int main() {
     {
         FakeServices services;
         ExternalRendererService renderer(services, RendererSettings{});
-        const auto mermaid = renderer.render_mermaid("```mermaid\nflowchart LR\nA-->B\n```", "/tmp/a.svg");
-        assert(!mermaid.available);
-        assert(!mermaid.success);
-        assert(mermaid.output == "/tmp/a.svg");
-        assert(mermaid.status.find("unavailable") != std::string::npos);
-        assert(!services.argv_calls.empty());
-        assert(services.argv_calls.back().front() == "mmdc");
+        const auto root = make_unique_temp_dir("pastit-offline-renderer-test");
+        const auto html_path = root / "diagram.html";
+        const auto mermaid = renderer.render_mermaid("```mermaid\nflowchart LR\nA-->B\n```", html_path);
+        assert(mermaid.available && mermaid.success);
+        std::ifstream html_file(html_path, std::ios::binary);
+        const std::string html((std::istreambuf_iterator<char>(html_file)), {});
+        assert(html.find("flowchart LR\nA--&gt;B") != std::string::npos);
+        assert(html.find("mermaid.initialize") != std::string::npos);
+        assert(html.find("https://cdn") == std::string::npos);
+        assert(html.find("<script src=") == std::string::npos);
+        const auto qr_path = root / "qr.png";
+        const auto qr = renderer.render_qr("https://example.com", qr_path);
+        assert(qr.available && qr.success);
+        std::ifstream png_file(qr_path, std::ios::binary);
+        char signature[8]{};
+        png_file.read(signature, 8);
+        assert(std::string_view(signature, 8) == std::string_view("\x89PNG\r\n\x1a\n", 8));
+        assert(services.argv_calls.size() == 1);
+        assert(services.argv_calls.front().front() == "mmdc");
+        std::filesystem::remove_all(root);
+    }
 
-        const auto qr = renderer.render_qr("https://example.com", "/tmp/q.png");
-        assert(!qr.available);
-        assert(!qr.success);
-        assert(qr.output == "/tmp/q.png");
-        assert(qr.status.find("unavailable") != std::string::npos);
-        assert(services.argv_calls.back().front() == "qrencode");
-        assert(services.argv_calls.back().back() == "https://example.com");
+    {
+        FakeServices services;
+        RendererSettings settings;
+        settings.qr_error_correction = "H";
+        settings.qr_margin = 4;
+        settings.qr_scale = 8;
+        ExternalRendererService renderer(services, settings);
+        const auto root = make_unique_temp_dir("pastit-qr-configuration-test");
+        const auto result = renderer.render_qr("A", root / "qr.png");
+        assert(result.success);
+        std::ifstream png(result.output, std::ios::binary);
+        unsigned char header[24]{};
+        png.read(reinterpret_cast<char*>(header), sizeof(header));
+        assert(png.gcount() == sizeof(header));
+        const unsigned int width = (static_cast<unsigned int>(header[16]) << 24) |
+                                   (static_cast<unsigned int>(header[17]) << 16) |
+                                   (static_cast<unsigned int>(header[18]) << 8) | header[19];
+        assert(width == (21U + 2U * 4U) * 8U);
+        assert(!renderer.render_qr("", root / "empty.png").success);
+        assert(!renderer.render_qr(std::string(4000, 'x'), root / "too-big.png").success);
+        assert(services.argv_calls.empty());
+        std::filesystem::remove_all(root);
     }
 
     {
         FakeServices services;
         services.next_output = {.exit_code = 0};
+        const auto root = make_unique_temp_dir("pastit-mermaid-png-test");
+        ExternalRendererService renderer(services);
+        services.mermaid_fixture = root / "valid.png";
+        assert(renderer.render_qr("fixture", services.mermaid_fixture).success);
+        const auto result = renderer.render_mermaid("flowchart LR\nA-->B\n", root / "diagram.html");
+        assert(result.success);
+        assert(result.output.extension() == ".png");
+        assert(rendered_output_decodes(RendererResultKind::Mermaid, result.output));
+        assert(services.mermaid_inputs.front() == "flowchart LR\nA-->B\n");
+        std::filesystem::remove_all(root);
+    }
+
+    {
+        FakeServices services;
         RendererSettings settings;
         settings.mermaid_cli_path = "/opt/pastit/mmdc";
         settings.mermaid_arguments = {"--theme", "neutral"};
         ExternalRendererService renderer(services, settings);
-
+        const auto root = make_unique_temp_dir("pastit-mermaid-source-test");
         const auto result = renderer.render_mermaid(
             "A generated diagram follows:\n```mermaid\nflowchart LR\nA-->B\n```\nextra prose",
-            "/tmp/diagram.svg");
+            root / "diagram.html");
         assert(result.available);
         assert(result.success);
-        assert(result.output == "/tmp/diagram.svg");
         assert(services.argv_calls.size() == 1);
         assert(services.argv_calls.front().front() == "/opt/pastit/mmdc");
         assert(contains_arg(services.argv_calls.front(), "--theme"));
-        assert(contains_arg(services.argv_calls.front(), "neutral"));
-        assert(services.mermaid_inputs.size() == 1);
-        assert(services.mermaid_inputs.front() == "flowchart LR\nA-->B\n");
+        std::ifstream input(result.output);
+        const std::string html((std::istreambuf_iterator<char>(input)), {});
+        assert(html.find("flowchart LR\nA--&gt;B") != std::string::npos);
+        assert(html.find("extra prose") == std::string::npos);
+        std::filesystem::remove_all(root);
     }
 
     {
         FakeServices services;
-        services.next_output = {.exit_code = 0};
         ExternalRendererService renderer(services, RendererSettings{});
         const struct {
             std::string_view source;
@@ -129,11 +178,13 @@ int main() {
                 "%% A comment about the diagram\nflowchart LR\nA-->B\n",
             },
         };
+        const auto root = make_unique_temp_dir("pastit-mermaid-fences-test");
         for (const auto& entry : cases) {
-            const auto result = renderer.render_mermaid(entry.source, "/tmp/fenced-diagram.svg");
+            const auto result = renderer.render_mermaid(entry.source, root / "fenced-diagram.html");
             assert(result.success);
-            assert(services.mermaid_inputs.back() == entry.expected);
+            assert(ExternalRendererService::normalize_mermaid_source(entry.source) == entry.expected);
         }
+        std::filesystem::remove_all(root);
         assert(ExternalRendererService::normalize_mermaid_source(
                    "An unfenced diagram follows:\nflowchart LR\nA-->B\n") ==
                "flowchart LR\nA-->B\n");

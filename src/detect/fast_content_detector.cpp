@@ -1,4 +1,5 @@
 #include "detect/fast_content_detector.hpp"
+#include "ai/mermaid_prompt.hpp"
 
 #include <algorithm>
 #include <array>
@@ -244,6 +245,7 @@ bool detect_github_url(std::string_view text) {
 }
 
 bool detect_diagram(std::string_view text) {
+    if (has_supported_mermaid_header(text)) return true;
     const std::string value{text};
     static const std::regex diagram_header(
         R"((^|[\r\n])\s*(flowchart|graph|sequenceDiagram|classDiagram|erDiagram|timeline)\b)",

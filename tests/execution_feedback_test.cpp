@@ -2,7 +2,8 @@
 #include <cassert>
 namespace {
 class FakePlatform final:public pastit::PlatformServices{
-public:std::optional<pastit::ClipboardCapture> poll_clipboard()override{return std::nullopt;}void process_events()override{}
+public:void apply_settings(const pastit::AppSettings&)override{}
+std::optional<pastit::ClipboardCapture> poll_clipboard()override{return std::nullopt;}void process_events()override{}
 bool publish_text(std::string_view)override{return true;}bool publish_image(const std::vector<std::byte>&,std::string_view)override{return true;}
 pastit::PlatformFocusContext focused_context()override{return {};}std::vector<pastit::PlatformRecentPath> recent_paths()override{return {};}
 bool register_global_shortcut()override{return true;}bool global_shortcut_activated()override{return false;}bool restore_focus_and_paste(const pastit::PlatformFocusContext&)override{return true;}

@@ -3,9 +3,12 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
+#include <pwd.h>
 #include <spawn.h>
 #include <string>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -175,7 +178,71 @@ DirectoryChooserResult run_kdialog_directory_chooser(const std::filesystem::path
     return run_directory_chooser({"kdialog", "--getexistingdirectory", initial_directory.string()});
 }
 
+std::filesystem::path user_home_directory() {
+    std::vector<char> buffer(16384);
+    passwd entry{};
+    passwd* result = nullptr;
+    if (getpwuid_r(getuid(), &entry, buffer.data(), buffer.size(), &result) != 0 ||
+        result == nullptr || result->pw_dir == nullptr) {
+        return {};
+    }
+    return result->pw_dir;
+}
+
 }  // namespace
+
+std::optional<std::filesystem::path> browser_open_path(const std::filesystem::path& path,
+                                                      const std::filesystem::path& home_directory) {
+    const auto filename = path.filename().string();
+    std::error_code error;
+    if (path.extension() != ".html" || !filename.starts_with("pastit-render-") ||
+        !std::filesystem::equivalent(path.parent_path(), std::filesystem::temp_directory_path(), error)) {
+        return path;
+    }
+    if (error || home_directory.empty() ||
+        std::filesystem::symlink_status(path, error).type() != std::filesystem::file_type::regular) {
+        return std::nullopt;
+    }
+    const auto directory = home_directory / "PasteIt Previews";
+    if (mkdir(directory.c_str(), 0700) != 0 && errno != EEXIST) {
+        return std::nullopt;
+    }
+    struct stat directory_info{};
+    if (lstat(directory.c_str(), &directory_info) != 0 || !S_ISDIR(directory_info.st_mode) ||
+        directory_info.st_uid != geteuid() || (directory_info.st_mode & 077) != 0) {
+        return std::nullopt;
+    }
+    const auto expired_before = std::filesystem::file_time_type::clock::now() - std::chrono::hours(24);
+    for (const auto& entry : std::filesystem::directory_iterator(directory, error)) {
+        if (error) break;
+        const auto name = entry.path().filename().string();
+        if (!name.starts_with("pastit-render-") || entry.path().extension() != ".html") continue;
+        std::error_code entry_error;
+        if (entry.symlink_status(entry_error).type() != std::filesystem::file_type::regular || entry_error) continue;
+        if (entry.last_write_time(entry_error) < expired_before && !entry_error) {
+            std::filesystem::remove(entry.path(), entry_error);
+        }
+    }
+    error.clear();
+    const auto staged = directory / filename;
+    if (!std::filesystem::copy_file(path, staged, std::filesystem::copy_options::none, error)) {
+        struct stat staged_info{};
+        if (error == std::errc::file_exists && lstat(staged.c_str(), &staged_info) == 0 &&
+            S_ISREG(staged_info.st_mode) && staged_info.st_uid == geteuid() &&
+            (staged_info.st_mode & 077) == 0) {
+            return staged;
+        }
+        return std::nullopt;
+    }
+    std::filesystem::permissions(staged, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+                                 std::filesystem::perm_options::replace, error);
+    if (error) {
+        std::error_code ignored;
+        std::filesystem::remove(staged, ignored);
+        return std::nullopt;
+    }
+    return staged;
+}
 
 void LinuxDesktopServices::apply_settings(const AppSettings& settings) {
     LinuxFastActionServices::Options options;
@@ -212,9 +279,15 @@ bool LinuxDesktopServices::global_shortcut_activated() { return focus_.poll_ctrl
 bool LinuxDesktopServices::restore_focus_and_paste(const PlatformFocusContext& context) {
     return focus_.focus_and_paste(to_x11_focus(context));
 }
-bool LinuxDesktopServices::open_path(const std::filesystem::path& path) { return open_with_xdg(path.string()); }
+bool LinuxDesktopServices::open_path(const std::filesystem::path& path) {
+    const auto browser_path = browser_open_path(path, user_home_directory());
+    return browser_path.has_value() && open_with_xdg(browser_path->string());
+}
 bool LinuxDesktopServices::open_uri(std::string_view uri) { return open_with_xdg(std::string{uri}); }
 bool LinuxDesktopServices::copy_text(std::string_view text) { return publish_text(text); }
+std::optional<std::string> LinuxDesktopServices::owned_clipboard_text() const {
+    return clipboard_.owned_text_if_current();
+}
 bool LinuxDesktopServices::move_popup_by(int delta_x, int delta_y) {
 #if defined(PASTIT_HAS_X11)
     if (popup_window_id_ == 0) return false;

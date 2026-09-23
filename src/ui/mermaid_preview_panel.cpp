@@ -2,6 +2,8 @@
 
 #include "ui/imgui_widgets.hpp"
 
+#include <algorithm>
+#include <cstdint>
 #include <filesystem>
 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
@@ -25,7 +27,8 @@ FastActionPanelModel build_mermaid_preview_panel_model(const RendererResultState
     model.preview_available = active.available && active.output_path.has_value() &&
                               std::filesystem::is_regular_file(*active.output_path);
     if (model.preview_available) {
-        model.toolbar.push_back({.id = "save_rendered", .label = "Save rendered SVG",
+        model.toolbar.push_back({.id = "save_rendered",
+                                 .label = active.output_path->extension() == ".png" ? "Save image" : "Save rendered HTML",
                                  .value = active.output_path->string(), .kind = PanelCommandKind::SaveRenderedOutput});
     }
     model.status_text = active.error;
@@ -46,6 +49,7 @@ FastActionPanelModel build_mermaid_preview_panel_model(const RendererResultState
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
 void draw_mermaid_preview_panel(const RendererResultState& state, RendererPreviewPanelState& panel,
                                 bool& open, bool& focus_pending,
+                                unsigned int texture_id, int texture_width, int texture_height,
                                 const std::function<bool(const std::filesystem::path&)>& open_path) {
     auto model = build_mermaid_preview_panel_model(state);
     panel.poll();
@@ -69,13 +73,15 @@ void draw_mermaid_preview_panel(const RendererResultState& state, RendererPrevie
                     panel.select_view(command, model.preview_available);
                 } else if (command.kind == PanelCommandKind::ShowPreview &&
                            panel.select_view(command, model.preview_available)) {
-                    panel.open_preview(command.value, open_path);
+                    if (state.active().output_path->extension() != ".png") {
+                        panel.open_preview(command.value, open_path);
+                    }
                 } else if (command.kind == PanelCommandKind::CopyText) {
                     ImGui::SetClipboardText(command.value.c_str());
                 } else if (command.kind == PanelCommandKind::SaveText) {
                     panel.save(command, ".mmd");
                 } else if (command.kind == PanelCommandKind::SaveRenderedOutput) {
-                    panel.save(command, ".svg");
+                    panel.save(command, state.active().output_path->extension() == ".png" ? ".png" : ".html");
                 }
             }
             if (!command.enabled) ImGui::EndDisabled();
@@ -87,8 +93,19 @@ void draw_mermaid_preview_panel(const RendererResultState& state, RendererPrevie
             copyable_text(model.status_text.empty() ? "Mermaid renderer unavailable; source is shown below." : model.status_text,
                           true);
         } else if (panel.mode == RendererPreviewPanelState::Mode::Preview) {
-            copyable_text("Rendered SVG opens in the system viewer; source remains below.", true);
-            copyable_text(state.active().output_path->string(), true);
+            if (state.active().output_path->extension() == ".png" && texture_id != 0 &&
+                texture_width > 0 && texture_height > 0) {
+                ImGui::BeginChild("mermaid-inline-preview", ImVec2(0.0F, 280.0F), ImGuiChildFlags_Borders);
+                const auto available = ImGui::GetContentRegionAvail();
+                const float scale = std::min({1.0F, available.x / static_cast<float>(texture_width),
+                                              available.y / static_cast<float>(texture_height)});
+                ImGui::Image((ImTextureID)(intptr_t)texture_id,
+                             ImVec2(texture_width * scale, texture_height * scale));
+                ImGui::EndChild();
+            } else {
+                copyable_text("Offline HTML opens in your browser; source remains below.", true);
+                copyable_text(state.active().output_path->string(), true);
+            }
         }
         std::string editable = model.primary_text;
         input_text_string("##mermaid-source", editable, true, ImGuiInputTextFlags_ReadOnly);

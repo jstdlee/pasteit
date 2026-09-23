@@ -1,4 +1,5 @@
 #include "app/generated_filename.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -98,7 +99,7 @@ std::optional<std::string> url_suffix_extension(std::string url) {
     }
     const auto slash = url.find_last_of('/');
     const auto filename = slash == std::string::npos ? url : url.substr(slash + 1);
-    const auto extension = ascii_lower(std::filesystem::path(filename).extension().string());
+    const auto extension = ascii_lower(path_to_utf8_string(path_from_utf8_string(filename).extension()));
     if (!reliable_extension(extension)) {
         return std::nullopt;
     }

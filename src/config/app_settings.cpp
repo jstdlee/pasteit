@@ -4,15 +4,29 @@
 #include <cctype>
 #include <cstdlib>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace pastit {
 namespace {
 std::filesystem::path home_path(std::string_view suffix) {
 #if defined(_WIN32)
-    const char* home = std::getenv("USERPROFILE");
+    const DWORD required = GetEnvironmentVariableW(L"USERPROFILE", nullptr, 0);
+    if (required > 1) {
+        std::wstring home(required, L'\0');
+        const DWORD copied = GetEnvironmentVariableW(L"USERPROFILE", home.data(), required);
+        if (copied > 0 && copied < required) {
+            home.resize(copied);
+            return std::filesystem::path{home} / std::string{suffix};
+        }
+    }
+    return std::filesystem::temp_directory_path() / std::string{suffix};
 #else
     const char* home = std::getenv("HOME");
-#endif
     return (home == nullptr ? std::filesystem::temp_directory_path() : std::filesystem::path{home}) / suffix;
+#endif
 }
 
 bool is_hash_algorithm(std::string_view value) {
@@ -50,7 +64,7 @@ AppSettings default_settings() {
     settings.default_image_directory = home_path("Pictures");
     settings.default_text_directory = home_path("Documents");
     settings.djev.endpoint = "http://127.0.0.1:8011";
-    settings.djev.model_id = "jev-latest";
+    settings.djev.model_id = "typed-decisions";
     settings.downloads.resume_directory = home_path("Downloads");
     settings.hash.default_algorithms = {"sha256", "sha512"};
 #if defined(_WIN32)

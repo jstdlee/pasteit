@@ -1,4 +1,5 @@
 #include "ui/clipboard_history_model.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <ctime>
@@ -123,7 +124,7 @@ ClipboardHistoryDetail detail_from_item(const ClipboardItem& item, const Clipboa
         .size_label = row.size_label,
         .captured_label = row.captured_label,
         .mime_summary = row.mime_summary,
-        .blob_path = item.blob_path.string(),
+        .blob_path = path_to_utf8_string(item.blob_path),
         .mime_types = item.mime_types,
         .tags = item.tags,
         .size_bytes = item.size_bytes,

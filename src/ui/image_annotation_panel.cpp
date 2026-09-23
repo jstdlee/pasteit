@@ -1,6 +1,7 @@
 #include "ui/image_annotation_panel.hpp"
 
 #include "ui/imgui_widgets.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -37,7 +38,7 @@ std::filesystem::path default_export_path(const ImageAnnotationPanelState& state
         ? std::filesystem::temp_directory_path() / "pastit-annotation"
         : document.original_image();
     const auto directory = state.export_directory.empty() ? base.parent_path() : state.export_directory;
-    return directory / (base.stem().string() + "-annotated.svg");
+    return directory / path_from_utf8_string(path_to_utf8_string(base.stem()) + "-annotated.svg");
 }
 
 ImVec2 to_imvec2(const AnnotationPoint& point, const ImVec2& origin, float scale) {
@@ -113,7 +114,7 @@ void ImageAnnotationPanelState::poll_export() {
     if (!pending_export || pending_export->wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) return;
     try {
         const auto result = pending_export->get();
-        status_text = result.success ? "Saved annotated SVG: " + result.output_path.string()
+        status_text = result.success ? "Saved annotated SVG: " + path_to_utf8_string(result.output_path)
                                      : "Annotation export unavailable: " + result.error;
         if (result.success) last_export_path = result.output_path;
     } catch (const std::exception& error) {
@@ -124,14 +125,14 @@ void ImageAnnotationPanelState::poll_export() {
 
 FastActionPanelModel build_image_annotation_panel_model(const ImageAnnotationPanelState& state) {
     std::ostringstream detail;
-    detail << "Image: " << state.document.original_image().string() << '\n'
+    detail << "Image: " << path_to_utf8_string(state.document.original_image()) << '\n'
            << "Overlays: " << state.document.overlays().size() << '\n'
            << "Export: SVG only; PNG/JPG export is not available in this build.\n";
     if (!state.status_text.empty()) {
         detail << state.status_text << '\n';
     }
     FastActionPanelModel model;
-    model.viewport = independent_panel_viewport("PasteIt Image Annotation##" + state.document.original_image().string(),
+    model.viewport = independent_panel_viewport("PasteIt Image Annotation##" + path_to_utf8_string(state.document.original_image()),
                                                 {820.0F, 680.0F});
     model.toolbar = {
         {.id = "pen", .label = "Pen", .value = {}},
@@ -142,7 +143,7 @@ FastActionPanelModel build_image_annotation_panel_model(const ImageAnnotationPan
         {.id = "undo", .label = "Undo", .value = {}},
         {.id = "clear", .label = "Clear", .value = {}},
         {.id = "export_svg", .label = "Save annotated SVG", .value = {}},
-        {.id = "copy_temp_path", .label = "Copy temporary image path", .value = state.document.original_image().string()},
+        {.id = "copy_temp_path", .label = "Copy temporary image path", .value = path_to_utf8_string(state.document.original_image())},
     };
     model.status_text = state.status_text;
     model.primary_text = detail.str();
@@ -228,7 +229,7 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
             }
             ImGui::SameLine();
             if (ImGui::Button("Copy temporary image path")) {
-                ImGui::SetClipboardText(state.document.original_image().string().c_str());
+                ImGui::SetClipboardText(path_to_utf8_string(state.document.original_image()).c_str());
             }
             if (!state.status_text.empty()) copyable_text(state.status_text, true);
         }

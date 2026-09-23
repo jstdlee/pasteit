@@ -2,6 +2,8 @@
 
 #include "ui/imgui_widgets.hpp"
 
+#include <algorithm>
+#include <cstdint>
 #include <filesystem>
 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
@@ -38,6 +40,7 @@ FastActionPanelModel build_qr_preview_panel_model(const RendererResultState& sta
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
 void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPanelState& panel,
                            bool& open, bool& focus_pending,
+                           unsigned int texture_id, int texture_width, int texture_height,
                            const std::function<bool(const std::filesystem::path&)>& open_path) {
     auto model = build_qr_preview_panel_model(state);
     panel.poll();
@@ -63,9 +66,8 @@ void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPane
                     panel.save(command, ".txt");
                 } else if (command.kind == PanelCommandKind::ShowSource) {
                     panel.select_view(command, model.preview_available);
-                } else if (command.kind == PanelCommandKind::ShowPreview &&
-                           panel.select_view(command, model.preview_available)) {
-                    panel.open_preview(command.value, open_path);
+                } else if (command.kind == PanelCommandKind::ShowPreview) {
+                    panel.select_view(command, model.preview_available);
                 } else if (command.kind == PanelCommandKind::SaveRenderedOutput) {
                     panel.save(command, ".png");
                 }
@@ -79,8 +81,20 @@ void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPane
             copyable_text(model.status_text.empty() ? "QR renderer unavailable; payload is shown below." : model.status_text,
                           true);
         } else if (panel.mode == RendererPreviewPanelState::Mode::Preview) {
-            copyable_text("Rendered PNG opens in the system viewer; payload remains below.", true);
-            copyable_text(state.active().output_path->string(), true);
+            if (texture_id != 0 && texture_width > 0 && texture_height > 0) {
+                ImGui::BeginChild("qr-inline-preview", ImVec2(0.0F, 280.0F), ImGuiChildFlags_Borders);
+                const auto available = ImGui::GetContentRegionAvail();
+                const float scale = std::min({1.0F, available.x / static_cast<float>(texture_width),
+                                              available.y / static_cast<float>(texture_height)});
+                ImGui::Image((ImTextureID)(intptr_t)texture_id,
+                             ImVec2(texture_width * scale, texture_height * scale));
+                ImGui::EndChild();
+            } else {
+                copyable_text("QR image could not be displayed here.", true);
+            }
+            if (ImGui::SmallButton("Open PNG externally")) {
+                panel.open_preview(state.active().output_path->string(), open_path);
+            }
         }
         std::string editable = model.primary_text;
         input_text_string("##qr-payload", editable, true, ImGuiInputTextFlags_ReadOnly);

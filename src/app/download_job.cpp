@@ -10,13 +10,24 @@
 
 #if defined(PASTIT_HAS_CURL)
 #include <curl/curl.h>
+#elif !defined(_WIN32)
+#include <cerrno>
+#include <csignal>
+#include <cstring>
+#include <poll.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
 #endif
 
 namespace pastit {
 namespace {
 
 std::filesystem::path part_path_for(const std::filesystem::path& final_path) {
-    return std::filesystem::path{final_path.string() + ".part"};
+    auto part_path = final_path;
+    part_path += ".part";
+    return part_path;
 }
 
 std::uint64_t file_size_or_zero(const std::filesystem::path& path) {
@@ -25,7 +36,7 @@ std::uint64_t file_size_or_zero(const std::filesystem::path& path) {
     return error ? 0 : size;
 }
 
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTIT_HAS_CURL) || !defined(_WIN32)
 std::string_view trim_header(std::string_view value) {
     while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
     while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
@@ -69,6 +80,149 @@ void parse_content_range(std::string_view value, CurlHeaders& headers) {
     if (total && *end >= *total) return;
     if (total) headers.response.total_size = *total;
     headers.valid_range = true;
+}
+#endif
+
+#if !defined(PASTIT_HAS_CURL) && !defined(_WIN32)
+DownloadResponse stream_with_curl_process(
+    const DownloadRequest& request, const std::atomic_bool& cancelled,
+    const std::function<bool(const DownloadResponse&)>& on_headers,
+    const std::function<bool(std::string_view)>& on_chunk) {
+    if (!request.url.starts_with("http://") && !request.url.starts_with("https://")) {
+        return {.error = "unsupported download URL scheme"};
+    }
+    int body_pipe[2]{-1, -1};
+    int header_pipe[2]{-1, -1};
+    if (::pipe(body_pipe) != 0 || ::pipe(header_pipe) != 0) {
+        for (int fd : body_pipe) if (fd >= 0) ::close(fd);
+        for (int fd : header_pipe) if (fd >= 0) ::close(fd);
+        return {.error = "could not create download pipes"};
+    }
+
+    std::vector<std::string> arguments{
+        "curl", "--disable", "--silent", "--show-error", "--location", "--max-redirs", "5",
+        "--no-buffer", "--suppress-connect-headers", "--connect-timeout", "15",
+        "--proto", "=http,https", "--proto-redir", "=http,https",
+        "--dump-header", "/dev/fd/3", "--output", "-",
+    };
+    if (request.range_start > 0) {
+        arguments.push_back("--range");
+        arguments.push_back(std::to_string(request.range_start) + "-");
+    }
+    arguments.push_back("--");
+    arguments.push_back(request.url);
+    std::vector<char*> argv;
+    for (auto& argument : arguments) argv.push_back(argument.data());
+    argv.push_back(nullptr);
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_addclose(&actions, body_pipe[0]);
+    posix_spawn_file_actions_addclose(&actions, header_pipe[0]);
+    posix_spawn_file_actions_adddup2(&actions, body_pipe[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, header_pipe[1], 3);
+    pid_t child = 0;
+    const int spawn_error = posix_spawnp(&child, argv.front(), &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    ::close(body_pipe[1]);
+    ::close(header_pipe[1]);
+    if (spawn_error != 0) {
+        ::close(body_pipe[0]);
+        ::close(header_pipe[0]);
+        return {.error = "could not start curl download: " + std::string(std::strerror(spawn_error))};
+    }
+
+    DownloadResponse response;
+    CurlHeaders parsed;
+    std::string header_buffer;
+    bool accepted = false;
+    bool rejected = false;
+    pollfd pipes[2]{{header_pipe[0], POLLIN, 0}, {body_pipe[0], POLLIN, 0}};
+    while (pipes[0].fd >= 0 || pipes[1].fd >= 0) {
+        if (cancelled.load() || rejected) {
+            ::kill(child, SIGTERM);
+            break;
+        }
+        const int ready = ::poll(pipes, 2, 100);
+        if (ready < 0) {
+            if (errno == EINTR) continue;
+            response.error = std::strerror(errno);
+            ::kill(child, SIGTERM);
+            break;
+        }
+        if (ready == 0) continue;
+        for (auto& pipe : pipes) {
+            if (pipe.fd < 0 || !(pipe.revents & (POLLIN | POLLHUP | POLLERR))) continue;
+            std::array<char, 8192> bytes{};
+            const auto count = ::read(pipe.fd, bytes.data(), bytes.size());
+            if (count <= 0) {
+                if (count < 0 && errno == EINTR) continue;
+                ::close(pipe.fd);
+                pipe.fd = -1;
+                continue;
+            }
+            if (&pipe == &pipes[0]) {
+                header_buffer.append(bytes.data(), static_cast<std::size_t>(count));
+                if (header_buffer.size() > 65536) {
+                    response.error = "download response headers are too large";
+                    rejected = true;
+                    break;
+                }
+                for (std::size_t end; (end = header_buffer.find("\r\n\r\n")) != std::string::npos;) {
+                    const auto block = header_buffer.substr(0, end);
+                    header_buffer.erase(0, end + 4);
+                    parsed = {};
+                    const auto first_line = block.find("\r\n");
+                    const auto status_line = block.substr(0, first_line);
+                    const auto first_space = status_line.find(' ');
+                    if (!status_line.starts_with("HTTP/") || first_space == std::string::npos) continue;
+                    const auto status = parse_number(std::string_view(status_line).substr(first_space + 1, 3));
+                    if (!status) continue;
+                    parsed.response.status_code = static_cast<int>(*status);
+                    std::size_t start = first_line == std::string::npos ? block.size() : first_line + 2;
+                    while (start < block.size()) {
+                        const auto next = block.find("\r\n", start);
+                        const auto line = std::string_view(block).substr(start, next == std::string::npos ?
+                            std::string::npos : next - start);
+                        if (header_name_is(line, "content-range")) parse_content_range(line.substr(14), parsed);
+                        if (header_name_is(line, "content-length")) parsed.content_length = parse_number(line.substr(15));
+                        start = next == std::string::npos ? block.size() : next + 2;
+                    }
+                    if (*status >= 300 && *status < 400) continue;
+                    if (*status >= 100 && *status < 200) continue;
+                    if (parsed.response.total_size == 0 && parsed.content_length) {
+                        parsed.response.total_size = *parsed.content_length +
+                            (*status == 206 ? parsed.response.range_start.value_or(0) : 0);
+                    }
+                    parsed.response.range_supported = *status == 206 && parsed.valid_range;
+                    response = parsed.response;
+                    if (*status == 206 && !parsed.valid_range) {
+                        response.error = "invalid partial download response";
+                        rejected = true;
+                    } else if (*status >= 200 && *status < 300) {
+                        accepted = on_headers(response);
+                        rejected = !accepted;
+                    }
+                }
+            } else if (accepted && !on_chunk(std::string_view(bytes.data(), static_cast<std::size_t>(count)))) {
+                rejected = true;
+                break;
+            }
+        }
+    }
+    for (auto& pipe : pipes) if (pipe.fd >= 0) ::close(pipe.fd);
+    int child_status = 0;
+    while (::waitpid(child, &child_status, 0) < 0 && errno == EINTR) {}
+    if (cancelled.load()) return {.error = "cancelled"};
+    if (rejected) return {.error = response.error.empty() ? "download sink rejected response" : response.error};
+    if (!WIFEXITED(child_status) || WEXITSTATUS(child_status) != 0) {
+        return {.error = "curl download failed"};
+    }
+    if (!accepted) {
+        if (response.status_code >= 400) response.error = "HTTP " + std::to_string(response.status_code);
+        else response.error = "download did not return a successful HTTP response";
+    }
+    return response;
 }
 #endif
 
@@ -229,8 +383,12 @@ public:
             (response.status_code == 206 ? request.range_start : 0);
         return response;
 #else
+#if !defined(_WIN32)
+        return stream_with_curl_process(request, cancelled, on_headers, on_chunk);
+#else
         (void)cancelled;
         return {.status_code = 0, .body = {}, .error = "HTTP download transport requires libcurl", .range_start = {}};
+#endif
 #endif
     }
 };

@@ -1,4 +1,5 @@
 #include "djev/djev_client.hpp"
+#include "util/path_utf8.hpp"
 
 #include "decision/candidate_selector.hpp"
 #include "util/json.hpp"
@@ -252,7 +253,7 @@ std::string build_compact_payload(const DecisionRequest& request, const std::str
             out << ",";
         }
         out << "{\"ref\":\"" << json_escape(path.ref) << "\",";
-        out << "\"path\":\"" << json_escape(truncate_codepoints(path.path.string(), 240)) << "\",";
+        out << "\"path\":\"" << json_escape(truncate_codepoints(path_to_utf8_string(path.path), 240)) << "\",";
         out << "\"kind\":\"" << path_kind_name(path.kind) << "\"}";
     }
     out << "]},";
@@ -576,7 +577,7 @@ std::string DjevClient::normalize_endpoint(std::string url) {
 }
 
 std::string DjevClient::model_from_env() {
-    return std::getenv("DJEV_MODEL") != nullptr ? std::getenv("DJEV_MODEL") : "jev-latest";
+    return std::getenv("DJEV_MODEL") != nullptr ? std::getenv("DJEV_MODEL") : "typed-decisions";
 }
 
 }  // namespace pastit

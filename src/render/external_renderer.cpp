@@ -1,12 +1,15 @@
 #include "render/renderer_service.hpp"
+#include "platform/app_paths.hpp"
+#include "util/path_utf8.hpp"
+#include "qrcodegen.hpp"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
 #include <fstream>
-#include <initializer_list>
-#include <random>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -101,40 +104,6 @@ std::string fenced_body(std::string_view source) {
     }
 }
 
-std::filesystem::path temporary_mermaid_path() {
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
-    return std::filesystem::temp_directory_path() /
-           ("pastit-mermaid-" + std::to_string(std::random_device{}()) + "-" +
-            std::to_string(ticks) + ".mmd");
-}
-
-std::string first_non_empty(std::initializer_list<std::string_view> values) {
-    for (const auto value : values) {
-        if (!value.empty()) {
-            return std::string{value};
-        }
-    }
-    return {};
-}
-
-bool process_missing(const ProcessOutput& output) {
-    return output.exit_code == 127 || output.exit_code == 126 ||
-           output.stderr_text.find("execvp failed") != std::string::npos ||
-           output.stderr_text.find("not found") != std::string::npos;
-}
-
-std::string process_status(std::string_view tool, const ProcessOutput& output) {
-    const auto detail = first_non_empty({output.stderr_text, output.stdout_text});
-    if (output.exit_code == 0) {
-        return std::string{tool} + " rendered successfully";
-    }
-    if (process_missing(output)) {
-        return std::string{tool} + " unavailable" + (detail.empty() ? std::string{} : ": " + detail);
-    }
-    return std::string{tool} + " failed with exit code " + std::to_string(output.exit_code) +
-           (detail.empty() ? std::string{} : ": " + detail);
-}
-
 void create_parent_directory(const std::filesystem::path& output) {
     const auto parent = output.parent_path();
     if (!parent.empty()) {
@@ -143,8 +112,39 @@ void create_parent_directory(const std::filesystem::path& output) {
     }
 }
 
-std::string tool_path(const std::filesystem::path& configured, std::string_view fallback) {
-    return configured.empty() ? std::string{fallback} : configured.string();
+std::string html_escape(std::string_view value) {
+    std::string result;
+    result.reserve(value.size());
+    for (const char ch : value) {
+        switch (ch) {
+        case '&': result += "&amp;"; break;
+        case '<': result += "&lt;"; break;
+        case '>': result += "&gt;"; break;
+        case '"': result += "&quot;"; break;
+        case '\'': result += "&#39;"; break;
+        default: result.push_back(ch); break;
+        }
+    }
+    return result;
+}
+
+std::string inline_script(std::string script) {
+    // A literal closing tag inside the bundle must not terminate the HTML script element.
+    for (std::size_t pos = 0; (pos = script.find("</script", pos)) != std::string::npos; pos += 9) {
+        script.replace(pos, 8, "<\\/script");
+    }
+    return script;
+}
+
+qrcodegen::QrCode::Ecc qr_ecc(std::string_view value) {
+    if (value == "L") return qrcodegen::QrCode::Ecc::LOW;
+    if (value == "Q") return qrcodegen::QrCode::Ecc::QUARTILE;
+    if (value == "H") return qrcodegen::QrCode::Ecc::HIGH;
+    return qrcodegen::QrCode::Ecc::MEDIUM;
+}
+
+void png_write_callback(void* context, void* data, int size) {
+    static_cast<std::ofstream*>(context)->write(static_cast<const char*>(data), size);
 }
 
 }  // namespace
@@ -162,51 +162,87 @@ std::string ExternalRendererService::normalize_mermaid_source(std::string_view s
 
 RenderResult ExternalRendererService::render_mermaid(std::string_view source, const std::filesystem::path& output) {
     create_parent_directory(output);
-    const auto input_path = temporary_mermaid_path();
+    auto input_path = output;
+    input_path.replace_extension(".mmd");
+    auto png_path = output;
+    png_path.replace_extension(".png");
     {
         std::ofstream input(input_path, std::ios::binary | std::ios::trunc);
-        input << normalize_mermaid_source(source);
+        if (input) {
+            input << normalize_mermaid_source(source);
+            input.close();
+            std::vector<std::string> argv{
+                settings_.mermaid_cli_path.empty() ? "mmdc" : path_to_utf8_string(settings_.mermaid_cli_path),
+                "-i", path_to_utf8_string(input_path), "-o", path_to_utf8_string(png_path),
+            };
+            argv.insert(argv.end(), settings_.mermaid_arguments.begin(), settings_.mermaid_arguments.end());
+            const auto process = services_.run_argv(argv);
+            std::error_code ignored;
+            std::filesystem::remove(input_path, ignored);
+            if (process.exit_code == 0 && std::filesystem::is_regular_file(png_path)) {
+                return {.available = true, .success = true, .output = png_path,
+                        .status = "Mermaid PNG ready"};
+            }
+            std::filesystem::remove(png_path, ignored);
+        }
     }
-
-    std::vector<std::string> argv;
-    argv.push_back(tool_path(settings_.mermaid_cli_path, "mmdc"));
-    argv.insert(argv.end(), settings_.mermaid_arguments.begin(), settings_.mermaid_arguments.end());
-    argv.push_back("-i");
-    argv.push_back(input_path.string());
-    argv.push_back("-o");
-    argv.push_back(output.string());
-    const auto process = services_.run_argv(argv);
-    std::error_code error;
-    std::filesystem::remove(input_path, error);
-
-    const bool missing = process_missing(process);
-    return RenderResult{
-        .available = !missing,
-        .success = process.exit_code == 0,
-        .output = output,
-        .status = process_status("mmdc", process),
-    };
+    std::ifstream bundle(executable_directory() / "mermaid.min.js", std::ios::binary);
+    if (!bundle) return {.available = false, .success = false, .output = output,
+                         .status = "Bundled Mermaid JavaScript unavailable"};
+    const std::string script((std::istreambuf_iterator<char>(bundle)), {});
+    if (script.empty() || bundle.bad()) return {.available = false, .success = false, .output = output,
+                                                .status = "Bundled Mermaid JavaScript could not be read"};
+    std::ofstream page(output, std::ios::binary | std::ios::trunc);
+    if (!page) return {.available = true, .success = false, .output = output,
+                       .status = "Could not open Mermaid HTML output"};
+    page << "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            "<title>PasteIt Mermaid</title><style>body{font-family:sans-serif;margin:2rem}"
+            "#error{color:#b00020;white-space:pre-wrap}</style></head><body>"
+            "<pre class=\"mermaid\">" << html_escape(normalize_mermaid_source(source)) << "</pre>"
+            "<div id=\"error\" role=\"alert\"></div><script>" << inline_script(script)
+         << "</script><script>mermaid.initialize({startOnLoad:false,securityLevel:'strict'});"
+            "mermaid.run().catch(e=>{document.getElementById('error').textContent=String(e)})"
+            "</script></body></html>";
+    page.close();
+    return {.available = true, .success = static_cast<bool>(page), .output = output,
+            .status = page ? "Offline Mermaid HTML ready" : "Could not write Mermaid HTML"};
 }
 
 RenderResult ExternalRendererService::render_qr(std::string_view payload, const std::filesystem::path& output) {
     create_parent_directory(output);
-    const std::vector<std::string> argv = {
-        tool_path(settings_.qrencode_path, "qrencode"),
-        "-o", output.string(),
-        "-t", "PNG",
-        "-l", settings_.qr_error_correction,
-        "-m", std::to_string(settings_.qr_margin),
-        "-s", std::to_string(settings_.qr_scale),
-        std::string{payload},
-    };
-    const auto process = services_.run_argv(argv);
-    const bool missing = process_missing(process);
-    return RenderResult{
-        .available = !missing,
-        .success = process.exit_code == 0,
-        .output = output,
-        .status = process_status("qrencode", process),
-    };
+    try {
+        if (payload.empty()) return {.available = true, .success = false, .output = output,
+                                     .status = "QR payload is empty"};
+        const std::vector<std::uint8_t> bytes(payload.begin(), payload.end());
+        const auto code = qrcodegen::QrCode::encodeBinary(bytes, qr_ecc(settings_.qr_error_correction));
+        const int margin = std::clamp(settings_.qr_margin, 0, 64);
+        const int scale = std::clamp(settings_.qr_scale, 1, 64);
+        const int pixels = (code.getSize() + margin * 2) * scale;
+        if (pixels > 8192) return {.available = true, .success = false, .output = output,
+                                   .status = "QR image would exceed 8192 pixels; lower the scale"};
+        std::vector<std::uint8_t> raster(static_cast<std::size_t>(pixels) * pixels, 255);
+        for (int y = 0; y < pixels; ++y) {
+            for (int x = 0; x < pixels; ++x) {
+                const int module_x = x / scale - margin;
+                const int module_y = y / scale - margin;
+                if (module_x >= 0 && module_x < code.getSize() &&
+                    module_y >= 0 && module_y < code.getSize() && code.getModule(module_x, module_y)) {
+                    raster[static_cast<std::size_t>(y) * pixels + x] = 0;
+                }
+            }
+        }
+        std::ofstream image(output, std::ios::binary | std::ios::trunc);
+        if (!image) return {.available = true, .success = false, .output = output,
+                            .status = "Could not open QR PNG output"};
+        const bool encoded = stbi_write_png_to_func(png_write_callback, &image, pixels, pixels, 1,
+                                                    raster.data(), pixels) != 0;
+        image.close();
+        return {.available = true, .success = encoded && static_cast<bool>(image), .output = output,
+                .status = encoded && image ? "QR PNG ready" : "Could not write QR PNG"};
+    } catch (const std::exception& error) {
+        return {.available = true, .success = false, .output = output,
+                .status = std::string{"QR encoding failed: "} + error.what()};
+    }
 }
 
 }  // namespace pastit

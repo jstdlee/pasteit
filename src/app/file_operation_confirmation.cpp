@@ -1,4 +1,5 @@
 #include "app/file_operation_confirmation.hpp"
+#include "util/path_utf8.hpp"
 
 #include "app/generated_filename.hpp"
 #include "history/path_history.hpp"
@@ -61,12 +62,12 @@ std::string source_basename(const ClipboardItem& item) {
 
     const auto paths = paths_from_uri_list(source);
     if (!paths.empty() && !paths.front().filename().empty()) {
-        return paths.front().filename().string();
+        return path_to_utf8_string(paths.front().filename());
     }
 
     const auto path_text = trim(std::move(source));
     if (!path_text.empty()) {
-        const auto filename = std::filesystem::path(path_text).filename().string();
+        const auto filename = path_to_utf8_string(path_from_utf8_string(path_text).filename());
         if (!filename.empty()) {
             return filename;
         }
@@ -108,7 +109,7 @@ bool filename_is_valid(const std::string& filename, std::string& error) {
             return false;
         }
     }
-    if (std::filesystem::path(filename).is_absolute()) {
+    if (path_from_utf8_string(filename).is_absolute()) {
         error = "filename must be relative";
         return false;
     }
@@ -200,7 +201,7 @@ std::optional<ActionInstance> confirmed_action(const FileOperationDraft& draft, 
 
     auto confirmed = draft.frozen_action;
     confirmed.filename = draft.filename;
-    confirmed.parameters["confirmed_destination"] = draft.destination.string();
+    confirmed.parameters["confirmed_destination"] = path_to_utf8_string(draft.destination);
     confirmed.parameters["confirmed_filename"] = draft.filename;
     return confirmed;
 }

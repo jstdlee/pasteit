@@ -3,6 +3,7 @@
 #include "detect/resume_detector.hpp"
 #include "history/path_history.hpp"
 #include "util/json.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -34,7 +35,7 @@ ExecutionResult result_for(const ActionInstance& action, const ExecutionContext&
 std::filesystem::path target_dir_for(const ActionInstance& action, const ExecutionContext& context) {
     if (const auto confirmed = action.parameters.find("confirmed_destination");
         confirmed != action.parameters.end() && !confirmed->second.empty()) {
-        const std::filesystem::path path{confirmed->second};
+        const auto path = path_from_utf8_string(confirmed->second);
         std::error_code error;
         if (!std::filesystem::is_directory(path, error) || error) {
             throw std::runtime_error("confirmed target directory not found");
@@ -105,20 +106,21 @@ std::optional<std::string> record_text_clipboard(ExecutionContext& context, std:
 void record_output_path(ExecutionContext& context, const std::filesystem::path& path, ExecutionResult& result) {
     result.output_path = path;
     result.output_paths.push_back(path);
-    result.output_clipboard_ref = record_text_clipboard(context, path.string(), ContentKind::Path);
-    context.path_history.observe(path.string(), "pastit", context.now_ms);
+    result.output_clipboard_ref = record_text_clipboard(context, path_to_utf8_string(path), ContentKind::Path);
+    context.path_history.observe(path_to_utf8_string(path), "pastit", context.now_ms);
 }
 
 std::filesystem::path available_generated_path(std::filesystem::path path) {
     if (!std::filesystem::exists(path)) return path;
-    const auto parent=path.parent_path();const auto stem=path.stem().string();const auto extension=path.extension().string();
-    for(std::size_t index=2;;++index){auto candidate=parent/(stem+" ("+std::to_string(index)+")"+extension);if(!std::filesystem::exists(candidate))return candidate;}
+    const auto parent=path.parent_path();const auto stem=path_to_utf8_string(path.stem());const auto extension=path_to_utf8_string(path.extension());
+    for(std::size_t index=2;;++index){auto candidate=parent/path_from_utf8_string(stem+" ("+std::to_string(index)+")"+extension);if(!std::filesystem::exists(candidate))return candidate;}
 }
 
 ExecutionResult save_text_like(const ActionInstance& action, ExecutionContext& context, std::string text, ContentKind clipboard_kind,
                                std::string_view extension) {
     auto result = result_for(action, context, ExecutionStatus::Completed, "saved");
-    const auto output = available_generated_path(target_dir_for(action, context) / default_filename_for(action, extension));
+    const auto output = available_generated_path(target_dir_for(action, context) /
+                                                 path_from_utf8_string(default_filename_for(action, extension)));
     write_bytes(output, bytes_from_string(text));
     record_output_path(context, output, result);
     if (clipboard_kind != ContentKind::Unknown) {
@@ -155,7 +157,7 @@ ExecutionResult copy_or_move_path(const ActionInstance& action, ExecutionContext
         const auto first = source_text.find_first_not_of(" \t\r\n");
         const auto last = source_text.find_last_not_of(" \t\r\n");
         if (first != std::string::npos) {
-            sources.emplace_back(source_text.substr(first, last - first + 1));
+            sources.push_back(path_from_utf8_string(source_text.substr(first, last - first + 1)));
         }
     }
     if (sources.empty()) {
@@ -171,7 +173,7 @@ ExecutionResult copy_or_move_path(const ActionInstance& action, ExecutionContext
             return result_for(action, context, ExecutionStatus::Failed, "source path has no filename");
         }
         const auto requested_name = confirmed_name && single_source && !action.filename.empty()
-            ? std::filesystem::path{action.filename}
+            ? path_from_utf8_string(action.filename)
             : source.filename();
         auto target = target_directory / requested_name;
         std::error_code error;
@@ -205,7 +207,7 @@ ExecutionResult copy_or_move_path(const ActionInstance& action, ExecutionContext
             return result_for(action, context, ExecutionStatus::Failed, error.message());
         }
         outputs.push_back(target);
-        context.path_history.observe(target.string(), "pastit", context.now_ms);
+        context.path_history.observe(path_to_utf8_string(target), "pastit", context.now_ms);
     }
 
     std::ostringstream copied_paths;
@@ -213,7 +215,7 @@ ExecutionResult copy_or_move_path(const ActionInstance& action, ExecutionContext
         if (index != 0) {
             copied_paths << '\n';
         }
-        copied_paths << outputs[index].string();
+        copied_paths << path_to_utf8_string(outputs[index]);
     }
     result.output_path = outputs.back();
     result.output_paths = outputs;
@@ -254,7 +256,8 @@ ExecutionResult execute_file_action(const ActionInstance& action, ExecutionConte
             }
             case ActionKind::SaveImageFile: {
                 auto result = result_for(action, context, ExecutionStatus::Completed, "saved image");
-                const auto output = available_generated_path(target_dir_for(action, context) / default_filename_for(action, "bin"));
+                const auto output = available_generated_path(target_dir_for(action, context) /
+                                                             path_from_utf8_string(default_filename_for(action, "bin")));
                 write_bytes(output, context.clipboard_store.read(action.source_ref));
                 record_output_path(context, output, result);
                 return result;

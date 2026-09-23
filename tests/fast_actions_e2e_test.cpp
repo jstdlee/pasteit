@@ -334,7 +334,8 @@ int main() {
         const auto completed = poll_until_done(executor, context);
         assert(completed.front().status == ExecutionStatus::Completed);
         assert(executor.renderer_result().has_value());
-        assert(executor.renderer_result()->active().status == RendererResultStatus::Unavailable);
+        assert(executor.renderer_result()->active().status == RendererResultStatus::Ready);
+        assert(executor.renderer_result()->active().output_path.has_value());
         assert(executor.renderer_result()->copy_text() == "https://example.test");
     }
 

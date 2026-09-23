@@ -1,6 +1,7 @@
 #include "executor/fast_action_executor.hpp"
 
 #include "util/json.hpp"
+#include "util/path_utf8.hpp"
 #include "render/renderer_service.hpp"
 
 #include <algorithm>
@@ -64,11 +65,11 @@ std::string parameter_or(const ActionInstance& action, std::string_view key, std
 std::filesystem::path target_dir_for(const ActionInstance& action, const ExecutionContext& context) {
     if (const auto confirmed = action.parameters.find("confirmed_destination");
         confirmed != action.parameters.end() && !confirmed->second.empty()) {
-        return confirmed->second;
+        return path_from_utf8_string(confirmed->second);
     }
     if (const auto destination = action.parameters.find("destination_directory");
         destination != action.parameters.end() && !destination->second.empty()) {
-        return destination->second;
+        return path_from_utf8_string(destination->second);
     }
     const auto target = context.path_history.find(action.target_ref);
     if (!target.has_value() || target->kind != PathKind::Directory) {
@@ -82,10 +83,10 @@ std::filesystem::path available_generated_path(std::filesystem::path path) {
         return path;
     }
     const auto parent = path.parent_path();
-    const auto stem = path.stem().string();
-    const auto extension = path.extension().string();
+    const auto stem = path_to_utf8_string(path.stem());
+    const auto extension = path_to_utf8_string(path.extension());
     for (std::size_t index = 2;; ++index) {
-        auto candidate = parent / (stem + " (" + std::to_string(index) + ")" + extension);
+        auto candidate = parent / path_from_utf8_string(stem + " (" + std::to_string(index) + ")" + extension);
         if (!std::filesystem::exists(candidate)) {
             return candidate;
         }
@@ -104,8 +105,8 @@ void write_text_file(const std::filesystem::path& path, std::string_view text) {
 void record_output_path(ExecutionContext& context, const std::filesystem::path& path, ExecutionResult& result) {
     result.output_path = path;
     result.output_paths.push_back(path);
-    result.output_clipboard_ref = record_text_clipboard(context, path.string(), ContentKind::Path);
-    context.path_history.observe(path.string(), "pastit", context.now_ms);
+    result.output_clipboard_ref = record_text_clipboard(context, path_to_utf8_string(path), ContentKind::Path);
+    context.path_history.observe(path_to_utf8_string(path), "pastit", context.now_ms);
 }
 
 std::optional<NetworkProbe> probe_for(ActionKind kind) {
@@ -270,7 +271,7 @@ ExecutionResult FastActionExecutor::start_async(ActionInstance action, Execution
         const auto url = parameter_or(action, url_key);
         const auto repo = parameter_or(action, "github_repo");
         const auto destination_root = target_dir_for(action, context);
-        const auto destination = repo.empty() ? destination_root : destination_root / repo;
+        const auto destination = repo.empty() ? destination_root : destination_root / path_from_utf8_string(repo);
         started.message = "clone is running";
         started.output_path = destination;
         started.output_paths.push_back(destination);
@@ -291,7 +292,7 @@ ExecutionResult FastActionExecutor::start_async(ActionInstance action, Execution
     }
 
     const auto algorithm = hash_algorithm_for(action.kind);
-    const std::filesystem::path path = parameter_or(action, "path", source_text(action, context));
+    const auto path = path_from_utf8_string(parameter_or(action, "path", source_text(action, context)));
     started.message = hash_algorithm_label(algorithm) + " hash is running";
     jobs_.emplace(job_id, AsyncJob{std::async(std::launch::async, [this, job_id, request_id = context.request_id,
                                                                      action, algorithm, path] {
@@ -334,7 +335,7 @@ ExecutionResult FastActionExecutor::start_renderer_async(ActionInstance action, 
     const bool mermaid = kind == RendererResultKind::Mermaid;
     const auto unique = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto output = std::filesystem::temp_directory_path() /
-        ("pastit-render-" + unique + "-" + job_id + (mermaid ? ".svg" : ".png"));
+        ("pastit-render-" + unique + "-" + job_id + (mermaid ? ".html" : ".png"));
     jobs_.emplace(job_id, AsyncJob{std::async(std::launch::async,
         [this, job_id, request_id = context.request_id, action, source = std::move(source),
          payload = std::move(payload), generated_mermaid = std::move(generated_mermaid),
@@ -343,10 +344,10 @@ ExecutionResult FastActionExecutor::start_renderer_async(ActionInstance action, 
             const auto rendered = kind == RendererResultKind::Mermaid
                 ? service.render_mermaid(payload, output)
                 : service.render_qr(payload, output);
-            const bool valid = rendered.success && rendered_output_decodes(kind, output);
+            const bool valid = rendered.success && rendered_output_decodes(kind, rendered.output);
             if (!valid) {
                 std::error_code ignored;
-                std::filesystem::remove(output, ignored);
+                std::filesystem::remove(rendered.output, ignored);
             }
             AsyncResult result;
             result.job_id = job_id;
@@ -354,7 +355,7 @@ ExecutionResult FastActionExecutor::start_renderer_async(ActionInstance action, 
             result.action = action;
             result.status = ExecutionStatus::Completed;
             result.message = valid ? "Rendered preview ready" : "Source ready; rendered preview unavailable";
-            result.output_path = valid ? std::optional<std::filesystem::path>{output} : std::nullopt;
+            result.output_path = valid ? std::optional<std::filesystem::path>{rendered.output} : std::nullopt;
             result.renderer = RendererResult{
                 .action_id = action.id,
                 .kind = kind,
@@ -364,7 +365,7 @@ ExecutionResult FastActionExecutor::start_renderer_async(ActionInstance action, 
                 .status = valid ? RendererResultStatus::Ready
                                 : (rendered.available ? RendererResultStatus::Failed : RendererResultStatus::Unavailable),
                 .output_path = result.output_path,
-                .error = valid ? std::string{} :
+                .error = valid ? rendered.status :
                     (rendered.success ? "Renderer did not produce a decodable output" : rendered.status),
                 .generated_mermaid = generated_mermaid,
             };
@@ -555,7 +556,8 @@ ExecutionResult FastActionExecutor::execute(const ActionInstance& action, Execut
             case ActionKind::SaveContactAsJson: {
                 const auto json = parameter_or(action, "contact_json");
                 const auto filename = action.filename.empty() ? "contact.json" : action.filename;
-                const auto output = available_generated_path(target_dir_for(action, context) / filename);
+                const auto output = available_generated_path(target_dir_for(action, context) /
+                                                             path_from_utf8_string(filename));
                 write_text_file(output, json);
                 contact_result_.emplace();
                 (void)contact_result_->set_from_json(action.id, json);
@@ -570,7 +572,7 @@ ExecutionResult FastActionExecutor::execute(const ActionInstance& action, Execut
             }
             case ActionKind::OpenTerminalAtPath: {
                 const auto directory = parameter_or(action, "working_directory", parameter_or(action, "path"));
-                const auto ok = services_.open_terminal(directory);
+                const auto ok = services_.open_terminal(path_from_utf8_string(directory));
                 return result_for(action, context, ok ? ExecutionStatus::Completed : ExecutionStatus::Failed,
                                   ok ? "opened terminal" : "terminal launcher failed");
             }
@@ -609,7 +611,7 @@ ExecutionResult FastActionExecutor::execute(const ActionInstance& action, Execut
                 const auto url = parameter_or(action, url_key);
                 const auto repo = parameter_or(action, "github_repo");
                 const auto destination_root = target_dir_for(action, context);
-                const auto destination = repo.empty() ? destination_root : destination_root / repo;
+                const auto destination = repo.empty() ? destination_root : destination_root / path_from_utf8_string(repo);
                 const auto output = services_.clone_repository(url, destination);
                 auto result = result_for(action, context, output.exit_code == 0 ? ExecutionStatus::Completed : ExecutionStatus::Failed,
                                          output.exit_code == 0 ? "cloned repository" : "clone failed");
@@ -643,6 +645,12 @@ ExecutionResult FastActionExecutor::execute(const ActionInstance& action, Execut
                 std::string formatted;
                 if (action.kind == ActionKind::ConvertTimezone) {
                     formatted = services_.format_datetime(*epoch, target_zone);
+                    if (formatted.empty()) {
+                        date_time_result_.emplace();
+                        date_time_result_->fail(action.id, "unsupported or unavailable target time zone");
+                        return result_for(action, context, ExecutionStatus::Failed,
+                                          "unsupported or unavailable target time zone");
+                    }
                 } else if (action.kind == ActionKind::ToUnixTimestamp) {
                     formatted = std::to_string(*epoch);
                 } else {
@@ -666,7 +674,7 @@ ExecutionResult FastActionExecutor::execute(const ActionInstance& action, Execut
             case ActionKind::HashSha256:
             case ActionKind::HashSha512: {
                 const auto algorithm = hash_algorithm_for(action.kind);
-                const std::filesystem::path path = parameter_or(action, "path", source_text(action, context));
+                const auto path = path_from_utf8_string(parameter_or(action, "path", source_text(action, context)));
                 const auto digest = services_.hash_file(path, algorithm);
                 if (digest.empty()) {
                     hash_result_.emplace();

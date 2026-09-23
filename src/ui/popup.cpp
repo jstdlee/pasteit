@@ -1,6 +1,7 @@
 #include "ui/popup.hpp"
 
 #include "decision/candidate_selector.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 
@@ -16,7 +17,7 @@ std::string target_path_for(const DecisionSnapshot& snapshot, const std::string&
     }
     for (const auto& path : snapshot.recent_paths) {
         if (path.ref == ref) {
-            return path.path.string();
+            return path_to_utf8_string(path.path);
         }
     }
     return ref;

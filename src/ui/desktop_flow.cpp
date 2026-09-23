@@ -1,5 +1,6 @@
 #include "ui/desktop_flow.hpp"
 #include "decision/candidate_selector.hpp"
+#include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -47,6 +48,12 @@ bool contains_algorithm(const std::vector<std::string>& algorithms, std::string_
 
 }  // namespace
 
+bool mermaid_action_requires_generation(const ActionInstance& action) {
+    if (action.kind != ActionKind::DrawMermaidDiagram) return false;
+    const auto source = action.parameters.find("mermaid_source");
+    return source == action.parameters.end() || source->second != "direct";
+}
+
 DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
     DesktopDecisionBatch batch;
     batch.general_llm = input.general_llm;
@@ -58,7 +65,7 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
     snapshot.focused_target_hash = input.focused_target_hash;
     snapshot.focused_app = input.focused_app;
     snapshot.focused_window_title = input.focused_window_title;
-    snapshot.focused_current_directory = input.focused_current_directory.string();
+    snapshot.focused_current_directory = path_to_utf8_string(input.focused_current_directory);
     snapshot.clipboard_items = input.clipboard_items;
     std::stable_sort(snapshot.clipboard_items.begin(), snapshot.clipboard_items.end(), [](const ClipboardItem& left, const ClipboardItem& right) {
         return left.captured_at_ms > right.captured_at_ms;

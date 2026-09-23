@@ -15,6 +15,35 @@ bool compact_button(const char* label, const std::string& ref) {
     return ImGui::SmallButton(id.c_str());
 }
 
+void draw_path_type_icon(const RecentPathRow& row) {
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    constexpr ImVec2 size{18.0F, 18.0F};
+    auto* draw = ImGui::GetWindowDrawList();
+    const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 accent = ImGui::GetColorU32(ImGuiCol_CheckMark);
+    if (row.type == "folder") {
+        draw->AddRectFilled(ImVec2(origin.x + 1.0F, origin.y + 5.0F),
+                            ImVec2(origin.x + 17.0F, origin.y + 17.0F), color, 2.0F);
+        draw->AddRectFilled(ImVec2(origin.x + 2.0F, origin.y + 3.0F),
+                            ImVec2(origin.x + 9.0F, origin.y + 7.0F), color, 1.5F);
+        draw->AddLine(ImVec2(origin.x + 5.0F, origin.y + 12.0F),
+                      ImVec2(origin.x + 13.0F, origin.y + 12.0F), accent, 1.5F);
+    } else {
+        const ImVec2 outline[] = {
+            {origin.x + 3.0F, origin.y + 1.0F}, {origin.x + 11.0F, origin.y + 1.0F},
+            {origin.x + 16.0F, origin.y + 6.0F}, {origin.x + 16.0F, origin.y + 17.0F},
+            {origin.x + 3.0F, origin.y + 17.0F},
+        };
+        draw->AddPolyline(outline, 5, color, ImDrawFlags_Closed, 1.5F);
+        draw->AddLine(ImVec2(origin.x + 11.0F, origin.y + 1.0F),
+                      ImVec2(origin.x + 11.0F, origin.y + 6.0F), accent, 1.5F);
+        draw->AddLine(ImVec2(origin.x + 11.0F, origin.y + 6.0F),
+                      ImVec2(origin.x + 16.0F, origin.y + 6.0F), accent, 1.5F);
+    }
+    ImGui::Dummy(size);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", row.type_label.c_str());
+}
+
 void detail_text(const char* label, const std::string& value) {
     copyable_text(std::string{label} + ": " + value, true);
 }
@@ -38,9 +67,10 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
         ImGui::TableHeadersRow();
 
         for (const auto& row : model.rows) {
+            ImGui::PushID(row.ref.c_str());
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            copyable_text(row.type_label);
+            draw_path_type_icon(row);
             ImGui::TableNextColumn();
             const auto selectable_id = row.display_path + "##recent-row-" + row.ref;
             if (ImGui::Selectable(selectable_id.c_str(), row.selected, ImGuiSelectableFlags_SpanAllColumns)) {
@@ -72,6 +102,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             if (!row.can_open) {
                 ImGui::EndDisabled();
             }
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }

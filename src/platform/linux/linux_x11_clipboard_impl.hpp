@@ -29,6 +29,7 @@ public:
 
     bool set_text(std::string_view text);
     bool set_image(const std::vector<std::byte>& bytes, std::string_view mime_type = "image/png");
+    std::optional<std::string> owned_text_if_current() const;
 
 private:
     struct OutgoingTransfer {

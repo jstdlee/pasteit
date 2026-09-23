@@ -1,4 +1,5 @@
 #include "executor/email_executor.hpp"
+#include "util/path_utf8.hpp"
 
 #include <cctype>
 #include <filesystem>
@@ -11,8 +12,8 @@ namespace {
 
 std::filesystem::path available_generated_path(std::filesystem::path path) {
     if (!std::filesystem::exists(path)) return path;
-    const auto parent=path.parent_path();const auto stem=path.stem().string();const auto extension=path.extension().string();
-    for(std::size_t index=2;;++index){auto candidate=parent/(stem+" ("+std::to_string(index)+")"+extension);if(!std::filesystem::exists(candidate))return candidate;}
+    const auto parent=path.parent_path();const auto stem=path_to_utf8_string(path.stem());const auto extension=path_to_utf8_string(path.extension());
+    for(std::size_t index=2;;++index){auto candidate=parent/path_from_utf8_string(stem+" ("+std::to_string(index)+")"+extension);if(!std::filesystem::exists(candidate))return candidate;}
 }
 
 struct EmailIntent {
@@ -114,7 +115,7 @@ ExecutionResult result_for(const ActionInstance& action, const ExecutionContext&
 std::filesystem::path target_dir_for(const ActionInstance& action, const ExecutionContext& context) {
     if (const auto confirmed = action.parameters.find("confirmed_destination");
         confirmed != action.parameters.end() && !confirmed->second.empty()) {
-        const std::filesystem::path path{confirmed->second};
+        const auto path = path_from_utf8_string(confirmed->second);
         std::error_code error;
         if (!std::filesystem::is_directory(path, error) || error) {
             throw std::runtime_error("confirmed target directory not found");
@@ -176,7 +177,8 @@ ExecutionResult execute_email_action(const ActionInstance& action, ExecutionCont
             case ActionKind::SaveEmailFile: {
                 auto result = result_for(action, context, ExecutionStatus::Completed, "saved email");
                 const auto filename = action.filename.empty() ? "clipboard.eml" : action.filename;
-                const auto output = available_generated_path(target_dir_for(action, context) / filename);
+                const auto output = available_generated_path(target_dir_for(action, context) /
+                                                             path_from_utf8_string(filename));
                 std::ostringstream eml;
                 eml << "To: " << email.address << "\n";
                 eml << "Subject: " << email.subject << "\n";
@@ -189,8 +191,8 @@ ExecutionResult execute_email_action(const ActionInstance& action, ExecutionCont
                 write_text(output, eml.str());
                 result.output_path = output;
                 result.output_paths.push_back(output);
-                result.output_clipboard_ref = record_text_clipboard(context, output.string(), ContentKind::Path);
-                context.path_history.observe(output.string(), "pastit", context.now_ms);
+                result.output_clipboard_ref = record_text_clipboard(context, path_to_utf8_string(output), ContentKind::Path);
+                context.path_history.observe(path_to_utf8_string(output), "pastit", context.now_ms);
                 return result;
             }
             default:

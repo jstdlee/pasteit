@@ -412,6 +412,19 @@ bool X11ClipboardWatcher::available() const {
     return display_ != nullptr;
 }
 
+std::optional<std::string> X11ClipboardWatcher::owned_text_if_current() const {
+#if defined(PASTIT_HAS_X11)
+    if (display_ == nullptr) return std::nullopt;
+    auto* display = static_cast<Display*>(display_);
+    const auto clipboard = XInternAtom(display, "CLIPBOARD", False);
+    if (XGetSelectionOwner(display, clipboard) != static_cast<Window>(window_)) return std::nullopt;
+    if (owned_kind_ == ContentKind::Image) return std::string{};
+    return bytes_to_string(owned_bytes_);
+#else
+    return std::nullopt;
+#endif
+}
+
 std::optional<ClipboardData> X11ClipboardWatcher::poll() {
 #if defined(PASTIT_HAS_X11)
     if (display_ == nullptr) {

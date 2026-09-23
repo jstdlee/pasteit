@@ -1,4 +1,5 @@
 #include "ui/recent_paths_model.hpp"
+#include "util/path_utf8.hpp"
 #include "util/utf8.hpp"
 
 #include <algorithm>
@@ -24,11 +25,11 @@ std::string abbreviate_middle_impl(std::string_view value, std::size_t max_bytes
 }
 
 std::string display_name(const std::filesystem::path& path) {
-    const auto filename = path.filename().string();
+    const auto filename = path_to_utf8_string(path.filename());
     if (!filename.empty()) {
         return filename;
     }
-    return path.string();
+    return path_to_utf8_string(path);
 }
 
 std::string action_id_for(const ActionCatalog& catalog, ActionKind kind, const std::string& target_ref) {
@@ -49,9 +50,9 @@ RecentPathRow row_from_path(const PathLocation& value, const ActionCatalog& cata
         .type = directory ? "folder" : "file",
         .type_label = directory ? "folder" : "file",
         .name = display_name(value.path),
-        .path = value.path.string(),
-        .display_path = abbreviate_middle_impl(value.path.string(), 72),
-        .parent_path = value.path.parent_path().string(),
+        .path = path_to_utf8_string(value.path),
+        .display_path = abbreviate_middle_impl(path_to_utf8_string(value.path), 72),
+        .parent_path = path_to_utf8_string(value.path.parent_path()),
         .source = value.source,
         .last_seen_label = std::to_string(value.last_seen_ms),
         .copy_here_action_id = copy_here_id,

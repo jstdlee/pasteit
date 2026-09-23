@@ -28,6 +28,13 @@ std::vector<RankedAction> rank_top_actions(const DecisionResponse& response, con
         return left.probability > right.probability;
     });
     if (ranked.size() > limit) {
+        const auto chosen = std::find_if(ranked.begin(), ranked.end(), [](const RankedAction& action) {
+            return action.selected;
+        });
+        if (limit > 0 && chosen != ranked.end() &&
+            static_cast<std::size_t>(std::distance(ranked.begin(), chosen)) >= limit) {
+            ranked[limit - 1] = *chosen;
+        }
         ranked.resize(limit);
     }
     return ranked;

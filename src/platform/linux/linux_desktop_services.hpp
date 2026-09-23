@@ -8,6 +8,9 @@
 
 namespace pastit {
 
+std::optional<std::filesystem::path> browser_open_path(const std::filesystem::path& path,
+                                                      const std::filesystem::path& home_directory);
+
 class LinuxDesktopServices final : public PlatformServices {
 public:
     LinuxDesktopServices() = default;
@@ -27,6 +30,7 @@ public:
     bool open_path(const std::filesystem::path& path) override;
     bool open_uri(std::string_view uri) override;
     bool copy_text(std::string_view text) override;
+    std::optional<std::string> owned_clipboard_text() const override;
     bool move_popup_by(int delta_x, int delta_y) override;
     bool set_popup_opacity(float opacity) override;
     std::vector<std::filesystem::path> preferred_ui_fonts() override;

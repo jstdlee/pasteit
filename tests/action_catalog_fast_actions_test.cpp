@@ -125,6 +125,24 @@ int main() {
     assert(has_id(text_catalog, "a_draw_mermaid_diagram_card"));
     assert(has_id(text_catalog, "a_generate_qr_card"));
 
+    const auto mermaid_catalog = build_catalog(
+        snapshot_with(item("sequence", ContentKind::Text,
+                           "sequenceDiagram\n    Alice->>Bob: Hello\n    Bob-->>Alice: Hi\n")),
+        templates, llm);
+    const auto direct_mermaid = find_kind(mermaid_catalog, ActionKind::DrawMermaidDiagram);
+    assert(direct_mermaid.has_value());
+    assert(direct_mermaid->parameters.at("mermaid_source") == "direct");
+    assert(direct_mermaid->label == "Render Mermaid source");
+    const auto generated_mermaid = find_kind(text_catalog, ActionKind::DrawMermaidDiagram);
+    assert(generated_mermaid.has_value());
+    assert(!generated_mermaid->parameters.contains("mermaid_source"));
+    const auto state_diagram_catalog = build_catalog(
+        snapshot_with(item("state", ContentKind::Text, "stateDiagram-v2\n    [*] --> Ready\n")),
+        templates, llm);
+    const auto state_diagram_action = find_kind(state_diagram_catalog, ActionKind::DrawMermaidDiagram);
+    assert(state_diagram_action.has_value());
+    assert(state_diagram_action->parameters.at("mermaid_source") == "direct");
+
     const auto explain_text = find_label(text_catalog, "Explain text");
     assert(explain_text.has_value());
     assert(explain_text->kind == ActionKind::TransformText);
@@ -184,6 +202,21 @@ int main() {
     assert(sha512.has_value());
     assert(sha256->parameters.at("algorithm") == "SHA-256");
     assert(sha512->parameters.at("algorithm") == "SHA-512");
+
+    const auto uri_catalog = build_catalog(snapshot_with(item(
+        "uri-path", ContentKind::Path, "file://" + file_path.generic_string() + "\r\n")), templates, llm);
+    const auto uri_hash = find_kind(uri_catalog, ActionKind::HashSha256);
+    assert(uri_hash.has_value());
+    assert(uri_hash->parameters.at("path") == file_path.string());
+    assert(find_kind(uri_catalog, ActionKind::OpenTerminalAtPath).has_value());
+
+    const auto multi_uri_catalog = build_catalog(snapshot_with(item(
+        "multi-path", ContentKind::Path,
+        "file://" + file_path.generic_string() + "\r\nfile://" + file_path.generic_string() + "\r\n")),
+        templates, llm);
+    assert(!has_kind(multi_uri_catalog, ActionKind::OpenTerminalAtPath));
+    assert(!has_kind(multi_uri_catalog, ActionKind::HashSha256));
+    assert(has_kind(multi_uri_catalog, ActionKind::CopyPathToDirectory));
     std::filesystem::remove(file_path);
 
     const auto ip_catalog = build_catalog(snapshot_with(item("ip", ContentKind::Text, "Probe 192.0.2.10 now")),

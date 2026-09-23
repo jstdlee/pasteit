@@ -37,6 +37,8 @@ struct DesktopDecisionBatch {
     ProviderSettings general_llm;
 };
 
+bool mermaid_action_requires_generation(const ActionInstance& action);
 DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input);
+bool mermaid_action_requires_generation(const ActionInstance& action);
 
 }  // namespace pastit

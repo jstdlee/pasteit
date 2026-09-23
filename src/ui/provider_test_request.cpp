@@ -9,6 +9,13 @@ DecisionRequest provider_test_request() {
     request.request_id = "settings-djev-test";
     request.snapshot.clipboard_hash = "settings-test-clipboard";
     request.snapshot.focused_target_hash = "settings-test-target";
+    ClipboardItem test_clipboard;
+    test_clipboard.ref = "settings_test";
+    test_clipboard.mime_types = {"text/plain"};
+    test_clipboard.kind = ContentKind::Text;
+    test_clipboard.preview = "Jev provider connection test";
+    test_clipboard.size_bytes = test_clipboard.preview.size();
+    request.snapshot.clipboard_items.push_back(std::move(test_clipboard));
     ActionInstance test_action;
     test_action.id = "settings_test_action";
     test_action.kind = ActionKind::PasteText;

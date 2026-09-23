@@ -108,76 +108,6 @@ bool png_decodes(const std::vector<unsigned char>& data) {
 #endif
 }
 
-bool svg_decodes(std::string_view text) {
-    std::vector<std::string_view> tags;
-    bool saw_root = false;
-    for (std::size_t pos = 0; (pos = text.find('<', pos)) != std::string_view::npos;) {
-        if (text.substr(pos, 4) == "<!--") {
-            const auto end = text.find("-->", pos + 4);
-            if (end == std::string_view::npos) return false;
-            pos = end + 3;
-            continue;
-        }
-        if (text.substr(pos, 9) == "<![CDATA[") {
-            const auto end = text.find("]]>", pos + 9);
-            if (end == std::string_view::npos) return false;
-            pos = end + 3;
-            continue;
-        }
-        if (text.substr(pos, 2) == "<?") {
-            const auto end = text.find("?>", pos + 2);
-            if (end == std::string_view::npos) return false;
-            pos = end + 2;
-            continue;
-        }
-        if (text.substr(pos, 2) == "<!") {
-            const auto end = text.find('>', pos + 2);
-            if (end == std::string_view::npos) return false;
-            pos = end + 1;
-            continue;
-        }
-        const bool closing = text.substr(pos, 2) == "</";
-        const auto start = pos + (closing ? 2 : 1);
-        auto name_end = start;
-        while (name_end < text.size() &&
-               (std::isalnum(static_cast<unsigned char>(text[name_end])) ||
-                text[name_end] == ':' || text[name_end] == '_' || text[name_end] == '-' || text[name_end] == '.')) {
-            ++name_end;
-        }
-        if (name_end == start) return false;
-        const auto name = text.substr(start, name_end - start);
-        char quote = 0;
-        auto end = name_end;
-        for (; end < text.size(); ++end) {
-            const auto ch = text[end];
-            if (quote) {
-                if (ch == quote) quote = 0;
-            } else if (ch == '\'' || ch == '"') {
-                quote = ch;
-            } else if (ch == '>') {
-                break;
-            }
-        }
-        if (end == text.size() || quote) return false;
-        if (!saw_root) {
-            if (name != "svg" && name != "svg:svg") return false;
-            saw_root = true;
-        } else if (tags.empty()) {
-            return false;
-        }
-        if (closing) {
-            if (tags.empty() || tags.back() != name) return false;
-            tags.pop_back();
-        } else {
-            auto last = end;
-            while (last > name_end && std::isspace(static_cast<unsigned char>(text[last - 1]))) --last;
-            if (text[last - 1] != '/') tags.push_back(name);
-        }
-        pos = end + 1;
-    }
-    return saw_root && tags.empty();
-}
-
 }  // namespace
 
 bool rendered_output_decodes(RendererResultKind kind, const std::filesystem::path& path) {
@@ -186,10 +116,16 @@ bool rendered_output_decodes(RendererResultKind kind, const std::filesystem::pat
         std::ifstream input(path, std::ios::binary);
         if (!input) return false;
         const std::vector<unsigned char> data((std::istreambuf_iterator<char>(input)), {});
-        if (kind == RendererResultKind::Qr) return png_decodes(data);
+        if (kind == RendererResultKind::Qr ||
+            (kind == RendererResultKind::Mermaid && path.extension() == ".png")) return png_decodes(data);
         if (kind == RendererResultKind::Mermaid) {
             const std::string text(data.begin(), data.end());
-            return svg_decodes(text);
+            return text.starts_with("<!doctype html>") &&
+                   text.find("<pre class=\"mermaid\">") != std::string::npos &&
+                   text.find("mermaid.initialize") != std::string::npos &&
+                   text.find("mermaid.run()") != std::string::npos &&
+                   text.find("</html>") != std::string::npos &&
+                   text.find("<script src=") == std::string::npos;
         }
     } catch (const std::exception&) {
         return false;
