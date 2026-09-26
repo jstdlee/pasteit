@@ -138,6 +138,8 @@ add_library(pastit_core
     src/app/hash_result_state.cpp
     src/app/network_report_state.cpp
     src/app/renderer_result_state.cpp
+    src/app/generated_filename.cpp
+    src/app/file_operation_confirmation.cpp
     src/actions/action_catalog.cpp
     src/annotation/annotation_export.cpp
     src/annotation/image_annotation.cpp
@@ -161,7 +163,9 @@ add_library(pastit_core
     src/executor/fast_action_executor.cpp
     src/executor/file_executor.cpp
     src/executor/url_executor.cpp
+    src/history/clipboard_history_store.cpp
     src/history/path_history_store.cpp
+    src/history/path_target_resolver.cpp
     src/net/http_client.cpp
     src/render/external_renderer.cpp
     third_party/qrcodegen/qrcodegen.cpp
@@ -187,6 +191,8 @@ add_library(pastit_core
     src/ui/imgui_widgets.cpp
     src/ui/font_loader.cpp
     src/ui/localization.cpp
+    src/ui/clipboard_history_model.cpp
+    src/ui/clipboard_history_panel.cpp
     src/ui/recent_paths_model.cpp
     src/ui/settings_model.cpp
     src/ui/popup.cpp
@@ -462,6 +468,28 @@ if (PASTIT_BUILD_TESTS)
         set_tests_properties(test_x11_hotkey PROPERTIES SKIP_RETURN_CODE 77)
     endif()
 
+    add_executable(djev_payload_budget_test tests/djev_payload_budget_test.cpp)
+    target_link_libraries(djev_payload_budget_test PRIVATE pastit_core)
+    add_test(NAME djev_payload_budget_test COMMAND djev_payload_budget_test)
+    add_executable(clipboard_history_store_test tests/clipboard_history_store_test.cpp)
+    target_link_libraries(clipboard_history_store_test PRIVATE pastit_core)
+    add_test(NAME clipboard_history_store_test COMMAND clipboard_history_store_test)
+    add_executable(clipboard_orphan_cleanup_test tests/clipboard_orphan_cleanup_test.cpp)
+    target_link_libraries(clipboard_orphan_cleanup_test PRIVATE pastit_core)
+    add_test(NAME clipboard_orphan_cleanup_test COMMAND clipboard_orphan_cleanup_test)
+    add_executable(generated_filename_test tests/generated_filename_test.cpp)
+    target_link_libraries(generated_filename_test PRIVATE pastit_core)
+    add_test(NAME generated_filename_test COMMAND generated_filename_test)
+    add_executable(file_operation_confirmation_test tests/file_operation_confirmation_test.cpp)
+    target_link_libraries(file_operation_confirmation_test PRIVATE pastit_core)
+    add_test(NAME file_operation_confirmation_test COMMAND file_operation_confirmation_test)
+    add_executable(path_target_resolver_test tests/path_target_resolver_test.cpp)
+    target_link_libraries(path_target_resolver_test PRIVATE pastit_core)
+    add_test(NAME path_target_resolver_test COMMAND path_target_resolver_test)
+    add_executable(clipboard_history_model_test tests/clipboard_history_model_test.cpp)
+    target_link_libraries(clipboard_history_model_test PRIVATE pastit_core)
+    add_test(NAME clipboard_history_model_test COMMAND clipboard_history_model_test)
+
     add_executable(djev_live_integration tests/djev_live_integration.cpp)
     target_link_libraries(djev_live_integration PRIVATE pastit_core)
 
@@ -474,11 +502,3 @@ if (PASTIT_BUILD_TESTS)
     endif()
 endif()
 
-# PasteIt current-clipboard/history v3 tasks use disjoint fragments so
-# independently delegated work never edits this shared build file.
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pasteit-v3-task1.cmake OPTIONAL)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pasteit-v3-task2.cmake OPTIONAL)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pasteit-v3-task3.cmake OPTIONAL)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pasteit-v3-task4.cmake OPTIONAL)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pasteit-v3-task5.cmake OPTIONAL)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pasteit-v3-task6.cmake OPTIONAL)
