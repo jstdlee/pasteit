@@ -1,4 +1,5 @@
 #include "ui/download_progress_panel.hpp"
+#include "ui/theme.hpp"
 #include "ui/localization.hpp"
 
 #include "ui/imgui_widgets.hpp"
@@ -75,17 +76,8 @@ void draw_download_progress_panel(DownloadManager& manager,
                                   bool& open,
                                   bool& focus_pending) {
     auto model = build_download_progress_panel_model(manager, job_id);
-    if (focus_pending) {
-        ImGui::SetNextWindowFocus();
-        const auto* viewport = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-    }
-    ImGui::SetNextWindowSize(ImVec2(model.viewport.initial_width, model.viewport.initial_height), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(model.viewport.title.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) {
-        if (focus_pending) {
-            ImGui::SetWindowFocus();
-            focus_pending = false;
-        }
+    if (begin_tool_window(model.viewport.title, &open,
+                          ImVec2(model.viewport.initial_width, model.viewport.initial_height), &focus_pending)) {
         if (ImGui::Button(tr(UiTextKey::Pause).c_str())) manager.pause(job_id);
         ImGui::SameLine();
         if (ImGui::Button(tr(UiTextKey::Resume).c_str())) manager.resume(job_id);

@@ -1,4 +1,5 @@
 #include "ui/qr_preview_panel.hpp"
+#include "ui/theme.hpp"
 #include "ui/localization.hpp"
 
 #include "ui/imgui_widgets.hpp"
@@ -45,17 +46,8 @@ void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPane
                            const std::function<bool(const std::filesystem::path&)>& open_path) {
     auto model = build_qr_preview_panel_model(state);
     panel.poll();
-    if (focus_pending) {
-        ImGui::SetNextWindowFocus();
-        const auto* viewport = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-    }
-    ImGui::SetNextWindowSize(ImVec2(model.viewport.initial_width, model.viewport.initial_height), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(model.viewport.title.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) {
-        if (focus_pending) {
-            ImGui::SetWindowFocus();
-            focus_pending = false;
-        }
+    if (begin_tool_window(model.viewport.title, &open,
+                          ImVec2(model.viewport.initial_width, model.viewport.initial_height), &focus_pending)) {
         for (std::size_t index = 0; index < model.toolbar.size(); ++index) {
             if (index != 0 && index != 2) ImGui::SameLine();
             const auto& command = model.toolbar[index];

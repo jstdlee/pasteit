@@ -49,6 +49,7 @@ PopupModel build_popup_model(const DecisionSnapshot& snapshot, const std::vector
             .target_path = std::move(target_path),
             .detail = std::move(detail),
             .category = action_category(ranked.action.kind),
+            .kind = ranked.action.kind,
             .probability = ranked.probability,
             .selected = ranked.selected,
             .enabled = ranked.action.enabled,

@@ -1,10 +1,12 @@
 #include "ui/theme.hpp"
 
 #include "ui/icons.hpp"
+#include "ui/multi_viewport.hpp"
 #include "util/path_utf8.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cfloat>
 #include <cstdlib>
 
 namespace pastit {
@@ -123,6 +125,53 @@ const char* category_icon(ActionCategory category) {
     return icon::kInfo;
 }
 
+const char* action_icon(ActionKind kind) {
+    switch (kind) {
+        case ActionKind::ViewTable: return icon::kTable;
+        case ActionKind::PreviewMarkdown: return icon::kBook;
+        case ActionKind::Graph:
+        case ActionKind::NumberStatistics: return icon::kChart;
+        case ActionKind::RunPipeline: return icon::kPipeline;
+        case ActionKind::AnonymizeText: return icon::kEyeOff;
+        case ActionKind::RestorePlaceholders: return icon::kEye;
+        case ActionKind::SummarizePage: return icon::kScanText;
+        case ActionKind::OpenTerminalAtPath: return icon::kTerminal;
+        case ActionKind::CopyPath:
+        case ActionKind::CopyFileName:
+        case ActionKind::CopyParentPath:
+        case ActionKind::CopyTemporaryImagePath: return icon::kCopy;
+        case ActionKind::RevealPath:
+        case ActionKind::CopyPathToDirectory:
+        case ActionKind::MovePath: return icon::kFolderOpen;
+        case ActionKind::OpenUrl:
+        case ActionKind::CleanUrl:
+        case ActionKind::CopyMarkdownLink: return icon::kLink;
+        case ActionKind::PrettyJson:
+        case ActionKind::MinifyJson:
+        case ActionKind::JsonToYaml:
+        case ActionKind::JsonToCsv:
+        case ActionKind::CopyJsonPaths: return icon::kBraces;
+        case ActionKind::HashSha256:
+        case ActionKind::HashSha512:
+        case ActionKind::GenerateUuid: return icon::kHash;
+        case ActionKind::CopyColorHex:
+        case ActionKind::CopyColorRgb:
+        case ActionKind::CopyColorHsl: return icon::kPalette;
+        case ActionKind::ConvertTimezone:
+        case ActionKind::ToUnixTimestamp:
+        case ActionKind::CopyNormalizedDateTime: return icon::kClock;
+        case ActionKind::DecodeJwt: return icon::kLock;
+        case ActionKind::ExtractContactInfo:
+        case ActionKind::CopyContactVCard:
+        case ActionKind::SaveContactVCard: return icon::kUser;
+        case ActionKind::TextStatistics:
+        case ActionKind::SortLines:
+        case ActionKind::DedupeLines: return icon::kListOrdered;
+        case ActionKind::SaveCodeFile: return icon::kFileCode;
+        default: return category_icon(action_category(kind));
+    }
+}
+
 std::string with_icon(const char* glyph, std::string_view text) {
     if (!current_fonts.icons || glyph == nullptr) return std::string{text};
     return std::string{glyph} + "  " + std::string{text};
@@ -182,7 +231,7 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     style.GrabRounding = 6.0F;
     style.TabRounding = 6.0F;
     style.WindowBorderSize = 1.0F;
-    style.FrameBorderSize = 0.0F;
+    style.FrameBorderSize = 1.0F;
     style.PopupBorderSize = 1.0F;
     style.TabBorderSize = 0.0F;
     style.SeparatorTextBorderSize = 1.0F;
@@ -198,9 +247,11 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_PopupBg] = p.surface;
     c[ImGuiCol_Border] = p.border;
+    // Buttons and frames share the thin border; buttons blend it in.
     c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_FrameBg] = p.surface;
-    c[ImGuiCol_FrameBgHovered] = p.surface_hover;
+    // Fields sit inset: darker than cards in dark mode, tinted in light mode.
+    c[ImGuiCol_FrameBg] = light ? rgb(0xF3F5F8) : rgb(0x121419);
+    c[ImGuiCol_FrameBgHovered] = light ? rgb(0xEBEEF3) : rgb(0x191C22);
     c[ImGuiCol_FrameBgActive] = mix(p.surface_hover, p.accent, 0.15F);
     c[ImGuiCol_TitleBg] = p.background;
     c[ImGuiCol_TitleBgActive] = p.surface;
@@ -378,8 +429,16 @@ bool action_card(const char* id, const ActionCardModel& model) {
     const auto tint = category_color(model.category);
     draw->AddRectFilled(badge_min, ImVec2(badge_min.x + badge, badge_min.y + badge),
                         ImGui::GetColorU32(with_alpha(tint, 0.16F * alpha)), 8.0F * scale);
-    draw_category_icon(draw, ImVec2(badge_min.x + badge * 0.5F, badge_min.y + badge * 0.5F), badge * 0.5F,
-                       model.category, ImGui::GetColorU32(with_alpha(tint, alpha)));
+    const ImVec2 badge_center(badge_min.x + badge * 0.5F, badge_min.y + badge * 0.5F);
+    if (model.glyph != nullptr && current_fonts.icons) {
+        const float font_size = badge * 0.5F * 1.15F;
+        const ImVec2 extent = current_fonts.regular->CalcTextSizeA(font_size, 1000.0F, 0.0F, model.glyph);
+        draw->AddText(current_fonts.regular, font_size,
+                      ImVec2(badge_center.x - extent.x * 0.5F, badge_center.y - extent.y * 0.5F - 1.0F),
+                      ImGui::GetColorU32(with_alpha(tint, alpha)), model.glyph);
+    } else {
+        draw_category_icon(draw, badge_center, badge * 0.5F, model.category, ImGui::GetColorU32(with_alpha(tint, alpha)));
+    }
 
     // Right column: shortcut key and confidence.
     const float right = end.x - 12.0F * scale;
@@ -429,6 +488,109 @@ bool action_card(const char* id, const ActionCardModel& model) {
     }
     if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     return clicked;
+}
+
+bool begin_tool_window(const std::string& title, bool* open, ImVec2 size, bool* focus_pending, ImGuiWindowFlags extra_flags) {
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    const bool focus = focus_pending != nullptr && *focus_pending;
+    if (focus) {
+        ImGui::SetNextWindowFocus();
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+    }
+    const auto window_class = independent_window_class();
+    ImGui::SetNextWindowClass(&window_class);
+    ImGui::SetNextWindowSize(ImVec2(size.x * scale, size.y * scale), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(320.0F * scale, 160.0F * scale), ImVec2(FLT_MAX, FLT_MAX));
+    const bool visible = ImGui::Begin(title.c_str(), open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse | extra_flags);
+    if (visible && focus) {
+        ImGui::SetWindowFocus();
+        *focus_pending = false;
+    }
+    if (visible && open != nullptr && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        *open = false;
+    }
+    return visible;
+}
+
+float footer_height() {
+    return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y * 2.0F + 1.0F;
+}
+
+bool primary_button(const std::string& label) {
+    const auto& p = current_palette;
+    ImGui::PushStyleColor(ImGuiCol_Button, p.accent);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, mix(p.accent, p.text, 0.15F));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, mix(p.accent, p.background, 0.2F));
+    ImGui::PushStyleColor(ImGuiCol_Text, p.background);
+    const bool clicked = ImGui::Button(label.c_str());
+    ImGui::PopStyleColor(4);
+    return clicked;
+}
+
+int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view status) {
+    const auto& style = ImGui::GetStyle();
+    float width = 0.0F;
+    for (const auto& button : buttons) {
+        width += ImGui::CalcTextSize(button.label.c_str(), nullptr, true).x + style.FramePadding.x * 2.0F + style.ItemSpacing.x;
+    }
+    const float bottom = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
+    if (ImGui::GetCursorPosY() < bottom - style.ItemSpacing.y) ImGui::SetCursorPosY(bottom - style.ItemSpacing.y);
+    ImGui::Separator();
+    if (!status.empty()) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(current_palette.text_muted, "%.*s", static_cast<int>(status.size()), status.data());
+        ImGui::SameLine();
+    }
+    const float right = ImGui::GetWindowContentRegionMax().x - width + style.ItemSpacing.x;
+    if (ImGui::GetCursorPosX() < right) ImGui::SetCursorPosX(right);
+    int clicked = -1;
+    int index = 0;
+    for (const auto& button : buttons) {
+        if (index != 0) ImGui::SameLine();
+        if (!button.enabled) ImGui::BeginDisabled();
+        const bool pressed = button.primary ? primary_button(button.label) : ImGui::Button(button.label.c_str());
+        if (!button.enabled) ImGui::EndDisabled();
+        if (pressed) clicked = index;
+        ++index;
+    }
+    return clicked;
+}
+
+void section_heading(const char* glyph, std::string_view title, std::string_view help) {
+    ImGui::PushFont(current_fonts.bold, current_fonts.heading);
+    const auto text = with_icon(glyph, title);
+    ImGui::TextUnformatted(text.c_str());
+    ImGui::PopFont();
+    if (!help.empty()) {
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextColored(current_palette.text_muted, "%.*s", static_cast<int>(help.size()), help.data());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::Spacing();
+}
+
+bool begin_form(const char* id, float label_width) {
+    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp)) return false;
+    ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, label_width * ImGui::GetStyle().FontScaleDpi);
+    ImGui::TableSetupColumn("field", ImGuiTableColumnFlags_WidthStretch);
+    return true;
+}
+
+void form_row(std::string_view label, std::string_view help) {
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(label.data(), label.data() + label.size());
+    if (!help.empty() && ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%.*s", static_cast<int>(help.size()), help.data());
+    }
+    ImGui::TableNextColumn();
+    ImGui::SetNextItemWidth(-FLT_MIN);
+}
+
+void end_form() {
+    ImGui::EndTable();
 }
 
 #endif

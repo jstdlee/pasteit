@@ -17,6 +17,7 @@ struct PopupRow {
     // Secondary line: shortened destination path, or the action description.
     std::string detail;
     ActionCategory category = ActionCategory::Convert;
+    ActionKind kind = ActionKind::PasteText;
     double probability = 0.0;
     bool selected = false;
     bool enabled = true;

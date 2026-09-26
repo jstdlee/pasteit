@@ -37,6 +37,7 @@
 #include "ui/ai_result_panel.hpp"
 #include "transform/text_transforms.hpp"
 #include "ui/icons.hpp"
+#include "util/utf8.hpp"
 #include "ui/theme.hpp"
 #include "ui/image_preview_panel.hpp"
 #include "ui/clipboard_history_model.hpp"
@@ -441,6 +442,7 @@ void glfw_error_callback(int error, const char* description) {
 }
 
 enum class DecisionState { Idle, Pending, Ranked, Fallback };
+enum class SettingsPage { General, Ranking, Llm, Prompts, FastActions, Pipelines, Privacy, Usage };
 
 std::string content_kind_label(ContentKind kind) {
     switch (kind) {
@@ -661,7 +663,16 @@ int run_desktop_runtime() {
     std::optional<std::filesystem::path> manual_destination;
     PromptTemplatesPanelModel prompt_panel_model = build_prompt_templates_panel_model(settings.prompt_templates);
     std::string decision_status;
+    std::string clipboard_preview_text;
     DecisionState decision_state = DecisionState::Idle;
+    SettingsPage settings_page = SettingsPage::General;
+    // Filled in by the pipeline and privacy features.
+    const auto draw_pipeline_settings = [&](UiLanguage language) {
+        section_heading(icon::kPipeline, tr(language, UiTextKey::Pipeline));
+    };
+    const auto draw_privacy_settings = [&](UiLanguage language) {
+        section_heading(icon::kShield, tr(language, UiTextKey::Privacy));
+    };
     bool fit_popup_pending = false;
     const auto fit_popup_to = [&](int desired_height) {
         fit_popup_pending = false;
@@ -838,6 +849,13 @@ int run_desktop_runtime() {
         }
         popup_model = {};
         selected_row = 0;
+        clipboard_preview_text.clear();
+        if (!active_batch.request.snapshot.clipboard_items.empty() &&
+            active_batch.request.snapshot.clipboard_items.front().kind != ContentKind::Image) {
+            // The stored preview is flattened to one line; show real rows.
+            clipboard_preview_text = utf8_prefix_bytes(
+                clipboard_store.read_text(active_batch.request.snapshot.clipboard_items.front().ref), 4096);
+        }
         prompt_parameter_dialog = {};
         execution_status.clear();
         last_execution.reset();
@@ -1375,7 +1393,8 @@ int run_desktop_runtime() {
         ImGui::PushStyleColor(ImGuiCol_ChildBg, theme_palette.surface);
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0F);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0F, 10.0F));
-        const auto preview = current_item == nullptr ? std::string{} : preview_excerpt(current_item->preview, 3);
+        const auto preview = current_item == nullptr ? std::string{}
+            : preview_excerpt(clipboard_preview_text.empty() ? current_item->preview : clipboard_preview_text, 3);
         const float line_height = ImGui::GetTextLineHeight();
         const float preview_lines_height = std::min(line_height * 3.0F + ImGui::GetStyle().ItemSpacing.y,
             std::max(line_height, ImGui::CalcTextSize(preview.c_str(), nullptr, false,
@@ -1471,6 +1490,7 @@ int run_desktop_runtime() {
                 const auto& row = popup_model.rows[index];
                 const int shortcut = index < 9 ? static_cast<int>(index) + 1 : 0;
                 const ActionCardModel card{
+                    .glyph = action_icon(row.kind),
                     .label = row.label,
                     .detail = row.detail,
                     .category = row.category,
@@ -1596,38 +1616,87 @@ int run_desktop_runtime() {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem((with_icon(icon::kSettings, tr(ui_language,UiTextKey::Settings)) + "###tab-settings").c_str())) {
-            const auto settings_body_height = std::max(0.0F, ImGui::GetContentRegionAvail().y);
-            ImGui::BeginChild("settings-tab-body", ImVec2(0.0F, settings_body_height), false);
-            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::General).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-                int language = static_cast<int>(settings_draft.language);
-                const char* languages[] = {"System", "English", "简体中文"};
-                if (ImGui::Combo(tr(ui_language,UiTextKey::Language).c_str(), &language, languages, 3)) {
-                    settings_draft.language = static_cast<UiLanguage>(language);
+            const auto& pal = palette();
+            struct SettingsSectionEntry { SettingsPage page; const char* glyph; UiTextKey label; };
+            static constexpr SettingsSectionEntry sections[] = {
+                {SettingsPage::General, icon::kSliders, UiTextKey::General},
+                {SettingsPage::Ranking, icon::kGauge, UiTextKey::Djev},
+                {SettingsPage::Llm, icon::kAi, UiTextKey::GeneralLlm},
+                {SettingsPage::Prompts, icon::kFileText, UiTextKey::PromptTemplates},
+                {SettingsPage::FastActions, icon::kZap, UiTextKey::FastActions},
+                {SettingsPage::Pipelines, icon::kPipeline, UiTextKey::Pipeline},
+                {SettingsPage::Privacy, icon::kShield, UiTextKey::Privacy},
+                {SettingsPage::Usage, icon::kChart, UiTextKey::UsageInsights},
+            };
+            const float body_height = ImGui::GetContentRegionAvail().y - footer_height();
+            // Section list.
+            ImGui::BeginChild("settings-nav", ImVec2(190.0F * ImGui::GetStyle().FontScaleDpi, body_height), false);
+            for (const auto& entry : sections) {
+                const bool selected = settings_page == entry.page;
+                if (selected) ImGui::PushStyleColor(ImGuiCol_Text, pal.accent);
+                if (ImGui::Selectable(with_icon(entry.glyph, tr(ui_language, entry.label)).c_str(), selected, 0,
+                                      ImVec2(0.0F, ImGui::GetFrameHeight()))) {
+                    settings_page = entry.page;
                 }
-                int theme = static_cast<int>(settings_draft.theme);
-                const auto dark_label = tr(ui_language, UiTextKey::ThemeDark);
-                const auto light_label = tr(ui_language, UiTextKey::ThemeLight);
-                const char* themes[] = {dark_label.c_str(), light_label.c_str()};
-                if (ImGui::Combo(tr(ui_language,UiTextKey::Theme).c_str(), &theme, themes, 2)) {
-                    settings_draft.theme = static_cast<UiTheme>(theme);
+                if (selected) ImGui::PopStyleColor();
+            }
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, pal.surface);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0F, 14.0F));
+            ImGui::BeginChild("settings-page", ImVec2(0.0F, body_height), ImGuiChildFlags_AlwaysUseWindowPadding);
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor();
+            const auto path_field = [&](const char* id, std::filesystem::path& value) {
+                auto text = path_to_utf8_string(value);
+                if (input_text_string(id, text)) value = path_from_utf8_string(text);
+            };
+            switch (settings_page) {
+            case SettingsPage::General: {
+                section_heading(icon::kSliders, tr(ui_language, UiTextKey::General));
+                if (begin_form("settings-general")) {
+                    form_row(tr(ui_language, UiTextKey::Language));
+                    int language = static_cast<int>(settings_draft.language);
+                    const char* languages[] = {"System", "English", "简体中文"};
+                    if (ImGui::Combo("##language", &language, languages, 3)) settings_draft.language = static_cast<UiLanguage>(language);
+                    form_row(tr(ui_language, UiTextKey::Theme));
+                    int theme = static_cast<int>(settings_draft.theme);
+                    const auto dark_label = tr(ui_language, UiTextKey::ThemeDark);
+                    const auto light_label = tr(ui_language, UiTextKey::ThemeLight);
+                    const char* themes[] = {dark_label.c_str(), light_label.c_str()};
+                    if (ImGui::Combo("##theme", &theme, themes, 2)) settings_draft.theme = static_cast<UiTheme>(theme);
+                    form_row(tr(ui_language, UiTextKey::Opacity));
+                    if (ImGui::SliderFloat("##opacity", &settings_draft.window_opacity, 0.55F, 1.0F, "%.2f") &&
+                        !platform->set_popup_opacity(settings_draft.window_opacity)) glfwSetWindowOpacity(window, settings_draft.window_opacity);
+                    form_row(tr(ui_language, UiTextKey::DefaultImageDirectory));
+                    path_field("##image-dir", settings_draft.default_image_directory);
+                    form_row(tr(ui_language, UiTextKey::DefaultTextDirectory));
+                    path_field("##text-dir", settings_draft.default_text_directory);
+                    end_form();
                 }
-                if (ImGui::SliderFloat(tr(ui_language,UiTextKey::Opacity).c_str(), &settings_draft.window_opacity, 0.55F, 1.0F) &&
-                    !platform->set_popup_opacity(settings_draft.window_opacity)) glfwSetWindowOpacity(window, settings_draft.window_opacity);
-                auto image_dir = path_to_utf8_string(settings_draft.default_image_directory);
-                if (input_text_string(tr(ui_language,UiTextKey::DefaultImageDirectory).c_str(), image_dir)) settings_draft.default_image_directory = path_from_utf8_string(image_dir);
-                auto text_dir = path_to_utf8_string(settings_draft.default_text_directory);
-                if (input_text_string(tr(ui_language,UiTextKey::DefaultTextDirectory).c_str(), text_dir)) settings_draft.default_text_directory = path_from_utf8_string(text_dir);
+                ImGui::Spacing();
+                ImGui::SeparatorText(tr(ui_language, UiTextKey::ClipboardHistory).c_str());
                 if (ImGui::Button(tr(ui_language,UiTextKey::KeepLatest10).c_str())) rewrite_history(10, ui_language);
                 ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Text, pal.danger);
                 if (ImGui::Button(tr(ui_language,UiTextKey::DeleteAllHistory).c_str())) rewrite_history(0, ui_language);
+                ImGui::PopStyleColor();
+                break;
             }
-            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::Djev).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-                input_text_string(tr(ui_language,UiTextKey::DjevEndpoint).c_str(), settings_draft.djev.endpoint);
-                input_text_string(tr(ui_language,UiTextKey::DjevModel).c_str(), settings_draft.djev.model_id);
-                input_text_string(tr(ui_language,UiTextKey::DjevApiKey).c_str(), settings_draft.djev.api_key, false, ImGuiInputTextFlags_Password);
-                if (ImGui::Button(tr(ui_language,UiTextKey::TestDjev).c_str()) && !pending_provider_test) {
+            case SettingsPage::Ranking: {
+                section_heading(icon::kGauge, tr(ui_language, UiTextKey::Djev), tr(ui_language, UiTextKey::DjevHelp));
+                if (begin_form("settings-djev")) {
+                    form_row(tr(ui_language, UiTextKey::DjevEndpoint));
+                    input_text_string("##djev-endpoint", settings_draft.djev.endpoint);
+                    form_row(tr(ui_language, UiTextKey::DjevModel));
+                    input_text_string("##djev-model", settings_draft.djev.model_id);
+                    form_row(tr(ui_language, UiTextKey::DjevApiKey));
+                    input_text_string("##djev-key", settings_draft.djev.api_key, false, ImGuiInputTextFlags_Password);
+                    end_form();
+                }
+                if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestDjev)).c_str()) && !pending_provider_test) {
                     pending_provider_test_is_djev = true;
-                    djev_test_status = "Testing…";
+                    djev_test_status = tr(ui_language, UiTextKey::Testing);
                     const auto provider = settings_draft.djev;
                     const auto language_copy = ui_language;
                     pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
@@ -1636,40 +1705,61 @@ int run_desktop_runtime() {
                     }));
                 }
                 ImGui::SameLine();
-                if (!djev_test_status.empty()) ImGui::TextUnformatted(djev_test_status.c_str());
+                if (!djev_test_status.empty()) ImGui::TextColored(pal.text_muted, "%s", djev_test_status.c_str());
+                ImGui::Spacing();
+                if (ImGui::Button(tr(ui_language,UiTextKey::ResetProviders).c_str())) {
+                    const auto defaults = default_settings();
+                    settings_draft.djev = defaults.djev;
+                    settings_draft.general_llm = defaults.general_llm;
+                }
+                break;
             }
-            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::GeneralLlm).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-                input_text_string(tr(ui_language,UiTextKey::LlmEndpoint).c_str(), settings_draft.general_llm.endpoint);
-                input_text_string(tr(ui_language,UiTextKey::LlmModel).c_str(), settings_draft.general_llm.model_id);
+            case SettingsPage::Llm: {
+                section_heading(icon::kAi, tr(ui_language, UiTextKey::GeneralLlm), tr(ui_language, UiTextKey::LlmHelp));
                 if (!pending_model_list.has_value() && model_list_endpoint != settings_draft.general_llm.endpoint) {
                     general_llm_models.clear();
                     model_list_status.clear();
                     model_list_endpoint.clear();
                 }
                 if (model_list_endpoint.empty() && !pending_model_list.has_value()) request_model_list();
-                const auto model_preview = settings_draft.general_llm.model_id.empty()
-                    ? tr(ui_language, UiTextKey::ModelList)
-                    : settings_draft.general_llm.model_id;
-                if (ImGui::BeginCombo((tr(ui_language,UiTextKey::ModelList)+"##llm-model-list").c_str(), model_preview.c_str())) {
-                    for (const auto& model_id : general_llm_models) {
-                        const bool selected = settings_draft.general_llm.model_id == model_id;
-                        if (ImGui::Selectable(model_id.c_str(), selected)) settings_draft.general_llm.model_id = model_id;
-                        if (selected) ImGui::SetItemDefaultFocus();
+                if (begin_form("settings-llm")) {
+                    form_row(tr(ui_language, UiTextKey::LlmEndpoint));
+                    input_text_string("##llm-endpoint", settings_draft.general_llm.endpoint);
+                    form_row(tr(ui_language, UiTextKey::LlmModel));
+                    const auto model_preview = settings_draft.general_llm.model_id.empty()
+                        ? tr(ui_language, UiTextKey::ModelList) : settings_draft.general_llm.model_id;
+                    const float refresh_width = ImGui::CalcTextSize(tr(ui_language,UiTextKey::RefreshModels).c_str()).x +
+                                                ImGui::GetStyle().FramePadding.x * 2.0F + ImGui::GetStyle().ItemSpacing.x;
+                    ImGui::SetNextItemWidth(-refresh_width);
+                    if (ImGui::BeginCombo("##llm-model-list", model_preview.c_str())) {
+                        for (const auto& model_id : general_llm_models) {
+                            const bool selected = settings_draft.general_llm.model_id == model_id;
+                            if (ImGui::Selectable(model_id.c_str(), selected)) settings_draft.general_llm.model_id = model_id;
+                            if (selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
                     }
-                    ImGui::EndCombo();
+                    ImGui::SameLine();
+                    if (ImGui::Button(tr(ui_language,UiTextKey::RefreshModels).c_str())) {
+                        general_llm_models.clear();
+                        model_list_status.clear();
+                        model_list_endpoint.clear();
+                        request_model_list();
+                    }
+                    form_row(tr(ui_language, UiTextKey::LlmModel) + " ID");
+                    input_text_string("##llm-model", settings_draft.general_llm.model_id);
+                    form_row(tr(ui_language, UiTextKey::LlmApiKey));
+                    input_text_string("##llm-key", settings_draft.general_llm.api_key, false, ImGuiInputTextFlags_Password);
+                    end_form();
                 }
-                ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language,UiTextKey::RefreshModels).c_str())) {
-                    general_llm_models.clear();
-                    model_list_status.clear();
-                    model_list_endpoint.clear();
-                    request_model_list();
+                if (!model_list_status.empty()) {
+                    ImGui::PushTextWrapPos(0.0F);
+                    ImGui::TextColored(pal.warning, "%s", (tr(ui_language,UiTextKey::ModelListFailed) + model_list_status).c_str());
+                    ImGui::PopTextWrapPos();
                 }
-                if (!model_list_status.empty()) copyable_text(tr(ui_language,UiTextKey::ModelListFailed) + model_list_status, true);
-                input_text_string(tr(ui_language,UiTextKey::LlmApiKey).c_str(), settings_draft.general_llm.api_key, false, ImGuiInputTextFlags_Password);
-                if (ImGui::Button(tr(ui_language,UiTextKey::TestGeneralLlm).c_str()) && !pending_provider_test) {
+                if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestGeneralLlm)).c_str()) && !pending_provider_test) {
                     pending_provider_test_is_djev = false;
-                    llm_test_status = "Testing…";
+                    llm_test_status = tr(ui_language, UiTextKey::Testing);
                     const auto provider = settings_draft.general_llm;
                     const auto language_copy = ui_language;
                     pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
@@ -1679,127 +1769,47 @@ int run_desktop_runtime() {
                     }));
                 }
                 ImGui::SameLine();
-                if (!llm_test_status.empty()) ImGui::TextUnformatted(llm_test_status.c_str());
+                if (!llm_test_status.empty()) ImGui::TextColored(pal.text_muted, "%s", llm_test_status.c_str());
+                break;
             }
-            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::UsageInsights).c_str())) {
-                ImGui::PushTextWrapPos(0.0F);
-                ImGui::TextDisabled("%s", tr(ui_language,UiTextKey::UsageInsightsHelp).c_str());
-                ImGui::PopTextWrapPos();
-                const auto summary = usage_summary(usage_model, current_time_ms(), 5);
-                if (summary.empty()) ImGui::TextUnformatted(tr(ui_language,UiTextKey::UsageInsightsEmpty).c_str());
-                for (const auto& [kind, habits] : summary) {
-                    ImGui::SeparatorText(kind.c_str());
-                    if (ImGui::BeginTable(("usage-" + kind).c_str(), 3, ImGuiTableFlags_SizingStretchProp)) {
-                        for (const auto& habit : habits) {
-                            ImGui::TableNextRow();
-                            ImGui::TableNextColumn();
-                            ImGui::TextUnformatted(usage_action_label(habit.action_key).c_str());
-                            ImGui::TableNextColumn();
-                            ImGui::ProgressBar(static_cast<float>(habit.share), ImVec2(120.0F, 0.0F), "");
-                            ImGui::TableNextColumn();
-                            ImGui::Text("%3.0f%%  x%u", habit.share * 100.0, habit.count);
-                        }
-                        ImGui::EndTable();
-                    }
-                }
-                if (ImGui::Button(tr(ui_language,UiTextKey::ResetUsage).c_str())) {
-                    usage_model = {};
-                    std::string usage_error;
-                    settings_status = usage_store.save(usage_model, usage_error)
-                        ? tr(ui_language,UiTextKey::UsageReset) : usage_error;
-                }
-            }
-            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::FastActions).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::TextUnformatted(tr(UiTextKey::MermaidRendererHelp).c_str());
-                if (ImGui::SmallButton(tr(UiTextKey::MermaidHomepage).c_str())) platform->open_uri("https://mermaid.js.org/");
-                auto mermaid_cli = path_to_utf8_string(settings_draft.renderers.mermaid_cli_path);
-                if (input_text_string(tr(UiTextKey::MermaidCliPath).c_str(), mermaid_cli)) {
-                    settings_draft.renderers.mermaid_cli_path = path_from_utf8_string(mermaid_cli);
-                }
-                std::string mermaid_args;
-                for (const auto& arg : settings_draft.renderers.mermaid_arguments) {
-                    if (!mermaid_args.empty()) mermaid_args += ' ';
-                    mermaid_args += arg;
-                }
-                if (input_text_string(tr(UiTextKey::MermaidCliArguments).c_str(), mermaid_args)) {
-                    std::istringstream args(mermaid_args);
-                    settings_draft.renderers.mermaid_arguments.assign(
-                        std::istream_iterator<std::string>{args}, std::istream_iterator<std::string>{});
-                }
-                ImGui::TextUnformatted(tr(UiTextKey::QrHelp).c_str());
-                if (ImGui::SmallButton(tr(UiTextKey::QrHomepage).c_str())) platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
-                input_text_string(tr(UiTextKey::QrErrorCorrection).c_str(), settings_draft.renderers.qr_error_correction);
-                ImGui::SliderInt(tr(UiTextKey::QrMargin).c_str(), &settings_draft.renderers.qr_margin, 0, 10);
-                ImGui::SliderInt(tr(UiTextKey::QrScale).c_str(), &settings_draft.renderers.qr_scale, 1, 64);
-
-                auto download_dir = path_to_utf8_string(settings_draft.downloads.resume_directory);
-                if (input_text_string(tr(UiTextKey::DownloadResumeDirectory).c_str(), download_dir)) {
-                    settings_draft.downloads.resume_directory = path_from_utf8_string(download_dir);
-                }
-                ImGui::Checkbox(tr(UiTextKey::KeepPartFiles).c_str(), &settings_draft.downloads.keep_part_files);
-
-                auto terminal_command = join_argv(settings_draft.terminal.command);
-                if (input_text_string(tr(UiTextKey::TerminalCommand).c_str(), terminal_command)) {
-                    settings_draft.terminal.command = split_argv_field(terminal_command);
-                }
-                input_text_string(tr(UiTextKey::TerminalProfile).c_str(), settings_draft.terminal.profile);
-
-                bool sha256 = std::find(settings_draft.hash.default_algorithms.begin(),
-                                         settings_draft.hash.default_algorithms.end(), "sha256") !=
-                              settings_draft.hash.default_algorithms.end();
-                bool sha512 = std::find(settings_draft.hash.default_algorithms.begin(),
-                                         settings_draft.hash.default_algorithms.end(), "sha512") !=
-                              settings_draft.hash.default_algorithms.end();
-                const bool hash_changed_256 = ImGui::Checkbox(tr(UiTextKey::ShowSha256).c_str(), &sha256);
-                const bool hash_changed_512 = ImGui::Checkbox(tr(UiTextKey::ShowSha512).c_str(), &sha512);
-                if (hash_changed_256 || hash_changed_512) {
-                    settings_draft.hash.default_algorithms.clear();
-                    if (sha256) settings_draft.hash.default_algorithms.push_back("sha256");
-                    if (sha512) settings_draft.hash.default_algorithms.push_back("sha512");
-                }
-
-                input_text_string("Source time zone", settings_draft.date_time.source_zone);
-                input_text_string("Target time zone", settings_draft.date_time.target_zone);
-                bool twenty_four_hour = settings_draft.date_time.use_24_hour_clock;
-                ImGui::BeginDisabled();
-                ImGui::Checkbox("24-hour display preference (stored; ISO output currently used)", &twenty_four_hour);
-                ImGui::EndDisabled();
-
-                auto annotation_dir = path_to_utf8_string(settings_draft.annotation.save_directory);
-                if (input_text_string("Annotation save directory", annotation_dir)) {
-                    settings_draft.annotation.save_directory = path_from_utf8_string(annotation_dir);
-                }
-                settings_draft.annotation.export_format = "svg";
-                auto annotation_format = settings_draft.annotation.export_format;
-                ImGui::BeginDisabled();
-                input_text_string("Annotation export format", annotation_format);
-                ImGui::EndDisabled();
-                copyable_text("Annotation export is SVG-only in this build; PNG/JPG preferences are normalized to SVG.", true);
-            }
-            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::PromptTemplates).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            case SettingsPage::Prompts: {
+                section_heading(icon::kFileText, tr(ui_language, UiTextKey::PromptTemplates), tr(ui_language, UiTextKey::PromptTemplatesHelp));
                 PromptTemplateService service(settings_draft.prompt_templates);
                 if (prompt_panel_model.modal == PromptTemplateModal::None) prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates);
                 std::string view_id, edit_id, duplicate_id, delete_id;
-                if (ImGui::BeginTable("settings-prompt-templates", 5, ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp)) {
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 70);
+                if (ImGui::BeginTable("settings-prompt-templates", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 64);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 3);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Temperature).c_str(), ImGuiTableColumnFlags_WidthFixed, 90);
-                    ImGui::TableSetupColumn((tr(ui_language,UiTextKey::BuiltIn)+"/"+tr(ui_language,UiTextKey::Custom)).c_str(), ImGuiTableColumnFlags_WidthFixed, 110);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 190);
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 130);
                     ImGui::TableHeadersRow();
                     for (const auto& row : prompt_panel_model.rows) {
                         ImGui::PushID(("settings-"+row.id).c_str());
                         ImGui::TableNextRow(); ImGui::TableNextColumn();
                         bool enabled = row.enabled;
                         if (ImGui::Checkbox("##enabled", &enabled)) { std::string error; service.set_enabled(row.id, enabled, error); }
-                        ImGui::TableNextColumn(); copyable_text(row.name);
-                        ImGui::TableNextColumn(); copyable_text(std::to_string(row.temperature));
-                        ImGui::TableNextColumn(); copyable_text(row.built_in ? tr(ui_language,UiTextKey::BuiltIn) : tr(ui_language,UiTextKey::Custom));
                         ImGui::TableNextColumn();
-                        if (ImGui::SmallButton((tr(ui_language,UiTextKey::View)+"##view").c_str())) view_id = row.id; ImGui::SameLine();
-                        if (ImGui::SmallButton((tr(ui_language,UiTextKey::Edit)+"##edit").c_str())) edit_id = row.id; ImGui::SameLine();
-                        if (ImGui::SmallButton((tr(ui_language,UiTextKey::Duplicate)+"##duplicate").c_str())) duplicate_id = row.id; ImGui::SameLine();
-                        if (ImGui::SmallButton((tr(ui_language,UiTextKey::Delete)+"##delete").c_str())) delete_id = row.id;
+                        ImGui::AlignTextToFramePadding();
+                        ImGui::TextUnformatted(row.name.c_str());
+                        if (row.built_in) { ImGui::SameLine(); pill(tr(ui_language,UiTextKey::BuiltIn), pal.text_muted); }
+                        ImGui::TableNextColumn();
+                        ImGui::Text("%.1f", row.temperature);
+                        ImGui::TableNextColumn();
+                        const auto icon_button = [&](const char* glyph, const char* fallback, const char* id) {
+                            const auto label = std::string{ui_fonts().icons ? glyph : fallback} + id;
+                            return ImGui::SmallButton(label.c_str());
+                        };
+                        if (icon_button(icon::kEye, "View", "##view")) view_id = row.id;
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::View).c_str());
+                        ImGui::SameLine();
+                        if (icon_button(icon::kEdit, "Edit", "##edit")) edit_id = row.id;
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::Edit).c_str());
+                        ImGui::SameLine();
+                        if (icon_button(icon::kCopy, "Dup", "##duplicate")) duplicate_id = row.id;
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::Duplicate).c_str());
+                        ImGui::SameLine();
+                        if (icon_button(icon::kTrash, "Del", "##delete")) delete_id = row.id;
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::Delete).c_str());
                         ImGui::PopID();
                     }
                     ImGui::EndTable();
@@ -1808,48 +1818,191 @@ int run_desktop_runtime() {
                 if (!edit_id.empty()) begin_prompt_template_edit(prompt_panel_model, edit_id);
                 if (!duplicate_id.empty()) duplicate_prompt_template(prompt_panel_model, service, duplicate_id);
                 if (!delete_id.empty()) begin_prompt_template_delete(prompt_panel_model, delete_id);
-                if (ImGui::Button(tr(ui_language,UiTextKey::NewTemplate).c_str())) { std::string error; if (const auto created = service.create("New Prompt", "Transform {text}", 0.2, error)) { prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); begin_prompt_template_edit(prompt_panel_model, created->id); } }
+                ImGui::Spacing();
+                if (ImGui::Button(with_icon(icon::kPlus, tr(ui_language,UiTextKey::NewTemplate)).c_str())) { std::string error; if (const auto created = service.create("New Prompt", "Transform {text}", 0.2, error)) { prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); begin_prompt_template_edit(prompt_panel_model, created->id); } }
                 ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language,UiTextKey::RestoreDefaults).c_str())) { service.restore_defaults(); prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); }
-                const auto prompt_detail_title = tr(ui_language,UiTextKey::Details) + "##settings-prompt-detail";
-                const auto prompt_edit_title = tr(ui_language,UiTextKey::Edit) + "##settings-prompt-edit";
-                const auto prompt_delete_title = tr(ui_language,UiTextKey::Delete) + "##settings-prompt-delete";
+                if (ImGui::Button(with_icon(icon::kUndo, tr(ui_language,UiTextKey::RestoreDefaults)).c_str())) { service.restore_defaults(); prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); }
                 if (prompt_panel_model.modal == PromptTemplateModal::View && prompt_panel_model.draft) {
-                    bool detail_open = true; ImGui::SetNextWindowClass(&auxiliary_window_class); ImGui::SetNextWindowSize(ImVec2(520,320),ImGuiCond_FirstUseEver);
-                    if (ImGui::Begin(prompt_detail_title.c_str(), &detail_open)) {
-                        copyable_text(prompt_panel_model.draft->name); ImGui::Separator();
-                        ImGui::BeginChild("settings-prompt-detail-body", ImVec2(0.0F, 0.0F), true);
-                        copyable_text(prompt_panel_model.draft->system_prompt, true); ImGui::EndChild();
-                    } ImGui::End();
-                    if (!detail_open) cancel_prompt_template_modal(prompt_panel_model);
+                    bool detail_open = true;
+                    if (begin_tool_window(prompt_panel_model.draft->name + "###settings-prompt-detail", &detail_open, ImVec2(540, 360))) {
+                        ImGui::BeginChild("settings-prompt-detail-body", ImVec2(0.0F, -footer_height()), ImGuiChildFlags_Borders);
+                        copyable_text(prompt_panel_model.draft->system_prompt, true);
+                        ImGui::EndChild();
+                        const int clicked = footer_buttons({{tr(ui_language,UiTextKey::Edit)}, {tr(ui_language,UiTextKey::Close), true}});
+                        if (clicked == 0) begin_prompt_template_edit(prompt_panel_model, prompt_panel_model.draft->id);
+                        if (clicked == 1) detail_open = false;
+                    }
+                    ImGui::End();
+                    if (!detail_open && prompt_panel_model.modal == PromptTemplateModal::View) cancel_prompt_template_modal(prompt_panel_model);
                 }
                 if (prompt_panel_model.modal == PromptTemplateModal::Edit && prompt_panel_model.draft) {
-                    bool edit_open = true; ImGui::SetNextWindowClass(&auxiliary_window_class); ImGui::SetNextWindowSize(ImVec2(600,440),ImGuiCond_FirstUseEver);
-                    if (ImGui::Begin(prompt_edit_title.c_str(), &edit_open)) {
-                        input_text_string(tr(ui_language,UiTextKey::TemplateName).c_str(), prompt_panel_model.draft->name);
-                        const float edit_footer_height = 3.0F * ImGui::GetFrameHeightWithSpacing();
-                        input_text_string(tr(ui_language,UiTextKey::SystemPrompt).c_str(),
-                                          prompt_panel_model.draft->system_prompt, true, 0, -edit_footer_height);
-                        ImGui::Checkbox(tr(ui_language,UiTextKey::Enabled).c_str(), &prompt_panel_model.draft->enabled);
-                        float temperature = static_cast<float>(prompt_panel_model.draft->temperature);
-                        if (ImGui::SliderFloat(tr(ui_language,UiTextKey::Temperature).c_str(), &temperature, 0.0F, 2.0F)) prompt_panel_model.draft->temperature = temperature;
-                        if (ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())) { const auto result = save_prompt_template_edit(prompt_panel_model, service); if (result.error.empty()) edit_open = false; }
-                        ImGui::SameLine(); if (ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str())) edit_open = false;
-                    } ImGui::End();
+                    bool edit_open = true;
+                    if (begin_tool_window(tr(ui_language,UiTextKey::Edit) + "###settings-prompt-edit", &edit_open, ImVec2(620, 460))) {
+                        if (begin_form("prompt-edit-form", 140.0F)) {
+                            form_row(tr(ui_language,UiTextKey::TemplateName));
+                            input_text_string("##template-name", prompt_panel_model.draft->name);
+                            form_row(tr(ui_language,UiTextKey::Enabled));
+                            ImGui::Checkbox("##template-enabled", &prompt_panel_model.draft->enabled);
+                            form_row(tr(ui_language,UiTextKey::Temperature));
+                            float temperature = static_cast<float>(prompt_panel_model.draft->temperature);
+                            if (ImGui::SliderFloat("##template-temperature", &temperature, 0.0F, 2.0F, "%.1f")) prompt_panel_model.draft->temperature = temperature;
+                            end_form();
+                        }
+                        ImGui::TextColored(pal.text_muted, "%s", tr(ui_language,UiTextKey::SystemPrompt).c_str());
+                        input_text_string("##template-system-prompt", prompt_panel_model.draft->system_prompt, true, 0, -footer_height());
+                        const int clicked = footer_buttons({{tr(ui_language,UiTextKey::Cancel)}, {tr(ui_language,UiTextKey::Save), true}});
+                        if (clicked == 0) edit_open = false;
+                        if (clicked == 1) { const auto result = save_prompt_template_edit(prompt_panel_model, service); if (result.error.empty()) edit_open = false; }
+                    }
+                    ImGui::End();
                     if (!edit_open && prompt_panel_model.modal != PromptTemplateModal::None) cancel_prompt_template_modal(prompt_panel_model);
                 }
                 if (prompt_panel_model.modal == PromptTemplateModal::Delete) {
-                    bool delete_open = true; ImGui::SetNextWindowClass(&auxiliary_window_class); ImGui::SetNextWindowSize(ImVec2(420,180),ImGuiCond_FirstUseEver);
-                    if (ImGui::Begin(prompt_delete_title.c_str(), &delete_open)) {
-                        copyable_text(tr(ui_language,UiTextKey::DeleteTemplateText));
-                        if (ImGui::Button(tr(ui_language,UiTextKey::ConfirmDelete).c_str())) { confirm_prompt_template_delete(prompt_panel_model, service); delete_open = false; }
-                        ImGui::SameLine(); if (ImGui::Button(tr(ui_language,UiTextKey::Keep).c_str())) delete_open = false;
-                    } ImGui::End();
+                    bool delete_open = true;
+                    if (begin_tool_window(tr(ui_language,UiTextKey::Delete) + "###settings-prompt-delete", &delete_open, ImVec2(420, 170))) {
+                        ImGui::PushTextWrapPos(0.0F);
+                        ImGui::TextUnformatted(tr(ui_language,UiTextKey::DeleteTemplateText).c_str());
+                        ImGui::PopTextWrapPos();
+                        const int clicked = footer_buttons({{tr(ui_language,UiTextKey::Keep)}, {tr(ui_language,UiTextKey::ConfirmDelete), true}});
+                        if (clicked == 0) delete_open = false;
+                        if (clicked == 1) { confirm_prompt_template_delete(prompt_panel_model, service); delete_open = false; }
+                    }
+                    ImGui::End();
                     if (!delete_open && prompt_panel_model.modal != PromptTemplateModal::None) cancel_prompt_template_modal(prompt_panel_model);
                 }
+                break;
             }
-            if (!settings_status.empty()) copyable_text(settings_status, true);
-            if (ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())) {
+            case SettingsPage::FastActions: {
+                section_heading(icon::kZap, tr(ui_language, UiTextKey::FastActions));
+                ImGui::SeparatorText("Mermaid");
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextColored(pal.text_muted, "%s", tr(UiTextKey::MermaidRendererHelp).c_str());
+                ImGui::PopTextWrapPos();
+                if (ImGui::SmallButton(with_icon(icon::kLink, tr(UiTextKey::MermaidHomepage)).c_str())) platform->open_uri("https://mermaid.js.org/");
+                if (begin_form("settings-mermaid")) {
+                    form_row(tr(UiTextKey::MermaidCliPath));
+                    path_field("##mermaid-cli", settings_draft.renderers.mermaid_cli_path);
+                    form_row(tr(UiTextKey::MermaidCliArguments));
+                    std::string mermaid_args;
+                    for (const auto& arg : settings_draft.renderers.mermaid_arguments) {
+                        if (!mermaid_args.empty()) mermaid_args += ' ';
+                        mermaid_args += arg;
+                    }
+                    if (input_text_string("##mermaid-args", mermaid_args)) {
+                        std::istringstream args(mermaid_args);
+                        settings_draft.renderers.mermaid_arguments.assign(
+                            std::istream_iterator<std::string>{args}, std::istream_iterator<std::string>{});
+                    }
+                    end_form();
+                }
+                ImGui::SeparatorText("QR");
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextColored(pal.text_muted, "%s", tr(UiTextKey::QrHelp).c_str());
+                ImGui::PopTextWrapPos();
+                if (ImGui::SmallButton(with_icon(icon::kLink, tr(UiTextKey::QrHomepage)).c_str())) platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
+                if (begin_form("settings-qr")) {
+                    form_row(tr(UiTextKey::QrErrorCorrection));
+                    input_text_string("##qr-ecc", settings_draft.renderers.qr_error_correction);
+                    form_row(tr(UiTextKey::QrMargin));
+                    ImGui::SliderInt("##qr-margin", &settings_draft.renderers.qr_margin, 0, 10);
+                    form_row(tr(UiTextKey::QrScale));
+                    ImGui::SliderInt("##qr-scale", &settings_draft.renderers.qr_scale, 1, 64);
+                    end_form();
+                }
+                ImGui::SeparatorText(tr(UiTextKey::Downloads).c_str());
+                if (begin_form("settings-downloads")) {
+                    form_row(tr(UiTextKey::DownloadResumeDirectory));
+                    path_field("##download-dir", settings_draft.downloads.resume_directory);
+                    form_row(tr(UiTextKey::KeepPartFiles));
+                    ImGui::Checkbox("##keep-part", &settings_draft.downloads.keep_part_files);
+                    end_form();
+                }
+                ImGui::SeparatorText(tr(UiTextKey::TerminalAndFiles).c_str());
+                if (begin_form("settings-terminal")) {
+                    form_row(tr(UiTextKey::TerminalCommand));
+                    auto terminal_command = join_argv(settings_draft.terminal.command);
+                    if (input_text_string("##terminal-command", terminal_command)) settings_draft.terminal.command = split_argv_field(terminal_command);
+                    form_row(tr(UiTextKey::TerminalProfile));
+                    input_text_string("##terminal-profile", settings_draft.terminal.profile);
+                    bool sha256 = std::find(settings_draft.hash.default_algorithms.begin(), settings_draft.hash.default_algorithms.end(), "sha256") != settings_draft.hash.default_algorithms.end();
+                    bool sha512 = std::find(settings_draft.hash.default_algorithms.begin(), settings_draft.hash.default_algorithms.end(), "sha512") != settings_draft.hash.default_algorithms.end();
+                    form_row(tr(UiTextKey::ShowSha256));
+                    const bool hash_changed_256 = ImGui::Checkbox("##sha256", &sha256);
+                    form_row(tr(UiTextKey::ShowSha512));
+                    const bool hash_changed_512 = ImGui::Checkbox("##sha512", &sha512);
+                    if (hash_changed_256 || hash_changed_512) {
+                        settings_draft.hash.default_algorithms.clear();
+                        if (sha256) settings_draft.hash.default_algorithms.push_back("sha256");
+                        if (sha512) settings_draft.hash.default_algorithms.push_back("sha512");
+                    }
+                    form_row(tr(UiTextKey::AnnotationDirectory), tr(UiTextKey::AnnotationSvgOnly));
+                    path_field("##annotation-dir", settings_draft.annotation.save_directory);
+                    settings_draft.annotation.export_format = "svg";
+                    end_form();
+                }
+                ImGui::SeparatorText(tr(UiTextKey::DateTime).c_str());
+                if (begin_form("settings-datetime")) {
+                    form_row(tr(UiTextKey::SourceTimeZone));
+                    input_text_string("##source-zone", settings_draft.date_time.source_zone);
+                    form_row(tr(UiTextKey::TargetTimeZone));
+                    input_text_string("##target-zone", settings_draft.date_time.target_zone);
+                    end_form();
+                }
+                break;
+            }
+            case SettingsPage::Pipelines:
+                draw_pipeline_settings(ui_language);
+                break;
+            case SettingsPage::Privacy:
+                draw_privacy_settings(ui_language);
+                break;
+            case SettingsPage::Usage: {
+                section_heading(icon::kChart, tr(ui_language, UiTextKey::UsageInsights), tr(ui_language,UiTextKey::UsageInsightsHelp));
+                const auto summary = usage_summary(usage_model, current_time_ms(), 5);
+                if (summary.empty()) ImGui::TextColored(pal.text_muted, "%s", tr(ui_language,UiTextKey::UsageInsightsEmpty).c_str());
+                for (const auto& [kind, habits] : summary) {
+                    ImGui::SeparatorText(kind.c_str());
+                    if (ImGui::BeginTable(("usage-" + kind).c_str(), 3, ImGuiTableFlags_SizingStretchProp)) {
+                        ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthStretch, 3.0F);
+                        ImGui::TableSetupColumn("share", ImGuiTableColumnFlags_WidthStretch, 2.0F);
+                        ImGui::TableSetupColumn("count", ImGuiTableColumnFlags_WidthFixed, 90.0F);
+                        for (const auto& habit : habits) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImGui::TextUnformatted(usage_action_label(habit.action_key).c_str());
+                            ImGui::TableNextColumn();
+                            ImGui::ProgressBar(static_cast<float>(habit.share), ImVec2(-FLT_MIN, 6.0F), "");
+                            ImGui::TableNextColumn();
+                            ImGui::TextColored(pal.text_muted, "%3.0f%%  ×%u", habit.share * 100.0, habit.count);
+                        }
+                        ImGui::EndTable();
+                    }
+                }
+                ImGui::Spacing();
+                ImGui::PushStyleColor(ImGuiCol_Text, pal.danger);
+                if (ImGui::Button(with_icon(icon::kTrash, tr(ui_language,UiTextKey::ResetUsage)).c_str())) {
+                    usage_model = {};
+                    std::string usage_error;
+                    settings_status = usage_store.save(usage_model, usage_error)
+                        ? tr(ui_language,UiTextKey::UsageReset) : usage_error;
+                }
+                ImGui::PopStyleColor();
+                break;
+            }
+            }
+            ImGui::EndChild();
+            // Footer: status, unsaved marker, Cancel/Save.
+            const bool dirty = !(settings_draft == settings);
+            const auto status = !settings_status.empty() ? settings_status
+                              : dirty ? tr(ui_language, UiTextKey::UnsavedChanges) : std::string{};
+            const int clicked = footer_buttons({{tr(ui_language,UiTextKey::Cancel), false, dirty},
+                                                {tr(ui_language,UiTextKey::Save), true, dirty}}, status);
+            if (clicked == 0) {
+                settings_draft = settings;
+                settings_status.clear();
+                if (!platform->set_popup_opacity(settings.window_opacity)) glfwSetWindowOpacity(window, settings.window_opacity);
+            }
+            if (clicked == 1) {
                 AppSettings candidate = settings; std::string error;
                 if (save_settings_draft(settings_store, settings, settings_draft, candidate, error)) {
                     const bool llm_endpoint_changed = settings.general_llm.endpoint != candidate.general_llm.endpoint;
@@ -1870,9 +2023,7 @@ int run_desktop_runtime() {
                     platform->apply_settings(settings);
                 } else settings_status = error;
             }
-            ImGui::SameLine();
-            if (ImGui::Button(tr(ui_language,UiTextKey::ResetProviders).c_str())) { const auto defaults = default_settings(); settings_draft.djev = defaults.djev; settings_draft.general_llm = defaults.general_llm; }
-            ImGui::EndChild();
+            if (dirty && settings_status == tr(ui_language, UiTextKey::Saved)) settings_status.clear();
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
@@ -1883,7 +2034,8 @@ int run_desktop_runtime() {
                 main_viewport->Pos, ImVec2(main_viewport->Pos.x + main_viewport->Size.x, main_viewport->Pos.y + main_viewport->Size.y),
                 ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg));
         }
-        if (!modal_open && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (!modal_open && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             popup_visible = false;
             const bool keep_visible=has_any_auxiliary_window();
             if (!keep_visible) {
@@ -1896,38 +2048,29 @@ int run_desktop_runtime() {
 
         if (prompt_parameter_dialog.open) {
             bool open = true;
-            if (prompt_parameter_dialog.focus_pending) {
-                ImGui::SetNextWindowFocus();
-                const auto* viewport = ImGui::GetMainViewport();
-                ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-            }
-            ImGui::SetNextWindowClass(&auxiliary_window_class);
             const auto parameter_rows = std::clamp<std::size_t>(prompt_parameter_dialog.names.size(), 1, 10);
-            const auto parameter_height = 125.0F + static_cast<float>(parameter_rows) * ImGui::GetFrameHeightWithSpacing();
-            ImGui::SetNextWindowSize(ImVec2(520.0F, parameter_height), ImGuiCond_Appearing);
-            const auto title = "Prompt Parameters: " + prompt_parameter_dialog.template_name + "##prompt-parameters";
-            if (ImGui::Begin(title.c_str(), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
-                if (prompt_parameter_dialog.focus_pending) {
-                    ImGui::SetWindowFocus();
-                    prompt_parameter_dialog.focus_pending = false;
-                }
-                copyable_text("Enter values used by this prompt.");
-                ImGui::BeginChild("prompt-parameters-body", ImVec2(0.0F, -ImGui::GetFrameHeightWithSpacing() * 1.5F), true);
-                for (const auto& name : prompt_parameter_dialog.names) {
-                    auto& value = prompt_parameter_dialog.values[name];
-                    input_text_string(name.c_str(), value);
+            const auto parameter_height = 130.0F + static_cast<float>(parameter_rows) * ImGui::GetFrameHeightWithSpacing();
+            const auto title = prompt_parameter_dialog.template_name + "###prompt-parameters";
+            if (begin_tool_window(title, &open, ImVec2(520.0F, parameter_height), &prompt_parameter_dialog.focus_pending)) {
+                ImGui::TextColored(palette().text_muted, "%s", tr(ui_language, UiTextKey::PromptParametersHelp).c_str());
+                ImGui::BeginChild("prompt-parameters-body", ImVec2(0.0F, -footer_height()), false);
+                if (begin_form("prompt-parameters-form", 150.0F)) {
+                    for (const auto& name : prompt_parameter_dialog.names) {
+                        auto& value = prompt_parameter_dialog.values[name];
+                        form_row(name);
+                        input_text_string(("##param-" + name).c_str(), value);
+                    }
+                    end_form();
                 }
                 ImGui::EndChild();
-                if (ImGui::Button(tr(ui_language, UiTextKey::Confirm).c_str())) {
+                const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Confirm), true}});
+                if (clicked == 0) prompt_parameter_dialog.open = false;
+                if (clicked == 1 || (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Enter))) {
                     PromptVariables values;
                     values.values = prompt_parameter_dialog.values;
                     prompt_parameter_memory[prompt_parameter_dialog.template_id] = values.values;
                     activated_prompt_variables = std::move(values);
                     activated_action = prompt_parameter_dialog.action_id;
-                    prompt_parameter_dialog.open = false;
-                }
-                ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language, UiTextKey::Cancel).c_str())) {
                     prompt_parameter_dialog.open = false;
                 }
             }
@@ -1936,24 +2079,14 @@ int run_desktop_runtime() {
         }
 
         if (custom_prompt_dialog.open) {
-            if (custom_prompt_dialog.focus_pending) {
-                ImGui::SetNextWindowFocus();
-                ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-            }
-            ImGui::SetNextWindowClass(&auxiliary_window_class);
-            ImGui::SetNextWindowSize(ImVec2(560, 280), ImGuiCond_Appearing);
-            const auto custom_prompt_title = tr(ui_language, UiTextKey::CustomPrompt) + "##custom-prompt";
-            if (ImGui::Begin(custom_prompt_title.c_str(), &custom_prompt_dialog.open,
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse)) {
-                if (custom_prompt_dialog.focus_pending) {
-                    ImGui::SetWindowFocus();
-                    custom_prompt_dialog.focus_pending = false;
-                }
-                copyable_text(tr(ui_language, UiTextKey::PromptInstructions));
-                input_text_string("##custom-prompt-input", custom_prompt_dialog.prompt, true, 0, 150.0F);
+            const auto custom_prompt_title = with_icon(icon::kAi, tr(ui_language, UiTextKey::CustomPrompt)) + "###custom-prompt";
+            if (begin_tool_window(custom_prompt_title, &custom_prompt_dialog.open, ImVec2(560, 300), &custom_prompt_dialog.focus_pending)) {
+                ImGui::TextColored(palette().text_muted, "%s", tr(ui_language, UiTextKey::PromptInstructions).c_str());
+                input_text_string("##custom-prompt-input", custom_prompt_dialog.prompt, true, 0, -footer_height());
                 const bool can_run = !trim(custom_prompt_dialog.prompt).empty();
-                if (!can_run) ImGui::BeginDisabled();
-                if (ImGui::Button(tr(ui_language, UiTextKey::Generate).c_str())) {
+                const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Generate), true, can_run}});
+                if (clicked == 0) custom_prompt_dialog.open = false;
+                if (clicked == 1) {
                     if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
                         execution_status = "General LLM provider is not configured";
                     } else {
@@ -1982,10 +2115,6 @@ int run_desktop_runtime() {
                         execution_status = "Custom prompt is running…";
                     }
                 }
-                if (!can_run) ImGui::EndDisabled();
-                ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language, UiTextKey::Cancel).c_str())) custom_prompt_dialog.open = false;
-                if (!execution_status.empty()) copyable_text(execution_status, true);
             }
             ImGui::End();
         }
@@ -2070,76 +2199,82 @@ int run_desktop_runtime() {
         if (file_confirmation) {
             auto& state = *file_confirmation;
             bool close_confirmation = false;
-            if (state.focus_pending) {
-                ImGui::SetNextWindowFocus();
-                const auto* viewport = ImGui::GetMainViewport();
-                ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-            }
-            ImGui::SetNextWindowClass(&auxiliary_window_class);
             const auto destination_rows = std::clamp<std::size_t>(state.draft.candidate_destinations.size(), 1, 5);
-            const auto preview_rows = std::clamp<std::size_t>(multiline_editor_row_count(state.source_preview), 1, 4);
-            const float destinations_height = 28.0F + 27.0F * static_cast<float>(destination_rows);
-            const float confirmation_height = std::clamp(205.0F + destinations_height +
-                static_cast<float>(preview_rows) * ImGui::GetTextLineHeightWithSpacing(), 320.0F, 560.0F);
-            ImGui::SetNextWindowSize(ImVec2(650, confirmation_height), ImGuiCond_Appearing);
+            const float destinations_height = (ImGui::GetFrameHeightWithSpacing() + 4.0F) * static_cast<float>(destination_rows + 1);
             bool open = true;
-            const auto confirmation_title=tr(ui_language,UiTextKey::ConfirmFileOperation)+"##file-confirm";
-            if (ImGui::Begin(confirmation_title.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) {
-                if (state.focus_pending) {
-                    ImGui::SetWindowFocus();
-                    state.focus_pending = false;
-                }
-                ImGui::BeginChild("file-confirm-body", ImVec2(0.0F, -ImGui::GetFrameHeightWithSpacing() * 1.5F), true,
-                                  ImGuiWindowFlags_HorizontalScrollbar);
-                copyable_text(state.source_preview, true);
-                std::string directory = path_to_utf8_string(state.draft.destination);
-                if (input_text_string(tr(ui_language,UiTextKey::Destination).c_str(), directory)) {
-                    state.draft.destination = path_from_utf8_string(directory);
-                    manual_destination = state.draft.destination;
-                }
-                ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language,UiTextKey::Browse).c_str())) {
-                    if (const auto chosen = platform->choose_directory(state.draft.destination)) {
-                        state.draft.destination = *chosen;
-                        manual_destination = *chosen;
-                        const auto observed = path_history.observe_path(*chosen, PathKind::Directory,
-                                                                       "manual", current_time_ms());
-                        state.draft.candidate_destinations.insert(state.draft.candidate_destinations.begin(), observed);
+            const auto confirmation_title = with_icon(icon::kSave, tr(ui_language,UiTextKey::ConfirmFileOperation)) + "###file-confirm";
+            if (begin_tool_window(confirmation_title, &open, ImVec2(660, 360 + destinations_height), &state.focus_pending)) {
+                const auto& pal = palette();
+                ImGui::BeginChild("file-confirm-body", ImVec2(0.0F, -footer_height()), false, ImGuiWindowFlags_HorizontalScrollbar);
+                // What is being saved.
+                ImGui::PushStyleColor(ImGuiCol_ChildBg, pal.surface);
+                ImGui::BeginChild("file-confirm-source", ImVec2(0.0F, ImGui::GetTextLineHeightWithSpacing() * 2.0F + 16.0F),
+                                  ImGuiChildFlags_AlwaysUseWindowPadding);
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextUnformatted(preview_excerpt(state.source_preview, 2).c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::EndChild();
+                ImGui::PopStyleColor();
+                if (begin_form("file-confirm-form", 110.0F)) {
+                    form_row(tr(ui_language,UiTextKey::Destination));
+                    std::string directory = path_to_utf8_string(state.draft.destination);
+                    const float browse_width = ImGui::CalcTextSize(tr(ui_language,UiTextKey::Browse).c_str()).x +
+                                               ImGui::GetStyle().FramePadding.x * 2.0F + ImGui::GetStyle().ItemSpacing.x + 24.0F;
+                    ImGui::SetNextItemWidth(-browse_width);
+                    if (input_text_string("##destination", directory)) {
+                        state.draft.destination = path_from_utf8_string(directory);
+                        manual_destination = state.draft.destination;
                     }
+                    ImGui::SameLine();
+                    if (ImGui::Button(with_icon(icon::kFolderOpen, tr(ui_language,UiTextKey::Browse)).c_str())) {
+                        if (const auto chosen = platform->choose_directory(state.draft.destination)) {
+                            state.draft.destination = *chosen;
+                            manual_destination = *chosen;
+                            const auto observed = path_history.observe_path(*chosen, PathKind::Directory,
+                                                                           "manual", current_time_ms());
+                            state.draft.candidate_destinations.insert(state.draft.candidate_destinations.begin(), observed);
+                        }
+                    }
+                    form_row(tr(ui_language,UiTextKey::Filename));
+                    input_text_string("##filename", state.draft.filename);
+                    end_form();
                 }
-                input_text_string(tr(ui_language,UiTextKey::Filename).c_str(), state.draft.filename);
-                copyable_text(tr(ui_language,UiTextKey::Seen));
-                if (ImGui::BeginTable("confirmation-destinations", 3,
-                                      ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
-                                          ImGuiTableFlags_SizingStretchProp,
+                // Suggested destinations, most used first.
+                ImGui::TextColored(pal.text_muted, "%s", tr(ui_language,UiTextKey::SuggestedFolders).c_str());
+                if (ImGui::BeginTable("confirmation-destinations", 2,
+                                      ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp,
                                       ImVec2(0.0F, destinations_height))) {
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Path).c_str(), ImGuiTableColumnFlags_WidthStretch, 4.0F);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Source).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Use).c_str(), ImGuiTableColumnFlags_WidthFixed, 80.0F);
-                    ImGui::TableHeadersRow();
+                    ImGui::TableSetupColumn("path", ImGuiTableColumnFlags_WidthStretch, 4.0F);
+                    ImGui::TableSetupColumn("uses", ImGuiTableColumnFlags_WidthFixed, 70.0F);
                     for (const auto& shortcut : state.draft.candidate_destinations) {
                         ImGui::PushID(shortcut.ref.c_str());
                         ImGui::TableNextRow();
-                        ImGui::TableNextColumn(); copyable_text(path_to_utf8_string(shortcut.path));
-                        ImGui::TableNextColumn(); copyable_text(shortcut.source);
                         ImGui::TableNextColumn();
-                        if (ImGui::SmallButton(tr(ui_language,UiTextKey::Use).c_str())) {
+                        const bool chosen = shortcut.path == state.draft.destination;
+                        const auto label = with_icon(icon::kFolder, display_path(path_to_utf8_string(shortcut.path), 80));
+                        if (ImGui::Selectable(label.c_str(), chosen, ImGuiSelectableFlags_SpanAllColumns)) {
                             state.draft.destination = shortcut.path;
                             manual_destination = shortcut.path;
                         }
+                        ImGui::TableNextColumn();
+                        if (shortcut.use_count > 0) ImGui::TextColored(pal.text_muted, "\xC3\x97%u", shortcut.use_count);
                         ImGui::PopID();
                     }
                     ImGui::EndTable();
                 }
                 state.can_confirm = validate_file_operation_draft(state.draft, clipboard_store);
                 const auto panel = build_file_operation_confirmation_panel_model(state);
-                copyable_text(tr(ui_language,UiTextKey::OutputPath) + ": " + panel.output_preview);
+                ImGui::TextColored(pal.text_muted, "%s", (tr(ui_language,UiTextKey::OutputPath) + ": " + panel.output_preview).c_str());
                 if (!panel.validation_error.empty()) {
-                    copyable_text(panel.validation_error, true);
+                    ImGui::PushTextWrapPos(0.0F);
+                    ImGui::TextColored(pal.danger, "%s", panel.validation_error.c_str());
+                    ImGui::PopTextWrapPos();
                 }
                 ImGui::EndChild();
-                if (!state.can_confirm) ImGui::BeginDisabled();
-                if (ImGui::Button(tr(ui_language,UiTextKey::Confirm).c_str())) {
+                const int clicked = footer_buttons({{tr(ui_language,UiTextKey::Cancel)},
+                                                    {tr(ui_language,UiTextKey::Confirm), true, state.can_confirm}});
+                if (clicked == 0) close_confirmation = true;
+                if (clicked == 1 || (state.can_confirm && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Enter))) {
                     if (auto confirmed = confirmed_action(state.draft, clipboard_store)) {
                         confirmed->id += "_confirmed_" + std::to_string(++request_counter);
                         confirmed->parameters["confirmation_complete"] = "1";
@@ -2151,9 +2286,6 @@ int run_desktop_runtime() {
                         close_confirmation = true;
                     }
                 }
-                if (!state.can_confirm) ImGui::EndDisabled();
-                ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str())) close_confirmation = true;
             }
             ImGui::End();
             if (!open || close_confirmation) file_confirmation.reset();
@@ -2253,19 +2385,8 @@ int run_desktop_runtime() {
         }
 
         if (image_preview.open && preview_texture.id != 0) {
-            if (image_preview.focus_pending) {
-                ImGui::SetNextWindowFocus();
-                const auto* viewport = ImGui::GetMainViewport();
-                ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-            }
-            ImGui::SetNextWindowClass(&auxiliary_window_class);
-            ImGui::SetNextWindowSize(ImVec2(760,600),ImGuiCond_FirstUseEver);
-            const auto image_title=tr(ui_language,UiTextKey::ImagePreview)+"##image-preview";
-            if (ImGui::Begin(image_title.c_str(), &image_preview.open, ImGuiWindowFlags_NoSavedSettings)) {
-                if (image_preview.focus_pending) {
-                    ImGui::SetWindowFocus();
-                    image_preview.focus_pending = false;
-                }
+            const auto image_title = with_icon(icon::kMedia, tr(ui_language,UiTextKey::ImagePreview)) + "###image-preview";
+            if (begin_tool_window(image_title, &image_preview.open, ImVec2(760, 600), &image_preview.focus_pending)) {
                 copyable_text(tr(ui_language,UiTextKey::Zoom) + " " + std::to_string(static_cast<int>(image_preview.zoom * 100.0F)) + "%"); ImGui::SameLine(); if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){const auto action=std::find_if(active_batch.catalog.actions.begin(),active_batch.catalog.actions.end(),[](const auto&a){return a.kind==ActionKind::SaveImageFile&&a.enabled;});if(action!=active_batch.catalog.actions.end())activated_action=action->id;}
                 ImGui::SameLine();
                 if(ImGui::Button(tr(ui_language,UiTextKey::CopyImage).c_str())&&!active_batch.request.snapshot.clipboard_items.empty()){
@@ -2290,36 +2411,41 @@ int run_desktop_runtime() {
 
         for (auto& job : generation_jobs) {
             if (!job->panel.open) continue;
-            if (job->focus_pending) {
-                ImGui::SetNextWindowFocus();
-                const auto* viewport = ImGui::GetMainViewport();
-                ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-            }
-            ImGui::SetNextWindowClass(&auxiliary_window_class);
-            const auto result_rows = std::clamp<std::size_t>(multiline_editor_row_count(job->panel.editable_text), 3, 16);
-            const float result_height = job->panel.running ? 220.0F :
-                115.0F + static_cast<float>(result_rows) * ImGui::GetTextLineHeightWithSpacing();
+            const auto result_rows = std::clamp<std::size_t>(multiline_editor_row_count(job->panel.editable_text), 4, 18);
+            const float result_height = job->panel.running ? 240.0F :
+                130.0F + static_cast<float>(result_rows) * ImGui::GetTextLineHeightWithSpacing();
             const auto* result_begin = job->panel.editable_text.data();
             const auto* result_end = result_begin + std::min<std::size_t>(job->panel.editable_text.size(), 2048);
-            const float result_width = job->panel.running ? 420.0F :
-                std::clamp(100.0F + ImGui::CalcTextSize(result_begin, result_end).x, 420.0F, 680.0F);
-            ImGui::SetNextWindowSize(ImVec2(result_width, result_height), ImGuiCond_Appearing);
-            const auto title=tr(ui_language,UiTextKey::AiResult)+"##"+job->panel.request_id;
-            if (ImGui::Begin(title.c_str(),&job->panel.open, ImGuiWindowFlags_NoSavedSettings)) {
-                if (job->focus_pending) {
-                    ImGui::SetWindowFocus();
-                    job->focus_pending = false;
+            const float result_width = job->panel.running ? 460.0F :
+                std::clamp(100.0F + ImGui::CalcTextSize(result_begin, result_end).x, 460.0F, 720.0F);
+            const auto title = with_icon(icon::kAi, tr(ui_language,UiTextKey::AiResult)) + "###" + job->panel.request_id;
+            if (begin_tool_window(title, &job->panel.open, ImVec2(result_width, result_height), &job->focus_pending)) {
+                const auto& pal = palette();
+                if (job->panel.running) {
+                    ImGui::TextColored(pal.warning, "%s", tr(ui_language,UiTextKey::Generating).c_str());
                 }
-                if(job->panel.running)copyable_text(tr(ui_language,UiTextKey::Generating));
-                ImGui::BeginChild("ai-result-body", ImVec2(0.0F, -ImGui::GetFrameHeightWithSpacing()), true,
-                                  ImGuiWindowFlags_HorizontalScrollbar);
-                if(!job->panel.error.empty())copyable_text(job->panel.error, true);
-                input_text_string("##ai-result",job->panel.editable_text,true,0,-1.0F);
-                ImGui::EndChild();
-                if(ImGui::Button(tr(ui_language,UiTextKey::CopyResult).c_str()))platform->copy_text(job->panel.editable_text);
-                if(ImGui::Button(tr(ui_language,UiTextKey::ReplaceClipboard).c_str()))platform->publish_text(job->panel.editable_text);
-                if(ImGui::Button(tr(ui_language,UiTextKey::Retry).c_str())&&!job->pending.has_value()){if(auto retry=job->state.retry_request()){job->panel.running=true;job->panel.error.clear();job->focus_pending=true;job->pending.emplace(std::async(std::launch::async,[&llm_client,request=*retry]{return llm_client.generate(request);}));}}
-            }ImGui::End();
+                if (!job->panel.error.empty()) {
+                    ImGui::PushTextWrapPos(0.0F);
+                    ImGui::TextColored(pal.danger, "%s", job->panel.error.c_str());
+                    ImGui::PopTextWrapPos();
+                }
+                input_text_string("##ai-result", job->panel.editable_text, true, 0, -footer_height());
+                const bool ready = !job->panel.running && !job->panel.editable_text.empty();
+                const int clicked = footer_buttons({{with_icon(icon::kRefresh, tr(ui_language,UiTextKey::Retry)), false, !job->pending.has_value()},
+                                                    {tr(ui_language,UiTextKey::ReplaceClipboard), false, ready},
+                                                    {with_icon(icon::kCopy, tr(ui_language,UiTextKey::CopyResult)), true, ready}});
+                if (clicked == 0) {
+                    if (auto retry = job->state.retry_request()) {
+                        job->panel.running = true;
+                        job->panel.error.clear();
+                        job->focus_pending = true;
+                        job->pending.emplace(std::async(std::launch::async, [&llm_client, request = *retry] { return llm_client.generate(request); }));
+                    }
+                }
+                if (clicked == 1) platform->publish_text(job->panel.editable_text);
+                if (clicked == 2) platform->copy_text(job->panel.editable_text);
+            }
+            ImGui::End();
         }
 
         if (!popup_visible && !has_any_auxiliary_window()) {

@@ -1,4 +1,5 @@
 #include "ui/image_annotation_panel.hpp"
+#include "ui/theme.hpp"
 #include "ui/localization.hpp"
 
 #include "ui/imgui_widgets.hpp"
@@ -159,17 +160,8 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                                  int image_height) {
     auto model = build_image_annotation_panel_model(state);
     state.poll_export();
-    if (state.focus_pending) {
-        ImGui::SetNextWindowFocus();
-        const auto* viewport = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-    }
-    ImGui::SetNextWindowSize(ImVec2(model.viewport.initial_width, model.viewport.initial_height), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(model.viewport.title.c_str(), &state.open, ImGuiWindowFlags_NoSavedSettings)) {
-        if (state.focus_pending) {
-            ImGui::SetWindowFocus();
-            state.focus_pending = false;
-        }
+    if (begin_tool_window(model.viewport.title, &state.open,
+                          ImVec2(model.viewport.initial_width, model.viewport.initial_height), &state.focus_pending)) {
         const auto bottom_height = 178.0F;
         ImGui::BeginChild("annotation-canvas", ImVec2(0.0F, -bottom_height), true,
                           ImGuiWindowFlags_HorizontalScrollbar);

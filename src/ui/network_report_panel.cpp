@@ -1,4 +1,5 @@
 #include "ui/network_report_panel.hpp"
+#include "ui/theme.hpp"
 
 #include "ui/imgui_widgets.hpp"
 
@@ -26,17 +27,8 @@ FastActionPanelModel build_network_report_panel_model(const NetworkReportState& 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
 void draw_network_report_panel(const NetworkReportState& state, bool& open, bool& focus_pending) {
     auto model = build_network_report_panel_model(state);
-    if (focus_pending) {
-        ImGui::SetNextWindowFocus();
-        const auto* viewport = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-    }
-    ImGui::SetNextWindowSize(ImVec2(model.viewport.initial_width, model.viewport.initial_height), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin(model.viewport.title.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) {
-        if (focus_pending) {
-            ImGui::SetWindowFocus();
-            focus_pending = false;
-        }
+    if (begin_tool_window(model.viewport.title, &open,
+                          ImVec2(model.viewport.initial_width, model.viewport.initial_height), &focus_pending)) {
         for (std::size_t index = 0; index < model.toolbar.size(); ++index) {
             if (index != 0) ImGui::SameLine();
             const auto& command = model.toolbar[index];
