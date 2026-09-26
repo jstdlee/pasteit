@@ -721,6 +721,14 @@ bool WindowsDesktopServices::move_popup_by(int delta_x, int delta_y) {
                         SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER) != 0;
 }
 
+void WindowsDesktopServices::keep_above_popup(std::uint64_t window_id) {
+    const auto child = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(window_id));
+    if (popup_window_ == nullptr || child == nullptr || child == popup_window_) return;
+    // An owned window always stays above its owner.
+    SetWindowLongPtrW(child, GWLP_HWNDPARENT, reinterpret_cast<LONG_PTR>(popup_window_));
+    SetWindowPos(child, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
 bool WindowsDesktopServices::set_popup_opacity(float opacity) {
     if (popup_window_ == nullptr || opacity < 0.0F || opacity > 1.0F) {
         return false;

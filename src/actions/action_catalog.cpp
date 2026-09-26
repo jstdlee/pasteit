@@ -952,6 +952,12 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                         "Download the URL response bytes to " + path_to_utf8_string(target.path), "download");
                 }
                 add_url_utility_actions(catalog, item, source_text);
+                if (!provider.endpoint.empty() && !provider.model_id.empty() &&
+                    (trim_copy(source_text).starts_with("http://") || trim_copy(source_text).starts_with("https://"))) {
+                    add(catalog, item, ActionKind::SummarizePage, "", "Summarize page",
+                        "Download this page's text and summarize it with the general LLM", "summary",
+                        {{"url", trim_copy(source_text)}});
+                }
                 add_github_actions(catalog, item, targets, signals, source_text);
                 add_qr_action(catalog, item, signals, source_text);
                 break;

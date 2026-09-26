@@ -54,6 +54,9 @@ public:
     virtual std::optional<std::string> owned_clipboard_text() const { return std::nullopt; }
     virtual bool move_popup_by(int delta_x, int delta_y) = 0;
     virtual bool set_popup_opacity(float opacity) = 0;
+    // Makes a sub-window owned by the popup so the window manager keeps it
+    // above the popup (a transient window on X11, an owned window on Win32).
+    virtual void keep_above_popup(std::uint64_t window_id) { (void)window_id; }
     virtual std::vector<std::filesystem::path> preferred_ui_fonts() = 0;
     virtual std::optional<std::filesystem::path> choose_directory(
         const std::filesystem::path& initial_directory) = 0;

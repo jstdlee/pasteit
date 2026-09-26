@@ -30,6 +30,7 @@ public:
     bool copy_text(std::string_view text) override;
     bool move_popup_by(int delta_x, int delta_y) override;
     bool set_popup_opacity(float opacity) override;
+    void keep_above_popup(std::uint64_t window_id) override;
     std::vector<std::filesystem::path> preferred_ui_fonts() override;
     std::optional<std::filesystem::path> choose_directory(const std::filesystem::path& initial_directory) override;
     FastActionServices& fast_actions() override;

@@ -299,6 +299,22 @@ bool LinuxDesktopServices::move_popup_by(int delta_x, int delta_y) {
     (void)delta_x;(void)delta_y;return false;
 #endif
 }
+void LinuxDesktopServices::keep_above_popup(std::uint64_t window_id) {
+#if defined(PASTIT_HAS_X11)
+    if (popup_window_id_ == 0 || window_id == 0 || window_id == popup_window_id_) return;
+    Display* display = XOpenDisplay(nullptr);
+    if (display == nullptr) return;
+    // Mutter and other window managers stack transients above their parent,
+    // even when the (floating) parent is clicked again.
+    XSetTransientForHint(display, static_cast<Window>(window_id), static_cast<Window>(popup_window_id_));
+    XRaiseWindow(display, static_cast<Window>(window_id));
+    XFlush(display);
+    XCloseDisplay(display);
+#else
+    (void)window_id;
+#endif
+}
+
 unsigned long x11_opacity_cardinal(float opacity) {
     // Compute in double and clamp: 1.0F*4294967295.0F rounds to 2^32 in float,
     // which X truncates to 0 (a fully transparent window).

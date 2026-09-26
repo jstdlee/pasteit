@@ -9,8 +9,10 @@ struct HttpRequest {
     std::string body;
     std::map<std::string,std::string> headers;
     std::chrono::milliseconds timeout{1500};
+    bool follow_redirects = false;
+    std::size_t max_body_bytes = 0;  // 0 = unlimited; larger bodies are cut
 };
-struct HttpResponse { int status=0; std::string body; std::string transport_error; };
+struct HttpResponse { int status=0; std::string body; std::string transport_error; bool truncated=false; std::string content_type; };
 class HttpTransport {
 public:
     virtual ~HttpTransport() = default;

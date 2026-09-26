@@ -179,6 +179,7 @@ add_library(pastit_core
     src/history/path_target_resolver.cpp
     src/history/usage_store.cpp
     src/net/http_client.cpp
+    src/net/page_text.cpp
     src/render/external_renderer.cpp
     src/render/markdown.cpp
     third_party/qrcodegen/qrcodegen.cpp
@@ -528,6 +529,10 @@ if (PASTIT_BUILD_TESTS)
     add_executable(privacy_test tests/privacy_test.cpp)
     target_link_libraries(privacy_test PRIVATE pastit_core)
     add_test(NAME privacy_test COMMAND privacy_test)
+
+    add_executable(page_text_test tests/page_text_test.cpp)
+    target_link_libraries(page_text_test PRIVATE pastit_core)
+    add_test(NAME page_text_test COMMAND page_text_test)
 
     add_executable(usage_model_test tests/usage_model_test.cpp)
     target_link_libraries(usage_model_test PRIVATE pastit_core)

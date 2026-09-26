@@ -42,6 +42,8 @@
 #include "ui/pipeline_view.hpp"
 #include "ui/privacy_view.hpp"
 #include "privacy/anonymizer.hpp"
+#include "net/page_text.hpp"
+#include "net/http_client.hpp"
 #include "ui/theme.hpp"
 #include "ui/image_preview_panel.hpp"
 #include "ui/clipboard_history_model.hpp"
@@ -79,6 +81,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -619,6 +622,9 @@ int run_desktop_runtime() {
     MarkdownViewState markdown_view;
     PipelineViewState pipeline_view;
     AnonymizeViewState anonymize_view;
+    // Pending first-use consent for Summarize page.
+    std::optional<ActionInstance> page_consent;
+    bool page_consent_focus = false;
     // Placeholder <-> original for this session only (never written to disk).
     PlaceholderVault privacy_vault;
     const auto anonymize_options = [&] {
@@ -706,6 +712,8 @@ int run_desktop_runtime() {
     DecisionState decision_state = DecisionState::Idle;
     SettingsPage settings_page = SettingsPage::General;
     bool fit_popup_pending = false;
+    std::set<std::uint64_t> owned_sub_windows;
+    std::string fitted_status;
     const auto fit_popup_to = [&](int desired_height) {
         fit_popup_pending = false;
         GLFWmonitor* monitor = glfwGetPrimaryMonitor();
@@ -887,7 +895,7 @@ int run_desktop_runtime() {
     const auto has_any_auxiliary_window = [&] {
         return image_preview.open || file_confirmation.has_value() ||
                prompt_parameter_dialog.open || custom_prompt_dialog.open || chart_view.open || table_view.open ||
-               markdown_view.open || pipeline_view.open || anonymize_view.open ||
+               markdown_view.open || pipeline_view.open || anonymize_view.open || page_consent.has_value() ||
                has_fast_action_result_panel() ||
                std::any_of(generation_jobs.begin(), generation_jobs.end(), [](const auto& job) {
                    return job->panel.open;
@@ -1204,6 +1212,70 @@ int run_desktop_runtime() {
         }
     };
 
+    // Starts a general-LLM text job whose result opens in an AI result
+    // window; restore maps placeholders in the answer back to real values.
+    const auto start_text_job = [&](ActionInstance action, std::string system_message, std::string user_message,
+                                    double temperature, bool restore) {
+        if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
+            execution_status = "General LLM provider is not configured";
+            return;
+        }
+        TextGenerationRequest request{
+            .request_id = active_batch.request.request_id + "_llm_" + std::to_string(++request_counter),
+            .endpoint = active_batch.general_llm.endpoint,
+            .api_key = active_batch.general_llm.api_key,
+            .model_id = active_batch.general_llm.model_id,
+            .system_message = std::move(system_message),
+            .user_message = user_message,
+            .temperature = temperature,
+        };
+        auto job = std::make_unique<GenerationJob>();
+        job->kind = GenerationJob::Kind::TextPrompt;
+        job->action = std::move(action);
+        job->source_text = user_message;
+        job->restore_placeholders = restore;
+        job->state.start(job->action.id, user_message, request);
+        job->panel = {.open = true, .running = true, .request_id = request.request_id, .editable_text = {}, .error = {}};
+        job->pending.emplace(std::async(std::launch::async, [&llm_client, request] { return llm_client.generate(request); }));
+        generation_jobs.push_back(std::move(job));
+    };
+    struct PageFetchResult {
+        bool ok = false;
+        std::string url;
+        std::string title;
+        std::string text;
+        std::string error;
+        bool truncated = false;
+    };
+    std::optional<std::future<PageFetchResult>> pending_page;
+    const auto start_page_summary = [&](const ActionInstance& action) {
+        const auto url = action.parameters.contains("url") ? action.parameters.at("url") : std::string{};
+        execution_status = tr(UiTextKey::FetchingPage);
+        pending_page.emplace(std::async(std::launch::async, [url] {
+            PageFetchResult page;
+            page.url = url;
+            HttpRequest request{.url = url, .body = {},
+                                .headers = {{"Accept", "text/html,text/plain;q=0.9,*/*;q=0.1"}, {"User-Agent", "PasteIt/1.0"}},
+                                .timeout = std::chrono::milliseconds{5000}, .follow_redirects = true,
+                                .max_body_bytes = 2 * 1024 * 1024};
+            const auto response = make_default_http_transport()->get_json(request);
+            if (!response.transport_error.empty()) {
+                page.error = response.transport_error;
+            } else if (response.status < 200 || response.status >= 300) {
+                page.error = "The page answered HTTP " + std::to_string(response.status);
+            } else if (response.body.find('\0') != std::string::npos) {
+                page.error = "The page is not text";
+            } else {
+                const auto extracted = extract_page_text(response.body, response.content_type);
+                page.ok = !extracted.text.empty();
+                page.title = extracted.title;
+                page.text = extracted.text;
+                page.truncated = extracted.truncated || response.truncated;
+                if (!page.ok) page.error = "No readable text on the page";
+            }
+            return page;
+        }));
+    };
     const auto execute_selected = [&](const std::string& action_id,
                                       std::optional<PromptVariables> supplied_prompt_variables = std::nullopt) {
         const auto action = active_batch.catalog.find(action_id);
@@ -1246,6 +1318,15 @@ int run_desktop_runtime() {
                 return;
             }
             open_table_view(table_view, std::move(*table), tr(UiTextKey::ViewTable));
+            return;
+        }
+        if (action->kind == ActionKind::SummarizePage) {
+            if (!settings.privacy.allow_page_fetch) {
+                page_consent = *action;
+                page_consent_focus = true;
+                return;
+            }
+            start_page_summary(*action);
             return;
         }
         if (action->kind == ActionKind::AnonymizeText) {
@@ -1474,6 +1555,25 @@ int run_desktop_runtime() {
             }
         }
 
+        if (pending_page && pending_page->wait_for(std::chrono::milliseconds{0}) == std::future_status::ready) {
+            const auto page = pending_page->get();
+            pending_page.reset();
+            if (!page.ok) {
+                execution_status = "Summarize page failed: " + page.error;
+            } else {
+                const auto document = "Title: " + page.title + "\nURL: " + page.url + (page.truncated ? "\n(Text truncated)" : "") +
+                                      "\n\n" + page.text;
+                const auto [llm_text, protected_text] = protect_for_llm(document);
+                ActionInstance action{};
+                action.id = "summarize_page_" + std::to_string(++request_counter);
+                action.kind = ActionKind::SummarizePage;
+                start_text_job(action,
+                               "Summarize this web page for a busy reader: one line with the gist, then up to 7 short "
+                               "bullet points with the key facts. Keep names, numbers and dates. Answer in the page's language.",
+                               llm_text, 0.2, protected_text);
+                execution_status.clear();
+            }
+        }
         for (auto& job : generation_jobs) {
             if (!job->pending.has_value() ||
                 job->pending->wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) continue;
@@ -1562,7 +1662,8 @@ int run_desktop_runtime() {
                            ImGuiWindowFlags_NoSavedSettings;
         ImGui::Begin("PasteItPopup", nullptr, flags);
         // A pending confirmation or parameter dialog owns input until closed.
-        const bool modal_open = file_confirmation.has_value() || prompt_parameter_dialog.open || custom_prompt_dialog.open;
+        const bool modal_open = file_confirmation.has_value() || prompt_parameter_dialog.open || custom_prompt_dialog.open ||
+                                page_consent.has_value();
         if (modal_open) ImGui::BeginDisabled();
         const auto& theme_palette = palette();
         const auto& theme_fonts = ui_fonts();
@@ -1745,6 +1846,11 @@ int run_desktop_runtime() {
                 ImGui::SameLine();
                 if (ImGui::SmallButton(tr(ui_language,UiTextKey::OpenFolder).c_str())) platform->open_path(output.parent_path());
             }
+        }
+        // A new status line must stay visible below the cards.
+        if (execution_status != fitted_status) {
+            fitted_status = execution_status;
+            fit_popup_pending = true;
         }
         // Fit the window to its content once per ranking instead of guessing
         // row heights; the user can still resize, and long lists scroll.
@@ -2329,11 +2435,62 @@ int run_desktop_runtime() {
             };
             draw_pipeline_view(pipeline_view, pipeline_options, pipeline_host, ui_language);
         }
-        draw_anonymize_view(anonymize_view, AnonymizeViewHost{
-            .data = data_view_host,
-            .replace_clipboard = [&](std::string_view text) { platform->publish_text(text); },
-            .vault = &privacy_vault,
-        }, ui_language);
+        {
+            AnonymizeViewHost anonymize_host{
+                .data = data_view_host,
+                .replace_clipboard = [&](std::string_view text) { platform->publish_text(text); },
+                .vault = &privacy_vault,
+                .templates = {},
+                .ask_llm = [&](const std::string& template_id, const std::string& custom_prompt, const std::string& text) {
+                    ActionInstance action{};
+                    action.id = "anonymized_ask_" + std::to_string(++request_counter);
+                    action.kind = ActionKind::TransformText;
+                    const auto prompt = std::find_if(settings.prompt_templates.begin(), settings.prompt_templates.end(),
+                                                     [&](const PromptTemplate& value) { return value.id == template_id; });
+                    if (prompt == settings.prompt_templates.end()) {
+                        start_text_job(action, custom_prompt, text, 0.2, true);
+                        return;
+                    }
+                    PromptVariables variables;
+                    if (const auto remembered = prompt_parameter_memory.find(prompt->id); remembered != prompt_parameter_memory.end()) {
+                        variables.values = remembered->second;
+                    }
+                    const auto expanded = expand_prompt(*prompt, text, variables);
+                    start_text_job(action, expanded.system_message, expanded.user_message, prompt->temperature, true);
+                },
+            };
+            for (const auto& prompt : settings.prompt_templates) {
+                if (prompt.enabled) anonymize_host.templates.emplace_back(prompt.id, prompt.name);
+            }
+            draw_anonymize_view(anonymize_view, anonymize_host, ui_language);
+        }
+        if (page_consent) {
+            bool open = true;
+            if (begin_tool_window(with_icon(icon::kScanText, tr(ui_language, UiTextKey::AllowPageFetchTitle)) + "###page-consent",
+                                  &open, ImVec2(480.0F, 200.0F), &page_consent_focus)) {
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextUnformatted(tr(ui_language, UiTextKey::AllowPageFetchBody).c_str());
+                ImGui::PopTextWrapPos();
+                if (page_consent->parameters.contains("url")) {
+                    ImGui::TextColored(palette().text_muted, "%s", display_path(page_consent->parameters.at("url"), 70).c_str());
+                }
+                const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::AllowOnce)},
+                                                    {tr(ui_language, UiTextKey::AlwaysAllow), true}});
+                if (clicked == 2) {
+                    settings.privacy.allow_page_fetch = true;
+                    settings_draft.privacy.allow_page_fetch = true;
+                    std::string save_error;
+                    if (!settings_store.save(settings, save_error)) settings_status = save_error;
+                }
+                if (clicked >= 1) {
+                    start_page_summary(*page_consent);
+                    open = false;
+                }
+                if (clicked == 0) open = false;
+            }
+            ImGui::End();
+            if (!open) page_consent.reset();
+        }
 
         if (file_confirmation) {
             auto& state = *file_confirmation;
@@ -2603,6 +2760,22 @@ int run_desktop_runtime() {
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
             GLFWwindow* backup_context = glfwGetCurrentContext();
             ImGui::UpdatePlatformWindows();
+            // Each new sub-window becomes owned by the popup so it never
+            // opens (or falls) behind it.
+            std::set<std::uint64_t> current_sub_windows;
+            for (ImGuiViewport* viewport : ImGui::GetPlatformIO().Viewports) {
+                if (viewport == ImGui::GetMainViewport() || viewport->PlatformHandle == nullptr) continue;
+                auto* native = static_cast<GLFWwindow*>(viewport->PlatformHandle);
+#if defined(_WIN32)
+                const auto native_id = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(glfwGetWin32Window(native)));
+#else
+                const auto native_id = static_cast<std::uint64_t>(glfwGetX11Window(native));
+#endif
+                if (native_id == 0) continue;
+                current_sub_windows.insert(native_id);
+                if (!owned_sub_windows.contains(native_id)) platform->keep_above_popup(native_id);
+            }
+            owned_sub_windows = std::move(current_sub_windows);
             ImGui::RenderPlatformWindowsDefault();
             glfwMakeContextCurrent(backup_context);
         }

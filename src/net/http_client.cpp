@@ -37,6 +37,15 @@ namespace {
 std::size_t append_body(void* ptr,std::size_t size,std::size_t count,void* target){
     const auto bytes=size*count;static_cast<std::string*>(target)->append(static_cast<const char*>(ptr),bytes);return bytes;
 }
+struct CappedBody { std::string* body; std::size_t cap; bool truncated=false; };
+// Stops the transfer once the cap is reached; the partial body is kept.
+std::size_t append_capped(void* ptr,std::size_t size,std::size_t count,void* target){
+    auto& capped=*static_cast<CappedBody*>(target);const auto bytes=size*count;
+    const auto room=capped.cap>capped.body->size()?capped.cap-capped.body->size():0;
+    capped.body->append(static_cast<const char*>(ptr),std::min(bytes,room));
+    if(bytes>room){capped.truncated=true;return 0;}
+    return bytes;
+}
 class CurlTransport final:public HttpTransport{
 public: HttpResponse post_json(const HttpRequest& request) override {
     HttpResponse response; CURL* curl=curl_easy_init();
@@ -59,9 +68,17 @@ public: HttpResponse post_json(const HttpRequest& request) override {
     for(const auto& [name,value]:request.headers){const auto line=name+": "+value;headers=curl_slist_append(headers,line.c_str());}
     curl_easy_setopt(curl,CURLOPT_URL,request.url.c_str());curl_easy_setopt(curl,CURLOPT_HTTPGET,1L);
     curl_easy_setopt(curl,CURLOPT_HTTPHEADER,headers);curl_easy_setopt(curl,CURLOPT_TIMEOUT_MS,static_cast<long>(request.timeout.count()));
-    curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,append_body);curl_easy_setopt(curl,CURLOPT_WRITEDATA,&response.body);
+    if(request.follow_redirects){
+        curl_easy_setopt(curl,CURLOPT_FOLLOWLOCATION,1L);curl_easy_setopt(curl,CURLOPT_MAXREDIRS,5L);
+        curl_easy_setopt(curl,CURLOPT_PROTOCOLS_STR,"http,https");curl_easy_setopt(curl,CURLOPT_REDIR_PROTOCOLS_STR,"http,https");
+    }
+    CappedBody capped{&response.body,request.max_body_bytes};
+    if(request.max_body_bytes>0){curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,append_capped);curl_easy_setopt(curl,CURLOPT_WRITEDATA,&capped);}
+    else{curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,append_body);curl_easy_setopt(curl,CURLOPT_WRITEDATA,&response.body);}
     const auto code=curl_easy_perform(curl);long status=0;curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE,&status);response.status=static_cast<int>(status);
-    if(code!=CURLE_OK)response.transport_error=curl_easy_strerror(code);
+    char* content_type=nullptr;if(curl_easy_getinfo(curl,CURLINFO_CONTENT_TYPE,&content_type)==CURLE_OK&&content_type)response.content_type=content_type;
+    response.truncated=capped.truncated;
+    if(code!=CURLE_OK&&!(code==CURLE_WRITE_ERROR&&capped.truncated))response.transport_error=curl_easy_strerror(code);
     curl_slist_free_all(headers);curl_easy_cleanup(curl);return response;
   }
 };
@@ -187,6 +204,10 @@ HttpResponse winhttp_json_request(const HttpRequest& request, const wchar_t* met
             return response;
         }
         if (available == 0) {
+            break;
+        }
+        if (request.max_body_bytes > 0 && response.body.size() >= request.max_body_bytes) {
+            response.truncated = true;
             break;
         }
         const auto offset = response.body.size();
@@ -323,6 +344,10 @@ HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_vie
     std::ifstream body(body_path, std::ios::binary);
     response.body.assign(std::istreambuf_iterator<char>{body}, std::istreambuf_iterator<char>{});
     ::unlink(body_path.c_str());
+    if (request.max_body_bytes > 0 && response.body.size() > request.max_body_bytes) {
+        response.body.resize(request.max_body_bytes);
+        response.truncated = true;
+    }
     return response;
 }
 
@@ -338,7 +363,7 @@ HttpResponse socket_json_request(const HttpRequest& request, std::string_view me
  std::ostringstream message;message<<method<<" "<<url->path<<" HTTP/1.1\r\nHost: "<<url->host<<"\r\nAccept: application/json\r\nConnection: close\r\n";if(!request.body.empty())message<<"Content-Type: application/json\r\nContent-Length: "<<request.body.size()<<"\r\n";for(const auto& [name,value]:request.headers)message<<name<<": "<<value<<"\r\n";message<<"\r\n"<<request.body;const auto wire=message.str();if(!write_all(fd,wire)){response.transport_error=std::strerror(errno);close(fd);return response;}
  std::string raw;char buffer[8192];for(;;){const auto count=recv(fd,buffer,sizeof(buffer),0);if(count==0)break;if(count<0){response.transport_error=std::strerror(errno);close(fd);return response;}raw.append(buffer,static_cast<std::size_t>(count));}close(fd);const auto line=raw.find("\r\n");const auto split=raw.find("\r\n\r\n");if(line==std::string::npos||split==std::string::npos){response.transport_error="Invalid HTTP response";return response;}const auto status_line=raw.substr(0,line);if(status_line.size()>=12)response.status=std::atoi(status_line.substr(9,3).c_str());response.body=raw.substr(split+4);return response;
 }
-class SocketTransport final:public HttpTransport{public:HttpResponse post_json(const HttpRequest& request)override{if(request.url.starts_with("https://"))return post_json_with_curl_cli(request);return socket_json_request(request,"POST");}HttpResponse get_json(const HttpRequest& request)override{if(request.url.starts_with("https://"))return post_json_with_curl_cli(request,"GET");return socket_json_request(request,"GET");}};
+class SocketTransport final:public HttpTransport{public:HttpResponse post_json(const HttpRequest& request)override{if(request.url.starts_with("https://"))return post_json_with_curl_cli(request);return socket_json_request(request,"POST");}HttpResponse get_json(const HttpRequest& request)override{if(request.url.starts_with("https://")||request.follow_redirects)return post_json_with_curl_cli(request,"GET");return socket_json_request(request,"GET");}};
 #endif
 }
 std::shared_ptr<HttpTransport> make_default_http_transport(){
