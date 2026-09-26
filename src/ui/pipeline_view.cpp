@@ -54,7 +54,9 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
     const auto title = with_icon(icon::kPipeline, tr(language, UiTextKey::Pipeline)) + "###pipeline-view";
     if (begin_tool_window(title, &state.open, ImVec2(880.0F, 600.0F), &state.focus_pending)) {
         const auto& p = palette();
+        ImGui::PushTextWrapPos(0.0F);
         ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::PipelineHelp).c_str());
+        ImGui::PopTextWrapPos();
         ImGui::SetNextItemWidth(-FLT_MIN);
         if (input_text_string("##pipeline-command", state.command)) state.edited = now;
         // Quick inserts append a stage.
@@ -71,6 +73,17 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
                 const std::string name{quick[index], std::string_view{quick[index]}.find(' ')};
                 ImGui::SetTooltip("%s", pipeline_command_help(name).c_str());
             }
+        }
+        for (const auto& [name, expansion] : options.custom_commands) {
+            ImGui::SameLine(0.0F, 4.0F);
+            if (ImGui::GetCursorPosX() + ImGui::CalcTextSize(name.c_str()).x + 24.0F > ImGui::GetContentRegionMax().x) ImGui::NewLine();
+            ImGui::PushStyleColor(ImGuiCol_Text, p.accent);
+            if (ImGui::SmallButton((name + "##custom").c_str())) {
+                state.command += (state.command.empty() ? "" : " | ") + name;
+                state.edited = now;
+            }
+            ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", expansion.c_str());
         }
         for (const auto& tool : options.allowed_tools) {
             ImGui::SameLine(0.0F, 4.0F);

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +23,10 @@ struct PipelineParse {
 
 struct PipelineOptions {
     std::vector<std::string> allowed_tools;  // external programs, e.g. gawk, jq
+    bool allow_any_program = false;          // any program on PATH (still no shell)
+    // Custom commands: a name usable as a stage that expands to a pipeline,
+    // e.g. errors -> grep -i 'error|fail'. Extra arguments go to its last stage.
+    std::map<std::string, std::string, std::less<>> custom_commands;
     std::chrono::milliseconds timeout{2000};
     std::size_t max_output = 1024 * 1024;
     // Optional text filter for the "anonymize" stage.

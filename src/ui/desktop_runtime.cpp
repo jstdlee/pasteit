@@ -40,6 +40,8 @@
 #include "util/utf8.hpp"
 #include "ui/data_views.hpp"
 #include "ui/pipeline_view.hpp"
+#include "ui/privacy_view.hpp"
+#include "privacy/anonymizer.hpp"
 #include "ui/theme.hpp"
 #include "ui/image_preview_panel.hpp"
 #include "ui/clipboard_history_model.hpp"
@@ -271,6 +273,7 @@ struct GenerationJob {
     std::string source_text;
     std::optional<std::future<TextGenerationResult>> pending;
     bool focus_pending = true;
+    bool restore_placeholders = false;  // request text was anonymized
 };
 
 struct PromptParameterDialog {
@@ -615,6 +618,31 @@ int run_desktop_runtime() {
     TableViewState table_view;
     MarkdownViewState markdown_view;
     PipelineViewState pipeline_view;
+    AnonymizeViewState anonymize_view;
+    // Placeholder <-> original for this session only (never written to disk).
+    PlaceholderVault privacy_vault;
+    const auto anonymize_options = [&] {
+        AnonymizeOptions options;
+        options.style = replacement_style_from_name(settings.privacy.replacement_style);
+        for (const auto category : all_pii_categories()) {
+            const auto name = pii_category_name(category);
+            if (std::find(settings.privacy.disabled_categories.begin(), settings.privacy.disabled_categories.end(), name) !=
+                settings.privacy.disabled_categories.end()) {
+                options.disabled.insert(category);
+            }
+        }
+        options.always_hide = settings.privacy.always_hide;
+        options.never_hide = settings.privacy.never_hide;
+        return options;
+    };
+    // Text sent to the general LLM; placeholders when the privacy option is on.
+    const auto protect_for_llm = [&](const std::string& text) -> std::pair<std::string, bool> {
+        if (!settings.privacy.anonymize_before_llm) return {text, false};
+        auto options = anonymize_options();
+        options.style = ReplacementStyle::Placeholder;
+        auto result = anonymize_text(text, options, &privacy_vault);
+        return {std::move(result.text), !result.findings.empty()};
+    };
     const auto default_chart_path = [&] {
         const auto directory = settings.default_image_directory.empty()
             ? std::filesystem::current_path() : settings.default_image_directory;
@@ -695,8 +723,6 @@ int run_desktop_runtime() {
     std::uint64_t request_counter = 0;
     bool popup_visible = false;
     AppSettings settings_draft = settings;
-    // The anonymize pipeline stage; replaced by the privacy feature.
-    std::function<std::string(std::string_view)> pipeline_anonymizer;
     const auto draw_pipeline_settings = [&](UiLanguage language) {
         const auto& pal = palette();
         section_heading(icon::kPipeline, tr(language, UiTextKey::Pipeline), tr(language, UiTextKey::PipelinesHelp));
@@ -715,7 +741,42 @@ int run_desktop_runtime() {
                     }
                 }
             }
+            form_row(tr(language, UiTextKey::AllowAnyProgram), tr(language, UiTextKey::AllowAnyProgramHelp));
+            ImGui::Checkbox("##allow-any", &settings_draft.pipelines.allow_any_program);
             end_form();
+        }
+        ImGui::SeparatorText(tr(language, UiTextKey::CustomCommands).c_str());
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextColored(pal.text_muted, "%s", tr(language, UiTextKey::CustomCommandsHelp).c_str());
+        ImGui::PopTextWrapPos();
+        std::optional<std::size_t> remove_command;
+        if (ImGui::BeginTable("settings-custom-commands", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn(tr(language, UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 0.8F);
+            ImGui::TableSetupColumn(tr(language, UiTextKey::Command).c_str(), ImGuiTableColumnFlags_WidthStretch, 3.0F);
+            ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, 32.0F);
+            ImGui::TableHeadersRow();
+            for (std::size_t index = 0; index < settings_draft.pipelines.custom_commands.size(); ++index) {
+                auto& custom = settings_draft.pipelines.custom_commands[index];
+                ImGui::PushID(static_cast<int>(index) + 10000);
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                input_text_string("##name", custom.name);
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                input_text_string("##command", custom.command);
+                ImGui::TableNextColumn();
+                if (ImGui::SmallButton(ui_fonts().icons ? icon::kTrash : "x")) remove_command = index;
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        if (remove_command) {
+            settings_draft.pipelines.custom_commands.erase(settings_draft.pipelines.custom_commands.begin() +
+                                                           static_cast<std::ptrdiff_t>(*remove_command));
+        }
+        if (ImGui::Button(with_icon(icon::kPlus, tr(language, UiTextKey::CustomCommands)).c_str())) {
+            settings_draft.pipelines.custom_commands.push_back({"errors", "grep -i 'error|fail'"});
         }
         ImGui::SeparatorText(tr(language, UiTextKey::Recipes).c_str());
         std::optional<std::size_t> remove;
@@ -758,8 +819,56 @@ int run_desktop_runtime() {
         }
         (void)pal;
     };
+    const auto lines_field = [&](const char* id, std::vector<std::string>& values) {
+        std::string text;
+        for (const auto& value : values) text += (text.empty() ? "" : "\n") + value;
+        if (input_text_string(id, text, true, 0, ImGui::GetTextLineHeightWithSpacing() * 4.0F)) {
+            values.clear();
+            std::istringstream lines(text);
+            for (std::string line; std::getline(lines, line);) {
+                line = trim(line);
+                if (!line.empty()) values.push_back(line);
+            }
+        }
+    };
     const auto draw_privacy_settings = [&](UiLanguage language) {
-        section_heading(icon::kShield, tr(language, UiTextKey::Privacy));
+        section_heading(icon::kShield, tr(language, UiTextKey::Privacy), tr(language, UiTextKey::PrivacyHelp));
+        auto& privacy = settings_draft.privacy;
+        if (begin_form("settings-privacy", 230.0F)) {
+            form_row(tr(language, UiTextKey::ReplacementStyle));
+            static constexpr const char* style_names[] = {"placeholder", "mask", "fake", "redact"};
+            int style = static_cast<int>(replacement_style_from_name(privacy.replacement_style));
+            const std::string labels[] = {tr(language, UiTextKey::StylePlaceholder), tr(language, UiTextKey::StyleMask),
+                                          tr(language, UiTextKey::StyleFake), tr(language, UiTextKey::StyleRedact)};
+            if (ImGui::BeginCombo("##style", labels[style].c_str())) {
+                for (int index = 0; index < 4; ++index) {
+                    if (ImGui::Selectable(labels[index].c_str(), style == index)) privacy.replacement_style = style_names[index];
+                }
+                ImGui::EndCombo();
+            }
+            form_row(tr(language, UiTextKey::AnonymizeBeforeLlm), tr(language, UiTextKey::AnonymizeBeforeLlmHelp));
+            ImGui::Checkbox("##before-llm", &privacy.anonymize_before_llm);
+            form_row(tr(language, UiTextKey::AllowPageFetch));
+            ImGui::Checkbox("##page-fetch", &privacy.allow_page_fetch);
+            form_row(tr(language, UiTextKey::AlwaysHide));
+            lines_field("##always-hide", privacy.always_hide);
+            form_row(tr(language, UiTextKey::NeverHide));
+            lines_field("##never-hide", privacy.never_hide);
+            end_form();
+        }
+        ImGui::SeparatorText(tr(language, UiTextKey::Detect).c_str());
+        int column = 0;
+        for (const auto category : all_pii_categories()) {
+            const auto name = pii_category_name(category);
+            auto& disabled = privacy.disabled_categories;
+            const auto found = std::find(disabled.begin(), disabled.end(), name);
+            bool enabled = found == disabled.end();
+            if (column++ % 3 != 0) ImGui::SameLine(ImGui::GetContentRegionAvail().x > 0 ? (column - 1) % 3 * 190.0F : 0.0F);
+            if (ImGui::Checkbox(pii_category_label(category).c_str(), &enabled)) {
+                if (enabled) disabled.erase(found);
+                else disabled.push_back(name);
+            }
+        }
     };
     std::string settings_status = settings_load.warning;
     if (!clipboard_history_load.warning.empty()) {
@@ -778,7 +887,7 @@ int run_desktop_runtime() {
     const auto has_any_auxiliary_window = [&] {
         return image_preview.open || file_confirmation.has_value() ||
                prompt_parameter_dialog.open || custom_prompt_dialog.open || chart_view.open || table_view.open ||
-               markdown_view.open || pipeline_view.open ||
+               markdown_view.open || pipeline_view.open || anonymize_view.open ||
                has_fast_action_result_panel() ||
                std::any_of(generation_jobs.begin(), generation_jobs.end(), [](const auto& job) {
                    return job->panel.open;
@@ -1139,6 +1248,21 @@ int run_desktop_runtime() {
             open_table_view(table_view, std::move(*table), tr(UiTextKey::ViewTable));
             return;
         }
+        if (action->kind == ActionKind::AnonymizeText) {
+            open_anonymize_view(anonymize_view, clipboard_store.read_text(action->source_ref), anonymize_options());
+            return;
+        }
+        if (action->kind == ActionKind::RestorePlaceholders) {
+            const auto text = clipboard_store.read_text(action->source_ref);
+            const auto count = privacy_vault.restorable_count(text);
+            if (count == 0) {
+                execution_status = tr(UiTextKey::NoKnownPlaceholders);
+                return;
+            }
+            platform->publish_text(privacy_vault.restore(text));
+            execution_status = tr(UiTextKey::RestoredPlaceholders) + " " + std::to_string(count);
+            return;
+        }
         if (action->kind == ActionKind::RunPipeline) {
             const auto command = action->parameters.contains("command") ? action->parameters.at("command") : std::string{};
             open_pipeline_view(pipeline_view, clipboard_store.read_text(action->source_ref), command);
@@ -1255,7 +1379,8 @@ int run_desktop_runtime() {
                 }
                 return;
             }
-            const auto expanded = expand_prompt(prompt, source_text, prompt_variables);
+            const auto [llm_text, protected_text] = protect_for_llm(source_text);
+            const auto expanded = expand_prompt(prompt, llm_text, prompt_variables);
             TextGenerationRequest request{
                 .request_id = active_batch.request.request_id + "_ai_" + std::to_string(++request_counter),
                 .endpoint = action->parameters.at("llm_endpoint"),
@@ -1270,6 +1395,7 @@ int run_desktop_runtime() {
             job->action = *action;
             job->source_text = source_text;
             job->state.start(action->id, source_text, request);
+            job->restore_placeholders = protected_text;
             job->panel = {
                 .open = true,
                 .running = true,
@@ -1369,8 +1495,10 @@ int run_desktop_runtime() {
             }
             job->panel.running = false;
             if (result.ok) {
-                (void)job->state.complete(result.request_id, result.content);
-                job->panel.editable_text = result.content;
+                // Answers mention placeholders; show the real values again.
+                const auto content = job->restore_placeholders ? privacy_vault.restore(result.content) : result.content;
+                (void)job->state.complete(result.request_id, content);
+                job->panel.editable_text = content;
                 job->panel.error.clear();
             } else {
                 (void)job->state.fail(result.request_id, result.error);
@@ -1964,41 +2092,6 @@ int run_desktop_runtime() {
             }
             case SettingsPage::FastActions: {
                 section_heading(icon::kZap, tr(ui_language, UiTextKey::FastActions));
-                ImGui::SeparatorText("Mermaid");
-                ImGui::PushTextWrapPos(0.0F);
-                ImGui::TextColored(pal.text_muted, "%s", tr(UiTextKey::MermaidRendererHelp).c_str());
-                ImGui::PopTextWrapPos();
-                if (ImGui::SmallButton(with_icon(icon::kLink, tr(UiTextKey::MermaidHomepage)).c_str())) platform->open_uri("https://mermaid.js.org/");
-                if (begin_form("settings-mermaid")) {
-                    form_row(tr(UiTextKey::MermaidCliPath));
-                    path_field("##mermaid-cli", settings_draft.renderers.mermaid_cli_path);
-                    form_row(tr(UiTextKey::MermaidCliArguments));
-                    std::string mermaid_args;
-                    for (const auto& arg : settings_draft.renderers.mermaid_arguments) {
-                        if (!mermaid_args.empty()) mermaid_args += ' ';
-                        mermaid_args += arg;
-                    }
-                    if (input_text_string("##mermaid-args", mermaid_args)) {
-                        std::istringstream args(mermaid_args);
-                        settings_draft.renderers.mermaid_arguments.assign(
-                            std::istream_iterator<std::string>{args}, std::istream_iterator<std::string>{});
-                    }
-                    end_form();
-                }
-                ImGui::SeparatorText("QR");
-                ImGui::PushTextWrapPos(0.0F);
-                ImGui::TextColored(pal.text_muted, "%s", tr(UiTextKey::QrHelp).c_str());
-                ImGui::PopTextWrapPos();
-                if (ImGui::SmallButton(with_icon(icon::kLink, tr(UiTextKey::QrHomepage)).c_str())) platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
-                if (begin_form("settings-qr")) {
-                    form_row(tr(UiTextKey::QrErrorCorrection));
-                    input_text_string("##qr-ecc", settings_draft.renderers.qr_error_correction);
-                    form_row(tr(UiTextKey::QrMargin));
-                    ImGui::SliderInt("##qr-margin", &settings_draft.renderers.qr_margin, 0, 10);
-                    form_row(tr(UiTextKey::QrScale));
-                    ImGui::SliderInt("##qr-scale", &settings_draft.renderers.qr_scale, 1, 64);
-                    end_form();
-                }
                 ImGui::SeparatorText(tr(UiTextKey::Downloads).c_str());
                 if (begin_form("settings-downloads")) {
                     form_row(tr(UiTextKey::DownloadResumeDirectory));
@@ -2181,13 +2274,14 @@ int run_desktop_runtime() {
                         execution_status = "General LLM provider is not configured";
                     } else {
                         const auto source_text = clipboard_store.read_text(custom_prompt_dialog.action.source_ref);
+                        const auto [llm_text, protected_text] = protect_for_llm(source_text);
                         TextGenerationRequest request{
                             .request_id = active_batch.request.request_id + "_custom_" + std::to_string(++request_counter),
                             .endpoint = active_batch.general_llm.endpoint,
                             .api_key = active_batch.general_llm.api_key,
                             .model_id = active_batch.general_llm.model_id,
                             .system_message = custom_prompt_dialog.prompt,
-                            .user_message = source_text,
+                            .user_message = llm_text,
                             .temperature = 0.2,
                         };
                         auto job = std::make_unique<GenerationJob>();
@@ -2195,6 +2289,7 @@ int run_desktop_runtime() {
                         job->action = custom_prompt_dialog.action;
                         job->source_text = source_text;
                         job->state.start(job->action.id, source_text, request);
+                        job->restore_placeholders = protected_text;
                         job->panel = {.open = true, .running = true, .request_id = request.request_id,
                                       .editable_text = {}, .error = {}};
                         job->pending.emplace(std::async(std::launch::async, [&llm_client, request] {
@@ -2215,7 +2310,12 @@ int run_desktop_runtime() {
         {
             PipelineOptions pipeline_options;
             pipeline_options.allowed_tools = settings.pipelines.allowed_tools;
-            pipeline_options.anonymize = pipeline_anonymizer;
+            pipeline_options.allow_any_program = settings.pipelines.allow_any_program;
+            for (const auto& custom : settings.pipelines.custom_commands) pipeline_options.custom_commands[custom.name] = custom.command;
+            pipeline_options.anonymize = [options = anonymize_options(), &privacy_vault](std::string_view text) {
+                auto copy = options;
+                return anonymize_text(text, copy, copy.style == ReplacementStyle::Placeholder ? &privacy_vault : nullptr).text;
+            };
             const PipelineViewHost pipeline_host{
                 .data = data_view_host,
                 .replace_clipboard = [&](std::string_view text) { platform->publish_text(text); },
@@ -2229,6 +2329,11 @@ int run_desktop_runtime() {
             };
             draw_pipeline_view(pipeline_view, pipeline_options, pipeline_host, ui_language);
         }
+        draw_anonymize_view(anonymize_view, AnonymizeViewHost{
+            .data = data_view_host,
+            .replace_clipboard = [&](std::string_view text) { platform->publish_text(text); },
+            .vault = &privacy_vault,
+        }, ui_language);
 
         if (file_confirmation) {
             auto& state = *file_confirmation;

@@ -6,6 +6,7 @@
 #include "detect/resume_detector.hpp"
 #include "graph/graph_data.hpp"
 #include "storage/path_history.hpp"
+#include "privacy/anonymizer.hpp"
 #include "transform/text_transforms.hpp"
 #include "util/json.hpp"
 #include "util/path_utf8.hpp"
@@ -891,6 +892,18 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
         ? profile_content(item.kind, source_text)
         : profile_content(item.kind, sample_file(item.blob_path));
     const auto& profile = *catalog.profile;
+    const auto add_privacy_actions = [&] {
+        if (item.kind == ContentKind::Image) return;
+        if (const auto findings = find_pii(source_text); !findings.empty()) {
+            add(catalog, item, ActionKind::AnonymizeText, "", "Anonymize (" + std::to_string(findings.size()) + " found)",
+                "Replace names, contacts, IDs, addresses and secrets with placeholders", "privacy",
+                {{"findings", std::to_string(findings.size())}});
+        }
+        if (contains_placeholders(source_text)) {
+            add(catalog, item, ActionKind::RestorePlaceholders, "", "Restore anonymized values",
+                "Put the real values back for placeholders like [EMAIL_1] from this session", "privacy");
+        }
+    };
     switch (item.kind) {
             case ContentKind::Text:
             case ContentKind::DateTime:
@@ -912,6 +925,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 }
                 add_qr_action(catalog, item, signals, source_text);
                 add_profile_actions(catalog, item, profile);
+                add_privacy_actions();
                 add_text_utility_actions(catalog, item, targets, signals, source_text, profile);
                 add_prompt_actions(catalog, item, templates, provider, signals);
                 add(catalog, item, ActionKind::CustomPrompt, "", "Custom prompt",
@@ -978,6 +992,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                         "Save pretty JSON to " + path_to_utf8_string(target.path), "pretty");
                 }
                 add_json_utility_actions(catalog, item, source_text);
+                add_privacy_actions();
                 if (json_to_csv(source_text) || profile.shape == DataShape::Ndjson) {
                     add(catalog, item, ActionKind::ViewTable, "", "View as table",
                         "Open these JSON records in a sortable, filterable table", "table", {{"format", "json"}});

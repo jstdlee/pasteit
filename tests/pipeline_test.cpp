@@ -69,6 +69,16 @@ int main() {
     assert(error_of(words, "cut -f 0").find("numbered from 1") != std::string::npos);
     assert(error_of(words, "anonymize").find("not available") != std::string::npos);
 
+    // Custom commands expand into stages, may contain quoted |, and pass
+    // extra arguments to their last stage.
+    PipelineOptions custom;
+    custom.custom_commands = {{"errors", "grep -i 'error|fail'"}, {"top", "sort | uniq -c | sort -nr | head -n"},
+                              {"loop", "loop"}};
+    assert(run("ok\nERROR x\nfailed y\nok", "errors | wc -l", custom) == "2");
+    assert(run("a\nb\na\na", "top 1", custom) == "      3 a");
+    assert(run("x|y", R"(sed 's/\|/+/')", custom) == "x+y");
+    assert(error_of("x", "loop", custom).find("nest too deeply") != std::string::npos);
+
     PipelineOptions anonymizing;
     anonymizing.anonymize = [](std::string_view text) { return std::string(text.size(), '*'); };
     assert(run("abc", "anonymize", anonymizing) == "***");
@@ -90,5 +100,11 @@ int main() {
         assert(run(R"({"b":1,"a":2})", "jq -c keys", options) == R"(["a","b"])");
     }
     assert(!find_executable("../bin/sh"));
+    if (find_executable("printf")) {
+        PipelineOptions any;
+        assert(!run_pipeline("", "printf hi", any).ok);
+        any.allow_any_program = true;
+        assert(run("", "printf hi", any) == "hi");
+    }
     std::cout << "pipeline ok\n";
 }

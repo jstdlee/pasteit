@@ -604,14 +604,51 @@ PipelineParse parse_pipeline(std::string_view command) {
     return parse;
 }
 
+namespace {
+
+// Replaces custom-command stages with their pipelines (nested up to 8 deep).
+bool expand_custom_commands(std::vector<PipelineStage>& stages, const PipelineOptions& options, int depth,
+                            std::string& error) {
+    if (options.custom_commands.empty()) return true;
+    const auto& builtins = builtin_pipeline_commands();
+    std::vector<PipelineStage> expanded;
+    for (auto& stage : stages) {
+        const auto& name = stage.argv.front();
+        const auto custom = options.custom_commands.find(name);
+        if (custom == options.custom_commands.end() ||
+            std::find(builtins.begin(), builtins.end(), name) != builtins.end()) {
+            expanded.push_back(std::move(stage));
+            continue;
+        }
+        if (depth >= 8) {
+            error = name + ": custom commands nest too deeply";
+            return false;
+        }
+        auto parsed = parse_pipeline(custom->second);
+        if (!parsed.error.empty()) {
+            error = name + ": " + parsed.error;
+            return false;
+        }
+        if (!expand_custom_commands(parsed.stages, options, depth + 1, error)) return false;
+        auto& last = parsed.stages.back().argv;
+        last.insert(last.end(), stage.argv.begin() + 1, stage.argv.end());
+        for (auto& inner : parsed.stages) expanded.push_back(std::move(inner));
+    }
+    stages = std::move(expanded);
+    return true;
+}
+
+}  // namespace
+
 PipelineResult run_pipeline(std::string_view input, std::string_view command, const PipelineOptions& options) {
     const auto started = std::chrono::steady_clock::now();
     PipelineResult result;
-    const auto parse = parse_pipeline(command);
+    auto parse = parse_pipeline(command);
     if (!parse.error.empty()) {
         result.error = parse.error;
         return result;
     }
+    if (!expand_custom_commands(parse.stages, options, 0, result.error)) return result;
     const auto& builtins = builtin_pipeline_commands();
     std::string data{input};
     for (const auto& stage : parse.stages) {
@@ -630,7 +667,8 @@ PipelineResult run_pipeline(std::string_view input, std::string_view command, co
                 return result;
             }
         } else {
-            if (std::find(options.allowed_tools.begin(), options.allowed_tools.end(), name) == options.allowed_tools.end()) {
+            if (!options.allow_any_program &&
+                std::find(options.allowed_tools.begin(), options.allowed_tools.end(), name) == options.allowed_tools.end()) {
                 result.error = name + ": not a built-in command; add it to the allowed tools in Settings to run it";
                 return result;
             }

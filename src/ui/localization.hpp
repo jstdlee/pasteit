@@ -22,7 +22,8 @@ enum class UiTextKey{
     UsageInsights,UsageInsightsHelp,UsageInsightsEmpty,ResetUsage,UsageReset,FastActions,
     StatusIdle,StatusRanking,StatusRanked,StatusFallback,ClickToCopy,Theme,ThemeDark,ThemeLight,
     ConfirmOverwrite,FastAnnotation,Comment,Undo,Clear,SaveAnnotatedSvg,CopyTemporaryImagePath,OpenPngExternally,Pause,Resume,ClipboardHistoryDetail,RecentPathDetail,MermaidRendererHelp,MermaidHomepage,MermaidCliPath,MermaidCliArguments,QrHelp,QrHomepage,QrErrorCorrection,QrMargin,QrScale,DownloadResumeDirectory,KeepPartFiles,TerminalCommand,TerminalProfile,ShowSha256,ShowSha512,DateSpacingEnabled,Points,Uses,ViewTable,PreviewMarkdown,Pipeline,Anonymize,
-    Privacy,DjevHelp,LlmHelp,PromptTemplatesHelp,Testing,Downloads,TerminalAndFiles,AnnotationDirectory,AnnotationSvgOnly,DateTime,SourceTimeZone,TargetTimeZone,UnsavedChanges,PromptParametersHelp,SuggestedFolders,
+    Privacy,DjevHelp,LlmHelp,PromptTemplatesHelp,Testing,Downloads,TerminalAndFiles,AnnotationDirectory,AnnotationSvgOnly,DateTime,SourceTimeZone,TargetTimeZone,UnsavedChanges,PromptParametersHelp,SuggestedFolders,NoKnownPlaceholders,RestoredPlaceholders,
+    StylePlaceholder,StyleMask,StyleFake,StyleRedact,NothingFound,Replaced,PrivacyHelp,ReplacementStyle,AnonymizeBeforeLlm,AnonymizeBeforeLlmHelp,AllowPageFetch,Detect,AlwaysHide,NeverHide,CustomCommands,CustomCommandsHelp,AllowAnyProgram,AllowAnyProgramHelp,
     PipelineHelp,ExternalTool,PipelineInput,PipelineOutput,SaveAsRecipe,RecipeName,AllowedTools,AllowedToolsHelp,Recipes,AppliesTo,Command,NewRecipe,PipelinesHelp,
     Filter,Columns,Statistics,Chart,Copied,Rows,CopyAsSql,CopyAsJson,CopyAsCsv,CopyAsMarkdown,ShowSource,CopyPlainText,CopyHtml,ChartLine,ChartBar,ChartPie,ChartScatter,ChartHistogram,RowNumber,XAxis,YAxis
 };

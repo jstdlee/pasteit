@@ -88,9 +88,18 @@ struct PipelineRecipe {
     bool operator==(const PipelineRecipe&) const = default;
 };
 
+struct PipelineCustomCommand {
+    std::string name;
+    std::string command;
+
+    bool operator==(const PipelineCustomCommand&) const = default;
+};
+
 struct PipelineSettings {
     // External programs pipelines may run (by argv, never via a shell).
     std::vector<std::string> allowed_tools{"gawk", "awk", "jq"};
+    bool allow_any_program = false;
+    std::vector<PipelineCustomCommand> custom_commands;
     std::vector<PipelineRecipe> recipes;
 
     bool operator==(const PipelineSettings&) const = default;

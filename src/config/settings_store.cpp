@@ -151,6 +151,13 @@ SettingsLoadResult SettingsStore::load() const {
     };
     if (const auto* pipelines = root->get("pipelines"); pipelines && pipelines->object()) {
         if (const auto* tools = pipelines->get("allowed_tools"); tools && tools->array()) s.pipelines.allowed_tools = strings_of(tools);
+        s.pipelines.allow_any_program = bool_value(pipelines->get("allow_any_program"), false);
+        if (const auto* commands = pipelines->get("custom_commands"); commands && commands->array()) {
+            for (const auto& item : *commands->array()) {
+                PipelineCustomCommand command{string_value(item.get("name")), string_value(item.get("command"))};
+                if (!command.name.empty() && !command.command.empty()) s.pipelines.custom_commands.push_back(std::move(command));
+            }
+        }
         if (const auto* recipes = pipelines->get("recipes"); recipes && recipes->array()) {
             s.pipelines.recipes.clear();
             for (const auto& item : *recipes->array()) {
@@ -230,7 +237,12 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
     };
     out << ",\n\"pipelines\":{\"allowed_tools\":";
     write_strings(settings.pipelines.allowed_tools);
-    out << ",\"recipes\":[";
+    out << ",\"allow_any_program\":" << (settings.pipelines.allow_any_program ? "true" : "false") << ",\"custom_commands\":[";
+    for (std::size_t i = 0; i < settings.pipelines.custom_commands.size(); ++i) {
+        const auto& command = settings.pipelines.custom_commands[i];
+        out << (i ? "," : "") << "{\"name\":" << json_quote(command.name) << ",\"command\":" << json_quote(command.command) << '}';
+    }
+    out << "],\"recipes\":[";
     for (std::size_t i = 0; i < settings.pipelines.recipes.size(); ++i) {
         const auto& recipe = settings.pipelines.recipes[i];
         out << (i ? "," : "") << "{\"id\":" << json_quote(recipe.id) << ",\"name\":" << json_quote(recipe.name)

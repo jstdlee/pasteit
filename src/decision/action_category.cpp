@@ -112,6 +112,9 @@ double action_specificity_prior(ActionKind kind) {
         case ActionKind::ViewTable:
         case ActionKind::RestorePlaceholders:
             return 0.06;
+        // Only offered when personal data was found in the clipboard.
+        case ActionKind::AnonymizeText:
+            return 0.05;
         // The obvious primary use of the content.
         case ActionKind::PasteText:
         case ActionKind::PasteUrl:
