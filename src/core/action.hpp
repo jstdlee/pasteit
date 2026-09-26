@@ -53,6 +53,8 @@ enum class ActionKind {
     AnnotateImage,
     ExplainText,
     ExplainCode,
+    Graph,
+    CustomPrompt,
 };
 
 struct ActionInstance {

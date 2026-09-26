@@ -220,18 +220,20 @@ bool remove_lowest_priority_duplicate(std::vector<ActionInstance>& actions, bool
 }
 
 std::string build_compact_payload(const DecisionRequest& request, const std::string& model,
-                                  const std::vector<ActionInstance>& actions) {
+                                  const std::vector<ActionInstance>& actions, bool autojev_mode = false) {
     const ClipboardItem* current = request.snapshot.clipboard_items.empty() ? nullptr : &request.snapshot.clipboard_items.front();
     const auto destinations = destination_paths_for(request.snapshot, actions);
 
     std::ostringstream out;
     out << "{\"model\":\"" << json_escape(model) << "\",";
-    out << "\"protocol_version\":" << request.protocol_version << ",";
-    out << "\"request_id\":\"" << json_escape(request.request_id) << "\",";
-    out << "\"snapshot\":{";
-    out << "\"clipboard_hash\":\"" << json_escape(request.snapshot.clipboard_hash) << "\",";
-    out << "\"focused_target_hash\":\"" << json_escape(request.snapshot.focused_target_hash) << "\",";
-    out << "\"captured_at_ms\":" << request.snapshot.captured_at_ms << "},";
+    if (!autojev_mode) {
+        out << "\"protocol_version\":" << request.protocol_version << ",";
+        out << "\"request_id\":\"" << json_escape(request.request_id) << "\",";
+        out << "\"snapshot\":{";
+        out << "\"clipboard_hash\":\"" << json_escape(request.snapshot.clipboard_hash) << "\",";
+        out << "\"focused_target_hash\":\"" << json_escape(request.snapshot.focused_target_hash) << "\",";
+        out << "\"captured_at_ms\":" << request.snapshot.captured_at_ms << "},";
+    }
     out << "\"state\":{";
     out << "\"clipboard\":";
     if (current == nullptr) {
@@ -270,6 +272,35 @@ std::string build_compact_payload(const DecisionRequest& request, const std::str
         out << "\"" << json_escape(action.id) << "\":\"" << json_escape(truncate_codepoints(action.description, 120)) << "\"";
     }
     out << "}}}}";
+    return out.str();
+}
+
+bool is_autojev_endpoint(std::string_view endpoint) {
+    while (!endpoint.empty() && endpoint.back() == '/') endpoint.remove_suffix(1);
+    return endpoint.ends_with("/v1/autojev");
+}
+
+std::string response_error_message(std::string_view body) {
+    const auto root = parse_json(body);
+    if (!root) return {};
+    if (const auto* error = root->get("error")) {
+        if (const auto* message = error->get("message"); message && message->string()) return *message->string();
+    }
+    const auto* detail = root->get("detail");
+    if (detail == nullptr || detail->array() == nullptr) return {};
+    std::ostringstream out;
+    bool first_error = true;
+    for (const auto& entry : *detail->array()) {
+        if (!first_error) out << "; ";
+        first_error = false;
+        if (const auto* location = entry.get("loc"); location && location->array()) {
+            for (const auto& part : *location->array()) {
+                if (const auto* value = part.string()) out << *value << '.';
+                else if (const auto value = part.number()) out << static_cast<int>(*value) << '.';
+            }
+        }
+        if (const auto* message = entry.get("msg"); message && message->string()) out << *message->string();
+    }
     return out.str();
 }
 
@@ -469,25 +500,30 @@ std::optional<std::string> recv_all(int fd, std::string& error) {
 
 DjevClient::DjevClient(std::string url, std::string model, std::chrono::milliseconds timeout,
                        std::shared_ptr<HttpTransport> transport, std::string api_key)
-    : url_(normalize_endpoint(std::move(url))), model_(std::move(model)), timeout_(timeout),
-      transport_(transport ? std::move(transport) : make_default_http_transport()), api_key_(std::move(api_key)) {
+    : url_(normalize_endpoint(url)), model_(std::move(model)), timeout_(timeout),
+      transport_(transport ? std::move(transport) : make_default_http_transport()), api_key_(std::move(api_key)),
+      autojev_mode_(is_autojev_endpoint(url) || model_ == "autojev" || model_ == "jev-latest" ||
+                    model_ == "jev-preview" || model_ == "jev-1.13.0") {
     if (api_key_.empty()) {
         if (const char* key = api_key_from_env()) api_key_ = key;
     }
 }
 
 DecisionResponse DjevClient::decide(const DecisionRequest& request) const {
-    HttpRequest http{.url=url_,.body=build_payload(request,model_),.headers={},.timeout=timeout_};
+    auto actions = compact_payload_actions(request, 26);
+    retain_actions_with_represented_paths(request.snapshot, actions);
+    auto payload = build_compact_payload(request, model_, actions, autojev_mode_);
+    while (payload.size() > 10 * 1024 && actions.size() > 1) {
+        if (!remove_lowest_priority_duplicate(actions, true) &&
+            !remove_lowest_priority_duplicate(actions, false)) actions.pop_back();
+        payload = build_compact_payload(request, model_, actions, autojev_mode_);
+    }
+    HttpRequest http{.url=url_,.body=std::move(payload),.headers={},.timeout=timeout_};
     if(!api_key_.empty()) http.headers["Authorization"]="Bearer "+api_key_;
     const auto wire=transport_->post_json(http);
     if(!wire.transport_error.empty() || wire.status<200 || wire.status>=300){
         DecisionResponse response;response.request_id=request.request_id;response.valid=false;response.http_status=wire.status;
-        if(wire.status>=400){
-            if(const auto root=parse_json(wire.body);root){
-                const auto* error=root->get("error");const auto* message=error?error->get("message"):nullptr;
-                if(message&&message->string())response.error=*message->string();
-            }
-        }
+        if(wire.status>=400) response.error = response_error_message(wire.body);
         if(response.error.empty()){
             std::ostringstream out;out<<"Djev request failed";
             if(!wire.transport_error.empty())out<<": "<<wire.transport_error;
@@ -574,6 +610,11 @@ std::string DjevClient::normalize_endpoint(std::string url) {
     if (url.size() >= std::string{"/v1/systemone"}.size() &&
         url.substr(url.size() - std::string{"/v1/systemone"}.size()) == "/v1/systemone") {
         return url;
+    }
+    constexpr std::string_view autojev_suffix = "/v1/autojev";
+    if (url.size() >= autojev_suffix.size() && url.ends_with(autojev_suffix)) {
+        url.resize(url.size() - autojev_suffix.size());
+        return url + "/v1/systemone";
     }
     return url + "/v1/systemone";
 }

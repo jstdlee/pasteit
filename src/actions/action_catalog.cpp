@@ -4,6 +4,7 @@
 #include "ai/prompt_expander.hpp"
 #include "detect/fast_content_detector.hpp"
 #include "detect/resume_detector.hpp"
+#include "graph/graph_data.hpp"
 #include "storage/path_history.hpp"
 #include "util/json.hpp"
 #include "util/path_utf8.hpp"
@@ -20,6 +21,7 @@ namespace pastit {
 namespace {
 
 constexpr std::size_t kMaxPathTargets = 3;
+constexpr std::size_t kMaxStructuredCandidateBytes = 2048;
 constexpr std::string_view kExplainTextTemplateId = "builtin-explain-text";
 constexpr std::string_view kExplainCodeTemplateId = "builtin-explain-code";
 
@@ -135,6 +137,10 @@ std::string kind_slug(ActionKind kind) {
             return "explain_text";
         case ActionKind::ExplainCode:
             return "explain_code";
+        case ActionKind::Graph:
+            return "graph";
+        case ActionKind::CustomPrompt:
+            return "custom_prompt";
     }
     return "action";
 }
@@ -429,11 +435,10 @@ void add_path_fast_actions(ActionCatalog& catalog, const ClipboardItem& item, co
 }
 
 void add_ip_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::string& source_text) {
-    // Keep the network actions visible to Djev even when the local detector
-    // cannot confidently isolate an address. An empty target is deliberately
-    // rejected by the executor instead of falling back to arbitrary clipboard
-    // prose as a host name.
-    const auto ip = ip_value_from(source_text).value_or(std::string{});
+    if (source_text.size() > kMaxStructuredCandidateBytes) return;
+    const auto detected_ip = ip_value_from(source_text);
+    if (!detected_ip) return;
+    const auto& ip = *detected_ip;
     const std::map<std::string, std::string> parameters{{"ip", ip}};
     add(catalog, item, ActionKind::PingIp, "", "Ping IP",
         "Measure reachability and latency for this IP address", "network", parameters);
@@ -499,13 +504,8 @@ void add_github_actions(ActionCatalog& catalog, const ClipboardItem& item, const
 
 void add_datetime_actions(ActionCatalog& catalog, const ClipboardItem& item, const FastContentSignals& signals,
                           const std::string& source_text) {
-    const auto value = signals.date_time_value.value_or(DateTimeValue{
-        .original = source_text,
-        .normalized = source_text,
-        .source_zone = {},
-        .epoch_seconds = 0,
-        .has_epoch = false,
-    });
+    if (source_text.size() > kMaxStructuredCandidateBytes || !signals.date_time_value) return;
+    const auto& value = *signals.date_time_value;
     std::map<std::string, std::string> parameters{
         {"original", value.original},
         {"normalized", value.normalized.empty() ? value.original : value.normalized},
@@ -626,8 +626,15 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 add_github_actions(catalog, item, targets, signals, source_text);
                 add_datetime_actions(catalog, item, signals, source_text);
                 add_diagram_action(catalog, item, signals, source_text);
+                if (parse_graph_data(source_text, false, false).has_value() ||
+                    parse_graph_data(source_text, true, false).has_value()) {
+                    add(catalog, item, ActionKind::Graph, "", "Graph data",
+                        "Preview this numeric sequence as a line, bar, or pie chart", "graph");
+                }
                 add_qr_action(catalog, item, signals, source_text);
                 add_prompt_actions(catalog, item, templates, provider, signals);
+                add(catalog, item, ActionKind::CustomPrompt, "", "Custom prompt",
+                    "Enter a prompt and send this clipboard text to the configured general LLM", "ai");
                 break;
             case ContentKind::Image:
                 add(catalog, item, ActionKind::PasteImage, "", "Paste image", "Paste the image clipboard item", "raw");

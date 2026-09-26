@@ -392,6 +392,19 @@ std::string format_utc(std::int64_t epoch_seconds) {
 std::optional<DateTimeValue> detect_date_time_value(std::string_view text) {
     const std::string value{text};
 
+    static const std::regex date_only_pattern(R"(^\s*([0-9]{4})-([0-9]{2})-([0-9]{2})\s*$)");
+    std::smatch date_only;
+    if (std::regex_match(value, date_only, date_only_pattern)) {
+        int year = 0, month = 0, day = 0;
+        parse_int(date_only[1].str(), year);
+        parse_int(date_only[2].str(), month);
+        parse_int(date_only[3].str(), day);
+        if (valid_calendar_date(year, month, day)) {
+            const auto date = trim(value);
+            return DateTimeValue{date, date, {}, 0, false};
+        }
+    }
+
     static const std::regex iso_pattern(
         R"(\b([0-9]{4})-([0-9]{2})-([0-9]{2})[T ]([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?(Z|[+-][0-9]{2}:[0-9]{2})\b)");
     for (std::sregex_iterator it(value.begin(), value.end(), iso_pattern), end; it != end; ++it) {

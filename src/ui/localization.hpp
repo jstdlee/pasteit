@@ -16,7 +16,9 @@ enum class UiTextKey{
     ClipboardHistory,Preview,Size,Captured,Details,View,Edit,Close,MimeTypes,MissingData,PromptActions,
     ConfigureGeneralLlm,BuiltIn,Custom,Browse,Destination,Filename,OutputPath,Confirm,InvalidPath,
     InvalidFilename,SourceParent,FocusedDirectory,ManualDestination,DeleteTemplateText,DuplicateTemplateText,
-    UseAsDestination,OpenParent,Use,Seen,Parent,Reference,CopyHereAction,MoveHereAction,ConfirmFileOperation
+    UseAsDestination,OpenParent,Use,Seen,Parent,Reference,CopyHereAction,MoveHereAction,ConfirmFileOperation,
+    GraphData,GraphPreview,ChartType,HeaderRow,ConvertDates,SavePngAs,CopyGraphImage,SaveGraphImage,
+    CustomPrompt,PromptInstructions,Generate,AnnotateImage
 };
 UiLanguage resolve_language(UiLanguage requested,std::string_view locale);
 std::string tr(UiLanguage language,UiTextKey key);

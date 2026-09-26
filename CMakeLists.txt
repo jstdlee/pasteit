@@ -147,6 +147,8 @@ add_library(pastit_core
     src/decision/action_preference.cpp
     src/decision/candidate_selector.cpp
     src/decision/fallback_ranker.cpp
+    src/graph/graph_data.cpp
+    src/graph/graph_renderer.cpp
     src/core/core.cpp
     src/detect/content_detector.cpp
     src/detect/fast_content_detector.cpp
@@ -380,6 +382,9 @@ if (PASTIT_BUILD_TESTS)
     add_executable(fast_content_detector_test tests/fast_content_detector_test.cpp)
     target_link_libraries(fast_content_detector_test PRIVATE pastit_core)
     add_test(NAME fast_content_detector_test COMMAND fast_content_detector_test)
+    add_executable(graph_data_test tests/graph_data_test.cpp)
+    target_link_libraries(graph_data_test PRIVATE pastit_core)
+    add_test(NAME graph_data_test COMMAND graph_data_test)
 
     add_executable(action_catalog_test tests/action_catalog_test.cpp)
     target_link_libraries(action_catalog_test PRIVATE pastit_core)

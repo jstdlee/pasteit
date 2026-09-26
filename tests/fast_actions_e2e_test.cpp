@@ -331,7 +331,7 @@ int main() {
         const auto ping = find_kind(request_catalog, ActionKind::PingIp);
         assert(ping.has_value());
         assert(ping->parameters.at("ip") == "192.0.2.10");
-        assert(has_kind(request_catalog, ActionKind::ConvertTimezone));
+        assert(!has_kind(request_catalog, ActionKind::ConvertTimezone));
     }
 
     {
@@ -340,8 +340,10 @@ int main() {
                                       "Please handle this copied note", 1000)};
         const auto batch = build_desktop_decision(input);
         const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
-        assert(has_kind(request_catalog, ActionKind::PingIp));
-        assert(has_kind(request_catalog, ActionKind::ConvertTimezone));
+        assert(!has_kind(request_catalog, ActionKind::PingIp));
+        assert(!has_kind(request_catalog, ActionKind::ConvertTimezone));
+        assert(has_kind(batch.catalog, ActionKind::CustomPrompt));
+        assert(request_catalog.actions.size() < 26);
     }
 
     {
@@ -351,8 +353,34 @@ int main() {
         const auto batch = build_desktop_decision(input);
         const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
         const auto ping = find_kind(request_catalog, ActionKind::PingIp);
-        assert(ping.has_value());
-        assert(ping->parameters.at("ip").empty());
+        assert(!ping.has_value());
+    }
+
+    {
+        auto input = base_input(root);
+        input.clipboard_items = {item("long_ip_text", ContentKind::Text,
+                                      std::string(2100, 'x') + " 192.0.2.10", 1000)};
+        const auto batch = build_desktop_decision(input);
+        assert(!has_kind(batch.catalog, ActionKind::PingIp));
+    }
+
+    {
+        auto input = base_input(root);
+        input.clipboard_items = {item("current_series", ContentKind::Text, "1, 2, 3, 4", 1000)};
+        const auto batch = build_desktop_decision(input);
+        const ActionCatalog request_catalog{.actions=batch.request.snapshot.available_actions};
+        assert(has_kind(request_catalog, ActionKind::Graph));
+        assert(batch.ranking_context.local_action_bonus.at(ActionKind::Graph) == 0.05);
+        assert(!has_kind(request_catalog, ActionKind::PingIp));
+        assert(!has_kind(request_catalog, ActionKind::ConvertTimezone));
+    }
+
+    {
+        auto input = base_input(root);
+        input.clipboard_items = {item("date_only", ContentKind::Text, "2026-09-21", 1000)};
+        const auto batch = build_desktop_decision(input);
+        assert(has_kind(batch.catalog, ActionKind::ConvertTimezone));
+        assert(!has_kind(batch.catalog, ActionKind::Graph));
     }
 
     {

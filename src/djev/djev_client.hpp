@@ -32,6 +32,7 @@ private:
     std::chrono::milliseconds timeout_;
     std::shared_ptr<HttpTransport> transport_;
     std::string api_key_;
+    bool autojev_mode_ = false;
 };
 
 }  // namespace pastit

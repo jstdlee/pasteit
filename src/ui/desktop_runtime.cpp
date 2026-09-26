@@ -14,6 +14,8 @@
 #include "djev/djev_client.hpp"
 #include "executor/action_executor.hpp"
 #include "executor/fast_action_executor.hpp"
+#include "graph/graph_data.hpp"
+#include "graph/graph_renderer.hpp"
 #include "history/path_history_store.hpp"
 #include "history/clipboard_history_store.hpp"
 #include "history/path_target_resolver.hpp"
@@ -270,6 +272,28 @@ struct PromptParameterDialog {
     std::map<std::string, std::string> values;
 };
 
+struct CustomPromptDialog {
+    bool open = false;
+    bool focus_pending = true;
+    ActionInstance action;
+    std::string prompt;
+};
+
+struct GraphDialog {
+    bool open = false;
+    bool focus_pending = true;
+    std::string source;
+    int type = 0;
+    bool header = false;
+    bool convert_dates = false;
+    bool dirty = true;
+    std::string save_path;
+    std::string status;
+    std::optional<GraphData> data;
+    std::vector<std::byte> png;
+    ImageTexture texture;
+};
+
 struct AuxiliaryPanelWindow {
     bool open = false;
     bool focus_pending = false;
@@ -400,7 +424,8 @@ void position_popup(GLFWwindow* window) {
     int height = 0;
     glfwGetMonitorPos(monitor, &monitor_x, &monitor_y);
     glfwGetWindowSize(window, &width, &height);
-    glfwSetWindowPos(window, monitor_x + (mode->width - width) / 2, monitor_y + (mode->height - height) / 3);
+    glfwSetWindowPos(window, monitor_x + (mode->width - width) / 2,
+                     monitor_y + (mode->height - height) / 2);
 }
 
 void glfw_error_callback(int error, const char* description) {
@@ -429,6 +454,9 @@ int run_desktop_runtime() {
     LinuxSingleInstance single_instance;
 #endif
     if (!single_instance.acquired()) {
+#if !defined(_WIN32)
+        if (single_instance.request_show_existing_instance()) return 0;
+#endif
         std::cerr << "PasteIt is already running.\n";
         return 2;
     }
@@ -459,7 +487,7 @@ int run_desktop_runtime() {
     glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    GLFWwindow* window = glfwCreateWindow(720, 560, "PasteIt", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(720, 420, "PasteIt", nullptr, nullptr);
     if (window == nullptr) {
         glfwTerminate();
         std::cerr << "Failed to create PasteIt popup window\n";
@@ -538,6 +566,8 @@ int run_desktop_runtime() {
     DecisionFutureSlot pending_decision;
     std::vector<std::unique_ptr<GenerationJob>> generation_jobs;
     PromptParameterDialog prompt_parameter_dialog;
+    CustomPromptDialog custom_prompt_dialog;
+    GraphDialog graph_dialog;
     std::map<std::string, std::map<std::string, std::string>> prompt_parameter_memory;
     std::optional<std::future<std::string>> pending_provider_test;
     bool pending_provider_test_is_djev = false;
@@ -599,7 +629,8 @@ int run_desktop_runtime() {
 
     const auto has_any_auxiliary_window = [&] {
         return show_settings || image_preview.open || file_confirmation.has_value() ||
-               prompt_parameter_dialog.open || has_fast_action_result_panel() ||
+               prompt_parameter_dialog.open || custom_prompt_dialog.open || graph_dialog.open ||
+               has_fast_action_result_panel() ||
                std::any_of(generation_jobs.begin(), generation_jobs.end(), [](const auto& job) {
                    return job->panel.open;
                });
@@ -764,8 +795,11 @@ int run_desktop_runtime() {
                 return client.decide(request);
             }));
         }
-        position_popup(window);
+        glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
+        glfwRestoreWindow(window);
         glfwShowWindow(window);
+        glfwPollEvents();
+        position_popup(window);
         glfwFocusWindow(window);
         popup_visible = true;
     };
@@ -918,6 +952,27 @@ int run_desktop_runtime() {
                 std::cerr << "PasteIt action preference save failed: " << preference_save_error << '\n';
             }
         }
+        if (action->kind == ActionKind::Graph) {
+            graph_dialog.open = true;
+            graph_dialog.focus_pending = true;
+            graph_dialog.source = clipboard_store.read_text(action->source_ref);
+            graph_dialog.type = 0;
+            graph_dialog.header = !parse_graph_data(graph_dialog.source, false, false).has_value();
+            graph_dialog.convert_dates = false;
+            graph_dialog.dirty = true;
+            graph_dialog.status.clear();
+            const auto directory = settings.default_image_directory.empty()
+                ? std::filesystem::current_path() : settings.default_image_directory;
+            graph_dialog.save_path = path_to_utf8_string(directory / "graph.png");
+            return;
+        }
+        if (action->kind == ActionKind::CustomPrompt) {
+            custom_prompt_dialog.open = true;
+            custom_prompt_dialog.focus_pending = true;
+            custom_prompt_dialog.action = *action;
+            custom_prompt_dialog.prompt.clear();
+            return;
+        }
         if (needs_file_confirmation(action->kind) && !action->parameters.contains("confirmation_complete")) {
             const auto item = clipboard_store.item(action->source_ref);
             if (!item) {
@@ -1055,7 +1110,10 @@ int run_desktop_runtime() {
         }
         if (is_direct_paste(action->kind)) {
             popup_visible = false;
-            if(!has_any_auxiliary_window())glfwHideWindow(window);
+            if (!has_any_auxiliary_window()) {
+                glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
+                glfwHideWindow(window);
+            }
             platform->process_events();
             if (!platform->restore_focus_and_paste(target_context)) {
                 std::cerr << "Action completed, but PasteIt could not restore the target and send Ctrl+V.\n";
@@ -1068,7 +1126,11 @@ int run_desktop_runtime() {
         glfwPollEvents();
         platform->process_events();
         capture_clipboard(false);
-        if (show_on_start || platform->global_shortcut_activated()) {
+        bool show_requested = false;
+#if !defined(_WIN32)
+        show_requested = single_instance.take_show_request();
+#endif
+        if (show_on_start || show_requested || platform->global_shortcut_activated()) {
             show_on_start = false;
             open_popup();
         }
@@ -1098,6 +1160,13 @@ int run_desktop_runtime() {
                                                          active_batch.ranking_context);
             if (prepared.status == DecisionSessionStatus::Ready) {
                 popup_model = build_popup_model(active_batch.request.snapshot, prepared.ranked);
+                if (popup_visible) {
+                    const int rows_height = static_cast<int>(popup_model.rows.size()) * 34;
+                    const bool image_source = !active_batch.request.snapshot.clipboard_items.empty() &&
+                        active_batch.request.snapshot.clipboard_items.front().kind == ContentKind::Image;
+                    glfwSetWindowSize(window, 720, std::clamp(190 + rows_height + (image_source ? 105 : 35), 340, 575));
+                    position_popup(window);
+                }
                 decision_status = prepared.message == "ranked" ? "Ranked by local Djev" : prepared.message;
             } else {
                 decision_status = prepared.message.empty() ? "Djev did not return executable actions" : prepared.message;
@@ -1210,6 +1279,27 @@ int run_desktop_runtime() {
                 copyable_text(tr(ui_language,UiTextKey::NoClipboard));
         }
         ImGui::Separator();
+
+        const auto graph_choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+            [](const ActionInstance& action) { return action.kind == ActionKind::Graph && action.enabled; });
+        if (graph_choice != active_batch.catalog.actions.end()) {
+            if (ImGui::SmallButton(tr(ui_language, UiTextKey::GraphData).c_str())) activated_action = graph_choice->id;
+            ImGui::SameLine();
+        }
+        const auto annotation_choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+            [](const ActionInstance& action) { return action.kind == ActionKind::AnnotateImage && action.enabled; });
+        if (annotation_choice != active_batch.catalog.actions.end()) {
+            if (ImGui::SmallButton(tr(ui_language, UiTextKey::AnnotateImage).c_str())) {
+                activated_action = annotation_choice->id;
+            }
+            ImGui::SameLine();
+        }
+        const auto custom_choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+            [](const ActionInstance& action) { return action.kind == ActionKind::CustomPrompt && action.enabled; });
+        if (custom_choice != active_batch.catalog.actions.end() &&
+            ImGui::SmallButton(tr(ui_language, UiTextKey::CustomPrompt).c_str())) {
+            activated_action = custom_choice->id;
+        }
 
         if (popup_model.rows.empty()) {
             copyable_text(pending_decision.pending() ? tr(ui_language,UiTextKey::WaitingDjev) : tr(ui_language,UiTextKey::NoRankedActions));
@@ -1576,7 +1666,10 @@ int run_desktop_runtime() {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             popup_visible = false;
             const bool keep_visible=has_any_auxiliary_window();
-            if(!keep_visible)glfwHideWindow(window);
+            if (!keep_visible) {
+                glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
+                glfwHideWindow(window);
+            }
         }
         ImGui::End();
         }
@@ -1589,9 +1682,9 @@ int run_desktop_runtime() {
                 ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
             }
             ImGui::SetNextWindowClass(&auxiliary_window_class);
-            const auto parameter_rows = std::clamp<std::size_t>(prompt_parameter_dialog.names.size(), 3, 10);
-            const auto parameter_height = 150.0F + static_cast<float>(parameter_rows) * ImGui::GetTextLineHeightWithSpacing();
-            ImGui::SetNextWindowSize(ImVec2(520.0F, parameter_height), ImGuiCond_FirstUseEver);
+            const auto parameter_rows = std::clamp<std::size_t>(prompt_parameter_dialog.names.size(), 1, 10);
+            const auto parameter_height = 125.0F + static_cast<float>(parameter_rows) * ImGui::GetFrameHeightWithSpacing();
+            ImGui::SetNextWindowSize(ImVec2(520.0F, parameter_height), ImGuiCond_Appearing);
             const auto title = "Prompt Parameters: " + prompt_parameter_dialog.template_name + "##prompt-parameters";
             if (ImGui::Begin(title.c_str(), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
                 if (prompt_parameter_dialog.focus_pending) {
@@ -1622,6 +1715,138 @@ int run_desktop_runtime() {
             if (!open) prompt_parameter_dialog.open = false;
         }
 
+        if (custom_prompt_dialog.open) {
+            if (custom_prompt_dialog.focus_pending) {
+                ImGui::SetNextWindowFocus();
+                ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+            }
+            ImGui::SetNextWindowClass(&auxiliary_window_class);
+            ImGui::SetNextWindowSize(ImVec2(560, 280), ImGuiCond_Appearing);
+            const auto custom_prompt_title = tr(ui_language, UiTextKey::CustomPrompt) + "##custom-prompt";
+            if (ImGui::Begin(custom_prompt_title.c_str(), &custom_prompt_dialog.open,
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse)) {
+                if (custom_prompt_dialog.focus_pending) {
+                    ImGui::SetWindowFocus();
+                    custom_prompt_dialog.focus_pending = false;
+                }
+                copyable_text(tr(ui_language, UiTextKey::PromptInstructions));
+                input_text_string("##custom-prompt-input", custom_prompt_dialog.prompt, true, 0, 150.0F);
+                const bool can_run = !trim(custom_prompt_dialog.prompt).empty();
+                if (!can_run) ImGui::BeginDisabled();
+                if (ImGui::Button(tr(ui_language, UiTextKey::Generate).c_str())) {
+                    if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
+                        execution_status = "General LLM provider is not configured";
+                    } else {
+                        const auto source_text = clipboard_store.read_text(custom_prompt_dialog.action.source_ref);
+                        TextGenerationRequest request{
+                            .request_id = active_batch.request.request_id + "_custom_" + std::to_string(++request_counter),
+                            .endpoint = active_batch.general_llm.endpoint,
+                            .api_key = active_batch.general_llm.api_key,
+                            .model_id = active_batch.general_llm.model_id,
+                            .system_message = custom_prompt_dialog.prompt,
+                            .user_message = source_text,
+                            .temperature = 0.2,
+                        };
+                        auto job = std::make_unique<GenerationJob>();
+                        job->kind = GenerationJob::Kind::TextPrompt;
+                        job->action = custom_prompt_dialog.action;
+                        job->source_text = source_text;
+                        job->state.start(job->action.id, source_text, request);
+                        job->panel = {.open = true, .running = true, .request_id = request.request_id,
+                                      .editable_text = {}, .error = {}};
+                        job->pending.emplace(std::async(std::launch::async, [&llm_client, request] {
+                            return llm_client.generate(request);
+                        }));
+                        generation_jobs.push_back(std::move(job));
+                        custom_prompt_dialog.open = false;
+                        execution_status = "Custom prompt is running…";
+                    }
+                }
+                if (!can_run) ImGui::EndDisabled();
+                ImGui::SameLine();
+                if (ImGui::Button(tr(ui_language, UiTextKey::Cancel).c_str())) custom_prompt_dialog.open = false;
+                if (!execution_status.empty()) copyable_text(execution_status, true);
+            }
+            ImGui::End();
+        }
+
+        if (graph_dialog.open) {
+            if (graph_dialog.dirty) {
+                graph_dialog.dirty = false;
+                graph_dialog.data = parse_graph_data(graph_dialog.source, graph_dialog.header, graph_dialog.convert_dates);
+                graph_dialog.png.clear();
+                graph_dialog.texture.clear();
+                graph_dialog.status.clear();
+                if (graph_dialog.data) {
+                    graph_dialog.png = render_graph_png(*graph_dialog.data, static_cast<GraphType>(graph_dialog.type));
+                    if (!graph_dialog.png.empty()) (void)load_image_texture(graph_dialog.png, graph_dialog.texture);
+                }
+                if (graph_dialog.png.empty()) graph_dialog.status =
+                    graph_dialog.data && graph_dialog.type == static_cast<int>(GraphType::Pie)
+                        ? "Pie charts need nonnegative values with a positive total."
+                        : "No valid numeric series for these options.";
+            }
+            if (graph_dialog.focus_pending) {
+                ImGui::SetNextWindowFocus();
+                ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+            }
+            ImGui::SetNextWindowClass(&auxiliary_window_class);
+            const auto* graph_viewport = ImGui::GetMainViewport();
+            const float graph_width = std::max(420.0F, std::min(820.0F, graph_viewport->WorkSize.x - 40.0F));
+            const float preview_scale = std::min(1.0F, (graph_width - 24.0F) / 800.0F);
+            const float graph_height = std::min(graph_viewport->WorkSize.y - 40.0F,
+                                                165.0F + 480.0F * preview_scale);
+            ImGui::SetNextWindowSize(ImVec2(graph_width, graph_height), ImGuiCond_Appearing);
+            const auto graph_title = tr(ui_language, UiTextKey::GraphPreview) + "##graph";
+            if (ImGui::Begin(graph_title.c_str(), &graph_dialog.open,
+                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse)) {
+                if (graph_dialog.focus_pending) {
+                    ImGui::SetWindowFocus();
+                    graph_dialog.focus_pending = false;
+                }
+                const bool chinese = ui_language == UiLanguage::SimplifiedChinese;
+                const char* types[] = {chinese ? "折线图" : "Line", chinese ? "柱状图" : "Bar",
+                                       chinese ? "饼图" : "Pie"};
+                graph_dialog.dirty |= ImGui::Combo(tr(ui_language, UiTextKey::ChartType).c_str(), &graph_dialog.type, types, 3);
+                ImGui::SameLine();
+                graph_dialog.dirty |= ImGui::Checkbox(tr(ui_language, UiTextKey::HeaderRow).c_str(), &graph_dialog.header);
+                ImGui::SameLine();
+                graph_dialog.dirty |= ImGui::Checkbox(tr(ui_language, UiTextKey::ConvertDates).c_str(), &graph_dialog.convert_dates);
+                if (graph_dialog.texture.id != 0) {
+                    const float scale = std::max(0.1F, std::min({1.0F, ImGui::GetContentRegionAvail().x / graph_dialog.texture.width,
+                                                  (graph_height - 165.0F) / graph_dialog.texture.height}));
+                    ImGui::Image((ImTextureID)(intptr_t)graph_dialog.texture.id,
+                                 ImVec2(graph_dialog.texture.width * scale, graph_dialog.texture.height * scale));
+                }
+                if (graph_dialog.data) {
+                    ImGui::Text("%zu points", graph_dialog.data->points.size());
+                    if (graph_dialog.data->has_dates) ImGui::SameLine(), ImGui::TextUnformatted("Date spacing enabled");
+                }
+                input_text_string(tr(ui_language, UiTextKey::SavePngAs).c_str(), graph_dialog.save_path);
+                const bool has_image = !graph_dialog.png.empty();
+                if (!has_image) ImGui::BeginDisabled();
+                if (ImGui::Button(tr(ui_language, UiTextKey::CopyGraphImage).c_str())) {
+                    graph_dialog.status = platform->publish_image(graph_dialog.png, "image/png")
+                        ? "Graph copied to clipboard" : "Could not copy graph image";
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(tr(ui_language, UiTextKey::SaveGraphImage).c_str())) {
+                    const auto path = path_from_utf8_string(trim(graph_dialog.save_path));
+                    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+                    output.write(reinterpret_cast<const char*>(graph_dialog.png.data()),
+                                 static_cast<std::streamsize>(graph_dialog.png.size()));
+                    output.close();
+                    graph_dialog.status = output ? "Saved graph: " + path_to_utf8_string(path) : "Could not save graph image";
+                    if (output) (void)path_history.observe_path(path, PathKind::File, "graph", current_time_ms());
+                }
+                if (!has_image) ImGui::EndDisabled();
+                ImGui::SameLine();
+                if (ImGui::Button(tr(ui_language, UiTextKey::Close).c_str())) graph_dialog.open = false;
+                if (!graph_dialog.status.empty()) copyable_text(graph_dialog.status, true);
+            }
+            ImGui::End();
+        }
+
         if (file_confirmation) {
             auto& state = *file_confirmation;
             bool close_confirmation = false;
@@ -1631,7 +1856,12 @@ int run_desktop_runtime() {
                 ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
             }
             ImGui::SetNextWindowClass(&auxiliary_window_class);
-            ImGui::SetNextWindowSize(ImVec2(650, 460), ImGuiCond_FirstUseEver);
+            const auto destination_rows = std::clamp<std::size_t>(state.draft.candidate_destinations.size(), 1, 5);
+            const auto preview_rows = std::clamp<std::size_t>(multiline_editor_row_count(state.source_preview), 1, 4);
+            const float destinations_height = 28.0F + 27.0F * static_cast<float>(destination_rows);
+            const float confirmation_height = std::clamp(205.0F + destinations_height +
+                static_cast<float>(preview_rows) * ImGui::GetTextLineHeightWithSpacing(), 320.0F, 560.0F);
+            ImGui::SetNextWindowSize(ImVec2(650, confirmation_height), ImGuiCond_Appearing);
             bool open = true;
             const auto confirmation_title=tr(ui_language,UiTextKey::ConfirmFileOperation)+"##file-confirm";
             if (ImGui::Begin(confirmation_title.c_str(), &open, ImGuiWindowFlags_NoSavedSettings)) {
@@ -1662,7 +1892,7 @@ int run_desktop_runtime() {
                 if (ImGui::BeginTable("confirmation-destinations", 3,
                                       ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
                                           ImGuiTableFlags_SizingStretchProp,
-                                      ImVec2(0.0F, 150.0F))) {
+                                      ImVec2(0.0F, destinations_height))) {
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Path).c_str(), ImGuiTableColumnFlags_WidthStretch, 4.0F);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Source).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Use).c_str(), ImGuiTableColumnFlags_WidthFixed, 80.0F);
@@ -1846,7 +2076,14 @@ int run_desktop_runtime() {
                 ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
             }
             ImGui::SetNextWindowClass(&auxiliary_window_class);
-            ImGui::SetNextWindowSize(ImVec2(680,460),ImGuiCond_FirstUseEver);
+            const auto result_rows = std::clamp<std::size_t>(multiline_editor_row_count(job->panel.editable_text), 3, 16);
+            const float result_height = job->panel.running ? 220.0F :
+                115.0F + static_cast<float>(result_rows) * ImGui::GetTextLineHeightWithSpacing();
+            const auto* result_begin = job->panel.editable_text.data();
+            const auto* result_end = result_begin + std::min<std::size_t>(job->panel.editable_text.size(), 2048);
+            const float result_width = job->panel.running ? 420.0F :
+                std::clamp(100.0F + ImGui::CalcTextSize(result_begin, result_end).x, 420.0F, 680.0F);
+            ImGui::SetNextWindowSize(ImVec2(result_width, result_height), ImGuiCond_Appearing);
             const auto title=tr(ui_language,UiTextKey::AiResult)+"##"+job->panel.request_id;
             if (ImGui::Begin(title.c_str(),&job->panel.open, ImGuiWindowFlags_NoSavedSettings)) {
                 if (job->focus_pending) {
@@ -1914,7 +2151,10 @@ int run_desktop_runtime() {
                     const auto prompt_edit_title=tr(ui_language,UiTextKey::Edit)+"##prompt-edit";
                     const auto prompt_delete_title=tr(ui_language,UiTextKey::Delete)+"##prompt-delete";
                     if(prompt_panel_model.modal==PromptTemplateModal::View&&prompt_panel_model.draft){
-                        bool detail_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);ImGui::SetNextWindowSize(ImVec2(520,320),ImGuiCond_FirstUseEver);
+                        bool detail_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);
+                        const auto detail_rows=std::clamp<std::size_t>(multiline_editor_row_count(prompt_panel_model.draft->system_prompt),2,14);
+                        const float detail_width=std::clamp(80.0F+ImGui::CalcTextSize(prompt_panel_model.draft->system_prompt.c_str()).x,340.0F,620.0F);
+                        ImGui::SetNextWindowSize(ImVec2(detail_width,95+detail_rows*ImGui::GetTextLineHeightWithSpacing()),ImGuiCond_Appearing);
                         if(ImGui::Begin(prompt_detail_title.c_str(),&detail_open)){copyable_text(prompt_panel_model.draft->name);ImGui::Separator();copyable_text(prompt_panel_model.draft->system_prompt,true);if(ImGui::Button(tr(ui_language,UiTextKey::Close).c_str()))detail_open=false;}ImGui::End();
                         if(!detail_open)cancel_prompt_template_modal(prompt_panel_model);
                     }
@@ -1934,7 +2174,7 @@ int run_desktop_runtime() {
                         if(!edit_open&&prompt_panel_model.modal!=PromptTemplateModal::None)cancel_prompt_template_modal(prompt_panel_model);
                     }
                     if(prompt_panel_model.modal==PromptTemplateModal::Delete){
-                        bool delete_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);ImGui::SetNextWindowSize(ImVec2(420,180),ImGuiCond_FirstUseEver);
+                        bool delete_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);ImGui::SetNextWindowSize(ImVec2(420,115),ImGuiCond_Appearing);
                         if(ImGui::Begin(prompt_delete_title.c_str(),&delete_open)){copyable_text(tr(ui_language,UiTextKey::DeleteTemplateText));if(ImGui::Button(tr(ui_language,UiTextKey::ConfirmDelete).c_str())){confirm_prompt_template_delete(prompt_panel_model,service);delete_open=false;}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Keep).c_str()))delete_open=false;}ImGui::End();
                         if(!delete_open&&prompt_panel_model.modal!=PromptTemplateModal::None)cancel_prompt_template_modal(prompt_panel_model);
                     }
@@ -1955,6 +2195,7 @@ int run_desktop_runtime() {
         }
 
         if (!popup_visible && !has_any_auxiliary_window()) {
+            glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
             glfwHideWindow(window);
         }
 

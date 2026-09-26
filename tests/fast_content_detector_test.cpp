@@ -43,6 +43,9 @@ int main() {
     assert(iso_time.date_time_value->normalized == "2026-09-21T08:30:00Z");
     assert(iso_time.date_time_value->source_zone == "UTC");
     assert(iso_time.date_time_value->has_epoch);
+    const auto date_only = detect_fast_content(ContentKind::Text, "2026-09-21");
+    assert(date_only.date_time && date_only.date_time_value && !date_only.date_time_value->has_epoch);
+    assert(!detect_fast_content(ContentKind::Text, "2026-02-30").date_time);
     const auto embedded_unix = detect_fast_content(ContentKind::Text, "log note: epoch 1726907400 copied here");
     assert(embedded_unix.date_time);
     assert(embedded_unix.date_time_value->original == "1726907400");

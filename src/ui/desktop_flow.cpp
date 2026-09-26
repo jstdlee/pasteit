@@ -125,6 +125,12 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
         if (item.kind == ContentKind::Image) {
             batch.ranking_context.local_action_bonus[ActionKind::AnnotateImage] = 0.04;
         }
+        if (const auto graph = std::find_if(batch.catalog.actions.begin(), batch.catalog.actions.end(),
+                                            [](const ActionInstance& action) { return action.kind == ActionKind::Graph; });
+            graph != batch.catalog.actions.end()) {
+            batch.ranking_context.local_action_bonus[ActionKind::Graph] = 0.05;
+            batch.ranking_context.local_action_bonus_by_id[graph->id] = 0.02;
+        }
         if (signals.date_time_value.has_value()) {
             const auto bonus = local_match_bonus(signals.date_time_value->original, local_text, item.size_bytes);
             for (const auto kind : {ActionKind::ConvertTimezone, ActionKind::ToUnixTimestamp,
