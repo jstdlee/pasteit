@@ -166,6 +166,8 @@ bool needs_file_confirmation(ActionKind action_kind) {
         case ActionKind::SaveJsonFile:
         case ActionKind::SaveJsonPrettyFile:
         case ActionKind::SaveResumeFile:
+        case ActionKind::SaveCodeFile:
+        case ActionKind::SaveContactVCard:
             return true;
         default:
             return false;

@@ -544,10 +544,22 @@ std::optional<DateTimeValue> detect_date_time_value(std::string_view text) {
 
 bool detect_code(std::string_view text) {
     const std::string value{text};
-    static const std::regex code_pattern(
-        R"((#include\s*<|^\s*(import|from)\s+\w+|^\s*(def|class|function)\s+\w+|\b(int|auto|const|let|var|fn)\s+\w+|[{};]\s*$|^\s*[$>]\s+\w+))",
-        std::regex_constants::icase | std::regex_constants::multiline);
-    return std::regex_search(value, code_pattern);
+    // One strong construct is enough; punctuation-only hints (a trailing ';'
+    // or '{') must cover several lines so ordinary prose is not "code".
+    static const std::regex strong_pattern(
+        R"((^#!\S|#include\s*[<"]|^\s*(import|from)\s+[\w.]+(\s+import\b|\s*;?\s*$)|^\s*(def|class|function|fn|func)\s+\w+|\b(int|void|auto|let|const|var)\s+\w+\s*[(=]|=>|^\s*(public|private|protected|static)\s+\w+))",
+        std::regex_constants::multiline);
+    if (std::regex_search(value, strong_pattern)) return true;
+    static const std::regex weak_line(R"(([{};]\s*$|^\s*[$>]\s+\w+))");
+    std::size_t lines = 0;
+    std::size_t weak = 0;
+    std::istringstream input(value);
+    for (std::string line; std::getline(input, line);) {
+        if (trim(line).empty()) continue;
+        ++lines;
+        if (std::regex_search(line, weak_line)) ++weak;
+    }
+    return weak >= 2 && weak * 10 >= lines * 4;
 }
 
 }  // namespace
@@ -564,7 +576,10 @@ FastContentSignals detect_fast_content(ContentKind kind, std::string_view text) 
     signals.github_url = detect_github_url(bounded);
     signals.date_time_value = detect_date_time_value(bounded);
     signals.date_time = signals.date_time_value.has_value();
-    signals.qr = kind != ContentKind::Image && text.size() <= 2048 && !trim(text).empty();
+    // QR codes are for short payloads; long prose makes unreadable codes.
+    const auto qr_limit = kind == ContentKind::Text || kind == ContentKind::DateTime ? 512U : 2048U;
+    signals.qr = kind != ContentKind::Image && text.size() <= qr_limit && !trim(text).empty() &&
+                 std::count(text.begin(), text.end(), '\n') < 6;
 
     return signals;
 }

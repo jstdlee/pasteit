@@ -1,4 +1,5 @@
 #include "app/generated_filename.hpp"
+#include "transform/text_transforms.hpp"
 #include "util/path_utf8.hpp"
 
 #include <algorithm>
@@ -121,6 +122,10 @@ std::string extension_for(ActionKind action_kind, const ClipboardItem& item) {
             return url_suffix_extension(item.preview).value_or(".bin");
         case ActionKind::SaveTextFile:
             return ".txt";
+        case ActionKind::SaveContactVCard:
+            return ".vcf";
+        case ActionKind::SaveCodeFile:
+            return "." + guess_code_extension(item.preview);
         default:
             if (item.kind == ContentKind::Image) {
                 return image_extension_for(item);

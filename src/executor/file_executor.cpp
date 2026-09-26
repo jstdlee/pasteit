@@ -1,6 +1,8 @@
 #include "executor/file_executor.hpp"
 
+#include "detect/fast_content_detector.hpp"
 #include "detect/resume_detector.hpp"
+#include "transform/text_transforms.hpp"
 #include "storage/path_history.hpp"
 #include "util/json.hpp"
 #include "util/path_utf8.hpp"
@@ -228,12 +230,24 @@ ExecutionResult copy_or_move_path(const ActionInstance& action, ExecutionContext
 ExecutionResult execute_file_action(const ActionInstance& action, ExecutionContext& context) {
     try {
         switch (action.kind) {
-            case ActionKind::PasteText:
-            case ActionKind::CopyPath: {
+            case ActionKind::PasteText: {
                 auto result = result_for(action, context, ExecutionStatus::Completed, "copied text");
                 const auto text = context.clipboard_store.read_text(action.source_ref);
                 result.output_clipboard_ref = record_text_clipboard(context, text, ContentKind::Text);
                 return result;
+            }
+            case ActionKind::SaveCodeFile: {
+                const auto extension = action.parameters.contains("extension") ? action.parameters.at("extension") : "txt";
+                return save_text_like(action, context, context.clipboard_store.read_text(action.source_ref), ContentKind::Text, extension);
+            }
+            case ActionKind::SaveContactVCard: {
+                const auto signals = detect_fast_content(ContentKind::Text, context.clipboard_store.read_text(action.source_ref));
+                if (!signals.contact) return result_for(action, context, ExecutionStatus::Failed, "no contact details found");
+                std::vector<std::pair<std::string, std::string>> fields;
+                for (const auto& field : signals.contact_fields) fields.emplace_back(field.kind, field.value);
+                ActionInstance named = action;
+                if (!named.parameters.contains("confirmed_filename")) named.filename = "contact.vcf";
+                return save_text_like(named, context, contact_vcard(fields), ContentKind::Text, "vcf");
             }
             case ActionKind::SaveTextFile:
                 return save_text_like(action, context, context.clipboard_store.read_text(action.source_ref), ContentKind::Text, "txt");

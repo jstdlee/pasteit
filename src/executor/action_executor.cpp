@@ -4,6 +4,7 @@
 #include "executor/fast_action_executor.hpp"
 #include "executor/file_executor.hpp"
 #include "executor/url_executor.hpp"
+#include "executor/utility_executor.hpp"
 #include "platform/fast_action_services.hpp"
 
 namespace pastit {
@@ -64,6 +65,9 @@ bool is_async_fast_action(ActionKind kind) {
 }  // namespace
 
 ExecutionResult execute_action(const ActionInstance& action, ExecutionContext& context) {
+    if (is_utility_action(action.kind)) {
+        return execute_utility_action(action, context);
+    }
     if (is_fast_action(action.kind)) {
         if (context.fast_action_executor != nullptr) {
             return context.fast_action_executor->execute(action, context);

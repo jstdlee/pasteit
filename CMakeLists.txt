@@ -152,6 +152,7 @@ add_library(pastit_core
     src/decision/usage_model.cpp
     src/graph/graph_data.cpp
     src/graph/graph_renderer.cpp
+    src/transform/text_transforms.cpp
     src/core/core.cpp
     src/detect/content_detector.cpp
     src/detect/fast_content_detector.cpp
@@ -164,6 +165,7 @@ add_library(pastit_core
     src/executor/fast_action_executor.cpp
     src/executor/file_executor.cpp
     src/executor/url_executor.cpp
+    src/executor/utility_executor.cpp
     src/history/clipboard_history_store.cpp
     src/history/path_history_store.cpp
     src/history/path_target_resolver.cpp
@@ -491,6 +493,10 @@ if (PASTIT_BUILD_TESTS)
     add_executable(clipboard_history_model_test tests/clipboard_history_model_test.cpp)
     target_link_libraries(clipboard_history_model_test PRIVATE pastit_core)
     add_test(NAME clipboard_history_model_test COMMAND clipboard_history_model_test)
+
+    add_executable(utility_actions_test tests/utility_actions_test.cpp)
+    target_link_libraries(utility_actions_test PRIVATE pastit_core)
+    add_test(NAME utility_actions_test COMMAND utility_actions_test)
 
     add_executable(usage_model_test tests/usage_model_test.cpp)
     target_link_libraries(usage_model_test PRIVATE pastit_core)

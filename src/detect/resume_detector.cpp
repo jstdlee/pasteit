@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <regex>
 #include <sstream>
 
@@ -89,9 +90,16 @@ ResumeExtraction detect_resume_fields(const std::string& text) {
         offset = (line_start == std::string::npos ? offset + line.size() : line_start + line.size()) + 1;
     }
 
+    // A name plus an email is just a contact card; a resume also has
+    // section headings or a skills block.
+    static const std::regex heading_pattern(
+        R"(^\s*(experience|work experience|work history|employment|education|skills|technical skills|projects|summary|certifications)\s*:?\s*$)",
+        std::regex_constants::icase | std::regex_constants::multiline);
+    const auto headings = static_cast<std::size_t>(std::distance(
+        std::sregex_iterator(text.begin(), text.end(), heading_pattern), std::sregex_iterator()));
     extraction.is_resume = extraction.find("email").has_value() &&
-                           (extraction.find("name").has_value() || extraction.find("phone").has_value() ||
-                            extraction.find("skills").has_value());
+                           (headings >= 2 || (extraction.find("phone").has_value() &&
+                                              (headings >= 1 || extraction.find("skills").has_value())));
     return extraction;
 }
 

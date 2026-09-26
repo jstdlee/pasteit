@@ -66,13 +66,15 @@ An optional `openai_live_integration` uses `GENERAL_LLM_URL`, `GENERAL_LLM_MODEL
 
 ## Supported Content Families
 
-- Text: paste, save-to-file, contact/business-card extraction, Mermaid generation for diagram-like text, QR payload fallback for short text, Explain text/code, Translate, Rewrite, Summarize, and custom-template actions, all ranked together in the main action list
-- URL: paste, open, generate QR, copy GitHub HTTPS/SSH remotes, clone GitHub repositories, download, and save the URL response bytes to a target file; Save URL File does not save the URL string as a `.url` text file
+- Text: paste, save-to-file, contact/business-card extraction with vCard copy/save, Mermaid generation for diagram-like text, QR for short payloads (up to 512 bytes and 6 lines), Explain text/code, Translate, Rewrite, Summarize, and custom-template actions, all ranked together in the main action list. Local utilities: UPPER/lower/Title case, tidy whitespace, sort lines, remove duplicate lines, word count, Base64 encode/decode, URL encode/decode, and Markdown table from comma/tab/semicolon rows. Numbers get Graph data plus sum/mean/median/min/max. Code gets "Save as .py/.cpp/…" with a detected extension.
+- Colors (`#hex`, `rgb()`, `hsl()`): copy as HEX, RGB, or HSL
+- JWT: decode header and claims with a readable expiry (the signature is not verified); UUID: generate a fresh v4
+- URL: paste, open, copy clean URL without `utm_*`/`fbclid`/… tracking parameters, copy as Markdown link, URL-decode, generate QR, copy GitHub HTTPS/SSH remotes, clone GitHub repositories, download, and save the URL response bytes to a target file; Save URL File does not save the URL string as a `.url` text file
 - Email: paste, save `.eml`, compose actions, and QR payload generation
 - Image: paste and save original bytes; clicking the thumbnail opens an aspect-preserving, zoomable preview, with actions to copy a temporary preview-file path and open SVG annotation tools
-- Local path and `file://`: copy into a recent directory, move into a recent directory, open Terminal at the containing directory, and hash regular files with the enabled SHA-256/SHA-512 defaults; the redundant Copy Path action is omitted because the path is already in the clipboard
-- JSON: raw save, pretty copy, and pretty save
-- Resume-like text: copy extracted fields, copy extracted JSON, and save extracted JSON
+- Local path and `file://`: copy into a recent directory, move into a recent directory, open Terminal at the containing directory, open with the default application, show in file manager, copy path as text, copy name, copy parent folder, and hash regular files with the enabled SHA-256/SHA-512 defaults
+- JSON: raw save, pretty copy, pretty save, minified copy, YAML, CSV (arrays of objects), jq-style leaf paths, and a custom LLM prompt. YAML output sorts keys.
+- Resume-like text (an email plus section headings such as Experience/Education, or a phone plus a Skills block): copy extracted fields, copy extracted JSON, and save extracted JSON
 - IP addresses: ping, traceroute, reverse DNS, dig, and a combined report. Linux maps these to argv calls for `ping -c 4`, `traceroute`, `getent hosts`, and `dig`; Windows uses `ping`, `tracert`, and `nslookup`. Clipboard text is never shell-concatenated.
 - Date/time values: timezone conversion, Unix timestamp conversion, and normalized copy. The Settings tab supplies the default source and target zones used by the desktop catalog.
 

@@ -6,6 +6,7 @@
 #include "detect/resume_detector.hpp"
 #include "graph/graph_data.hpp"
 #include "storage/path_history.hpp"
+#include "transform/text_transforms.hpp"
 #include "util/json.hpp"
 #include "util/path_utf8.hpp"
 
@@ -141,6 +142,68 @@ std::string kind_slug(ActionKind kind) {
             return "graph";
         case ActionKind::CustomPrompt:
             return "custom_prompt";
+        case ActionKind::ToUpperCase:
+            return "to_upper_case";
+        case ActionKind::ToLowerCase:
+            return "to_lower_case";
+        case ActionKind::ToTitleCase:
+            return "to_title_case";
+        case ActionKind::TidyWhitespace:
+            return "tidy_whitespace";
+        case ActionKind::SortLines:
+            return "sort_lines";
+        case ActionKind::DedupeLines:
+            return "dedupe_lines";
+        case ActionKind::TextStatistics:
+            return "text_statistics";
+        case ActionKind::Base64Encode:
+            return "base64_encode";
+        case ActionKind::Base64Decode:
+            return "base64_decode";
+        case ActionKind::UrlEncode:
+            return "url_encode";
+        case ActionKind::UrlDecode:
+            return "url_decode";
+        case ActionKind::MinifyJson:
+            return "minify_json";
+        case ActionKind::JsonToYaml:
+            return "json_to_yaml";
+        case ActionKind::JsonToCsv:
+            return "json_to_csv";
+        case ActionKind::CopyJsonPaths:
+            return "copy_json_paths";
+        case ActionKind::CleanUrl:
+            return "clean_url";
+        case ActionKind::CopyMarkdownLink:
+            return "copy_markdown_link";
+        case ActionKind::OpenPath:
+            return "open_path";
+        case ActionKind::RevealPath:
+            return "reveal_path";
+        case ActionKind::CopyFileName:
+            return "copy_file_name";
+        case ActionKind::CopyParentPath:
+            return "copy_parent_path";
+        case ActionKind::SaveCodeFile:
+            return "save_code_file";
+        case ActionKind::NumberStatistics:
+            return "number_statistics";
+        case ActionKind::ToMarkdownTable:
+            return "to_markdown_table";
+        case ActionKind::CopyColorHex:
+            return "copy_color_hex";
+        case ActionKind::CopyColorRgb:
+            return "copy_color_rgb";
+        case ActionKind::CopyColorHsl:
+            return "copy_color_hsl";
+        case ActionKind::DecodeJwt:
+            return "decode_jwt";
+        case ActionKind::GenerateUuid:
+            return "generate_uuid";
+        case ActionKind::CopyContactVCard:
+            return "copy_contact_vcard";
+        case ActionKind::SaveContactVCard:
+            return "save_contact_vcard";
     }
     return "action";
 }
@@ -393,6 +456,12 @@ void add_contact_actions(ActionCatalog& catalog, const ClipboardItem& item, cons
              {"field_value", field.value},
              {"field_key", field.kind + "_" + std::to_string(index)}});
     }
+    add(catalog, item, ActionKind::CopyContactVCard, "", "Copy as vCard",
+        "Copy the extracted contact as a vCard for address books", "vcard");
+    for (const auto& target : targets) {
+        add(catalog, item, ActionKind::SaveContactVCard, target.ref, "Save vCard",
+            "Save the extracted contact as a .vcf file to " + path_to_utf8_string(target.path), "vcard");
+    }
     for (const auto& target : targets) {
         add(catalog, item, ActionKind::SaveContactAsJson, target.ref, "Save contact JSON",
             "Save locally extracted contact fields as JSON to " + path_to_utf8_string(target.path), "contact_json",
@@ -421,6 +490,17 @@ void add_path_fast_actions(ActionCatalog& catalog, const ClipboardItem& item, co
         return;
     }
     const auto working_directory = regular_file ? path.parent_path() : path;
+    const std::map<std::string, std::string> path_parameter{{"path", path_to_utf8_string(path)}};
+    add(catalog, item, ActionKind::OpenPath, "", regular_file ? "Open file" : "Open folder",
+        "Open this path with the default desktop application", "open", path_parameter);
+    add(catalog, item, ActionKind::RevealPath, "", "Show in file manager",
+        "Open the containing folder of this path in the file manager", "open", path_parameter);
+    add(catalog, item, ActionKind::CopyPath, "", "Copy path as text",
+        "Copy the plain filesystem path as text", "raw", path_parameter);
+    add(catalog, item, ActionKind::CopyFileName, "", "Copy name",
+        "Copy only the file or folder name", "raw", path_parameter);
+    add(catalog, item, ActionKind::CopyParentPath, "", "Copy parent folder",
+        "Copy the path of the containing folder", "raw", path_parameter);
     add(catalog, item, ActionKind::OpenTerminalAtPath, "", "Open terminal here",
         "Open a terminal with its working directory set to this path location", "terminal",
         {{"path", path_to_utf8_string(path)}, {"working_directory", path_to_utf8_string(working_directory)}});
@@ -596,6 +676,129 @@ std::optional<ActionInstance> ActionCatalog::find_by_kind_and_label(ActionKind k
     return std::nullopt;
 }
 
+namespace {
+
+constexpr std::size_t kMaxUtilityTextBytes = 256 * 1024;
+
+bool has_ascii_letter(std::string_view text) {
+    return std::any_of(text.begin(), text.end(), [](char ch) { return std::isalpha(static_cast<unsigned char>(ch)); });
+}
+
+void add_text_utility_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::vector<PathLocation>& targets,
+                              const FastContentSignals& signals, const std::string& source_text) {
+    if (source_text.size() > kMaxUtilityTextBytes) return;
+    const auto text = trim_copy(source_text);
+    if (text.empty()) return;
+    const bool single_line = text.find('\n') == std::string::npos;
+    const auto lines = line_count(text);
+
+    if (const auto color = parse_color(text)) {
+        add(catalog, item, ActionKind::CopyColorHex, "", "Copy as HEX  " + color_hex(*color),
+            "Convert this color to hexadecimal notation", "color", {{"color", color_hex(*color)}});
+        add(catalog, item, ActionKind::CopyColorRgb, "", "Copy as RGB  " + color_rgb(*color),
+            "Convert this color to CSS rgb() notation", "color", {{"color", color_hex(*color)}});
+        add(catalog, item, ActionKind::CopyColorHsl, "", "Copy as HSL  " + color_hsl(*color),
+            "Convert this color to CSS hsl() notation", "color", {{"color", color_hex(*color)}});
+    }
+    if (decode_jwt(text)) {
+        add(catalog, item, ActionKind::DecodeJwt, "", "Decode JWT",
+            "Decode the JWT header and claims (signature not verified)", "jwt");
+    }
+    if (is_uuid(text)) {
+        add(catalog, item, ActionKind::GenerateUuid, "", "Generate new UUID",
+            "Copy a fresh random UUID v4", "uuid");
+    }
+    if (looks_like_base64_text(text)) {
+        add(catalog, item, ActionKind::Base64Decode, "", "Decode Base64",
+            "Decode this Base64 value to readable text", "base64");
+    } else if (text.size() <= 8 * 1024) {
+        add(catalog, item, ActionKind::Base64Encode, "", "Encode Base64",
+            "Encode this text as Base64", "base64");
+    }
+    if (single_line && url_decode(text)) {
+        add(catalog, item, ActionKind::UrlDecode, "", "URL-decode",
+            "Decode percent-encoded characters", "url_encoding");
+    } else if (single_line && text.size() <= 2048 && url_encode(text) != text) {
+        add(catalog, item, ActionKind::UrlEncode, "", "URL-encode",
+            "Percent-encode this text for use in a URL", "url_encoding");
+    }
+    if (to_markdown_table(text)) {
+        add(catalog, item, ActionKind::ToMarkdownTable, "", "Copy as Markdown table",
+            "Convert these comma/tab separated rows into a Markdown table", "table");
+    }
+    if (number_statistics(text)) {
+        add(catalog, item, ActionKind::NumberStatistics, "", "Sum and statistics",
+            "Copy count, sum, mean, median, min and max of these numbers", "numbers");
+    }
+    if (const auto extension = signals.code ? guess_code_extension(text) : std::string{};
+        !extension.empty() && extension != "txt") {
+        for (const auto& target : targets) {
+            add(catalog, item, ActionKind::SaveCodeFile, target.ref, "Save as ." + extension + " file",
+                "Save this code with a matching file extension to " + path_to_utf8_string(target.path), "code",
+                {{"extension", extension}});
+            catalog.actions.back().filename = "clipboard." + extension;
+        }
+    }
+    if (text.size() <= 4 * 1024 && has_ascii_letter(text) && !signals.code) {
+        if (to_upper_ascii(text) != text) {
+            add(catalog, item, ActionKind::ToUpperCase, "", "UPPERCASE", "Convert letters to upper case", "case");
+        }
+        if (to_lower_ascii(text) != text) {
+            add(catalog, item, ActionKind::ToLowerCase, "", "lowercase", "Convert letters to lower case", "case");
+        }
+        if (single_line && text.size() <= 200 && to_title_case(text) != text) {
+            add(catalog, item, ActionKind::ToTitleCase, "", "Title Case", "Capitalize each word", "case");
+        }
+    }
+    if (tidy_whitespace(source_text) != text && lines >= 2) {
+        add(catalog, item, ActionKind::TidyWhitespace, "", "Tidy whitespace",
+            "Strip trailing spaces and collapse repeated blank lines", "lines");
+    }
+    if (lines >= 3 && !signals.code) {
+        add(catalog, item, ActionKind::SortLines, "", "Sort lines", "Sort lines alphabetically", "lines");
+        if (dedupe_lines(text) != text) {
+            add(catalog, item, ActionKind::DedupeLines, "", "Remove duplicate lines",
+                "Keep the first occurrence of each line", "lines");
+        }
+    }
+    if (lines >= 2 || text.size() >= 40) {
+        add(catalog, item, ActionKind::TextStatistics, "", "Count words",
+            "Copy line, word, character and byte counts", "stats");
+    }
+}
+
+void add_json_utility_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::string& source_text) {
+    if (source_text.size() > kMaxUtilityTextBytes) return;
+    if (const auto minified = minify_json(source_text); minified && *minified != trim_copy(source_text)) {
+        add(catalog, item, ActionKind::MinifyJson, "", "Copy minified JSON", "Remove all insignificant whitespace", "minify");
+    }
+    add(catalog, item, ActionKind::JsonToYaml, "", "Copy as YAML", "Convert this JSON to YAML (keys sorted)", "yaml");
+    if (json_to_csv(source_text)) {
+        add(catalog, item, ActionKind::JsonToCsv, "", "Copy as CSV", "Convert this array of objects to CSV rows", "csv");
+    }
+    if (json_paths(source_text)) {
+        add(catalog, item, ActionKind::CopyJsonPaths, "", "Copy jq paths",
+            "List every leaf value path, e.g. .items[0].name", "paths");
+    }
+}
+
+void add_url_utility_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::string& source_text) {
+    const auto url = trim_copy(source_text);
+    if (url.empty() || url.find('\n') != std::string::npos) return;
+    if (clean_tracking_url(url)) {
+        add(catalog, item, ActionKind::CleanUrl, "", "Copy clean URL",
+            "Remove utm_* and other tracking parameters", "clean");
+    }
+    add(catalog, item, ActionKind::CopyMarkdownLink, "", "Copy as Markdown link",
+        "Copy as [site/path](url) for notes and docs", "markdown");
+    if (url_decode(url)) {
+        add(catalog, item, ActionKind::UrlDecode, "", "URL-decode",
+            "Decode percent-encoded characters in this URL", "url_encoding");
+    }
+}
+
+}  // namespace
+
 std::string action_kind_slug(ActionKind kind) {
     return kind_slug(kind);
 }
@@ -636,6 +839,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                         "Preview this numeric sequence as a line, bar, or pie chart", "graph");
                 }
                 add_qr_action(catalog, item, signals, source_text);
+                add_text_utility_actions(catalog, item, targets, signals, source_text);
                 add_prompt_actions(catalog, item, templates, provider, signals);
                 add(catalog, item, ActionKind::CustomPrompt, "", "Custom prompt",
                     "Enter a prompt and send this clipboard text to the configured general LLM", "ai");
@@ -660,6 +864,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                     add(catalog, item, ActionKind::SaveUrlFile, target.ref, "Save URL file",
                         "Download the URL response bytes to " + path_to_utf8_string(target.path), "download");
                 }
+                add_url_utility_actions(catalog, item, source_text);
                 add_github_actions(catalog, item, targets, signals, source_text);
                 add_qr_action(catalog, item, signals, source_text);
                 break;
@@ -699,6 +904,9 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                     add(catalog, item, ActionKind::SaveJsonPrettyFile, target.ref, "Save pretty JSON",
                         "Save pretty JSON to " + path_to_utf8_string(target.path), "pretty");
                 }
+                add_json_utility_actions(catalog, item, source_text);
+                add(catalog, item, ActionKind::CustomPrompt, "", "Custom prompt",
+                    "Enter a prompt and send this JSON to the configured general LLM", "ai");
                 break;
             case ContentKind::Unknown:
                 break;

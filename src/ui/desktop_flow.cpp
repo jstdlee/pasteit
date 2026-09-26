@@ -135,9 +135,16 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
             .app = input.focused_app,
             .now_ms = input.captured_at_ms,
         };
-        if (std::any_of(batch.catalog.actions.begin(), batch.catalog.actions.end(),
-                        [](const ActionInstance& action) { return action.kind == ActionKind::Graph; })) {
-            batch.usage_context.signals.emplace_back("numbers");
+        // Content shapes recognised by the catalog also describe the usage
+        // context, e.g. a user who always converts colors to RGB.
+        for (const auto& [kind, tag] : std::initializer_list<std::pair<ActionKind, const char*>>{
+                 {ActionKind::Graph, "numbers"}, {ActionKind::CopyColorHex, "color"}, {ActionKind::DecodeJwt, "jwt"},
+                 {ActionKind::GenerateUuid, "uuid"}, {ActionKind::Base64Decode, "base64"},
+                 {ActionKind::ToMarkdownTable, "table"}, {ActionKind::CleanUrl, "tracking_url"}}) {
+            if (std::any_of(batch.catalog.actions.begin(), batch.catalog.actions.end(),
+                            [&](const ActionInstance& action) { return action.kind == kind; })) {
+                batch.usage_context.signals.emplace_back(tag);
+            }
         }
         if (item.kind == ContentKind::Image) {
             batch.ranking_context.local_action_bonus[ActionKind::AnnotateImage] = 0.04;
