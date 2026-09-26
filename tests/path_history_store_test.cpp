@@ -1,4 +1,4 @@
-#include "history/path_history.hpp"
+#include "storage/path_history.hpp"
 #include "history/path_history_store.hpp"
 #include <cassert>
 #include <fstream>

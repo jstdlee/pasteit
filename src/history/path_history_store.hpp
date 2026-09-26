@@ -1,5 +1,5 @@
 #pragma once
-#include "history/path_history.hpp"
+#include "storage/path_history.hpp"
 #include <filesystem>
 #include <string>
 namespace pastit {

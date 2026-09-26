@@ -611,7 +611,6 @@ int run_desktop_runtime() {
     int selected_row = 0;
     std::uint64_t request_counter = 0;
     bool popup_visible = false;
-    bool show_settings = false;
     AppSettings settings_draft = settings;
     std::string settings_status = settings_load.warning;
     if (!clipboard_history_load.warning.empty()) {
@@ -628,7 +627,7 @@ int run_desktop_runtime() {
     };
 
     const auto has_any_auxiliary_window = [&] {
-        return show_settings || image_preview.open || file_confirmation.has_value() ||
+        return image_preview.open || file_confirmation.has_value() ||
                prompt_parameter_dialog.open || custom_prompt_dialog.open || graph_dialog.open ||
                has_fast_action_result_panel() ||
                std::any_of(generation_jobs.begin(), generation_jobs.end(), [](const auto& job) {
@@ -2100,98 +2099,6 @@ int run_desktop_runtime() {
                 if(ImGui::Button(tr(ui_language,UiTextKey::ReplaceClipboard).c_str()))platform->publish_text(job->panel.editable_text);
                 if(ImGui::Button(tr(ui_language,UiTextKey::Retry).c_str())&&!job->pending.has_value()){if(auto retry=job->state.retry_request()){job->panel.running=true;job->panel.error.clear();job->focus_pending=true;job->pending.emplace(std::async(std::launch::async,[&llm_client,request=*retry]{return llm_client.generate(request);}));}}
             }ImGui::End();
-        }
-
-        if (show_settings) {
-            ImGui::SetNextWindowClass(&auxiliary_window_class);
-            ImGui::SetNextWindowSize(ImVec2(680,620),ImGuiCond_FirstUseEver);
-            const auto settings_title=tr(ui_language,UiTextKey::Settings)+"##settings";
-            if (ImGui::Begin(settings_title.c_str(),&show_settings)) {
-                int language=static_cast<int>(settings_draft.language);const char* languages[]={"System","English","简体中文"};if(ImGui::Combo(tr(ui_language,UiTextKey::Language).c_str(),&language,languages,3))settings_draft.language=static_cast<UiLanguage>(language);
-                if(ImGui::SliderFloat(tr(ui_language,UiTextKey::Opacity).c_str(),&settings_draft.window_opacity,0.55F,1.0F)&&
-                   !platform->set_popup_opacity(settings_draft.window_opacity))glfwSetWindowOpacity(window,settings_draft.window_opacity);
-                auto image_dir=path_to_utf8_string(settings_draft.default_image_directory);if(input_text_string(tr(ui_language,UiTextKey::DefaultImageDirectory).c_str(),image_dir))settings_draft.default_image_directory=path_from_utf8_string(image_dir);
-                auto text_dir=path_to_utf8_string(settings_draft.default_text_directory);if(input_text_string(tr(ui_language,UiTextKey::DefaultTextDirectory).c_str(),text_dir))settings_draft.default_text_directory=path_from_utf8_string(text_dir);
-                if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::Djev).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){input_text_string(tr(ui_language,UiTextKey::DjevEndpoint).c_str(),settings_draft.djev.endpoint);input_text_string(tr(ui_language,UiTextKey::DjevModel).c_str(),settings_draft.djev.model_id);input_text_string(tr(ui_language,UiTextKey::DjevApiKey).c_str(),settings_draft.djev.api_key,false,ImGuiInputTextFlags_Password);if(ImGui::Button(tr(ui_language,UiTextKey::TestDjev).c_str())&&!pending_provider_test){pending_provider_test_is_djev=true;djev_test_status="Testing…";const auto provider=settings_draft.djev;const auto request=provider_test_request();const auto language=ui_language;pending_provider_test.emplace(std::async(std::launch::async,[provider,request,language]{const auto result=DjevClient(provider.endpoint,provider.model_id,DjevClient::kDefaultTimeout,{},provider.api_key).decide(request);return result.valid?tr(language,UiTextKey::DjevTestSucceeded):tr(language,UiTextKey::DjevTestFailed)+result.error;}));}ImGui::SameLine();if(!djev_test_status.empty())ImGui::TextUnformatted(djev_test_status.c_str());}
-                if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::GeneralLlm).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){input_text_string(tr(ui_language,UiTextKey::LlmEndpoint).c_str(),settings_draft.general_llm.endpoint);input_text_string(tr(ui_language,UiTextKey::LlmModel).c_str(),settings_draft.general_llm.model_id);input_text_string(tr(ui_language,UiTextKey::LlmApiKey).c_str(),settings_draft.general_llm.api_key,false,ImGuiInputTextFlags_Password);if(ImGui::Button(tr(ui_language,UiTextKey::TestGeneralLlm).c_str())&&!pending_provider_test){pending_provider_test_is_djev=false;llm_test_status="Testing…";const auto provider=settings_draft.general_llm;const auto language=ui_language;pending_provider_test.emplace(std::async(std::launch::async,[provider,language]{OpenAiCompatibleClient client;const auto result=client.generate({.request_id="settings-test",.endpoint=provider.endpoint,.api_key=provider.api_key,.model_id=provider.model_id,.system_message="Return OK.",.user_message="OK",.temperature=0.0,.timeout=std::chrono::milliseconds{5000}});return result.ok?tr(language,UiTextKey::GeneralLlmTestSucceeded):tr(language,UiTextKey::GeneralLlmTestFailed)+result.error;}));}ImGui::SameLine();if(!llm_test_status.empty())ImGui::TextUnformatted(llm_test_status.c_str());}
-                if(ImGui::CollapsingHeader(tr(ui_language,UiTextKey::PromptTemplates).c_str(),ImGuiTreeNodeFlags_DefaultOpen)){
-                    PromptTemplateService service(settings_draft.prompt_templates);
-                    if (prompt_panel_model.modal == PromptTemplateModal::None) {
-                        prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates);
-                    }
-                    std::string view_id, edit_id, duplicate_id, delete_id;
-                    if (ImGui::BeginTable("prompt-templates",5,ImGuiTableFlags_Resizable|ImGuiTableFlags_RowBg|ImGuiTableFlags_Borders|ImGuiTableFlags_SizingStretchProp)) {
-                        ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(),ImGuiTableColumnFlags_WidthFixed,70);
-                        ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Name).c_str(),ImGuiTableColumnFlags_WidthStretch,3);
-                        ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Temperature).c_str(),ImGuiTableColumnFlags_WidthFixed,90);
-                        const auto template_kind_header=tr(ui_language,UiTextKey::BuiltIn)+"/"+tr(ui_language,UiTextKey::Custom);
-                        ImGui::TableSetupColumn(template_kind_header.c_str(),ImGuiTableColumnFlags_WidthFixed,110);
-                        ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(),ImGuiTableColumnFlags_WidthFixed,190);
-                        ImGui::TableHeadersRow();
-                        for (const auto& row : prompt_panel_model.rows) {
-                            ImGui::PushID(row.id.c_str());ImGui::TableNextRow();ImGui::TableNextColumn();
-                            bool enabled=row.enabled;if(ImGui::Checkbox("##enabled",&enabled)){std::string error;service.set_enabled(row.id,enabled,error);}
-                            ImGui::TableNextColumn();copyable_text(row.name);
-                            ImGui::TableNextColumn();copyable_text(std::to_string(row.temperature));
-                            ImGui::TableNextColumn();copyable_text(row.built_in?tr(ui_language,UiTextKey::BuiltIn):tr(ui_language,UiTextKey::Custom));
-                            ImGui::TableNextColumn();
-                            if(ImGui::SmallButton(tr(ui_language,UiTextKey::View).c_str()))view_id=row.id;ImGui::SameLine();
-                            if(ImGui::SmallButton(tr(ui_language,UiTextKey::Edit).c_str()))edit_id=row.id;ImGui::SameLine();
-                            if(ImGui::SmallButton(tr(ui_language,UiTextKey::Duplicate).c_str()))duplicate_id=row.id;ImGui::SameLine();
-                            if(ImGui::SmallButton(tr(ui_language,UiTextKey::Delete).c_str()))delete_id=row.id;
-                            ImGui::PopID();
-                        }
-                        ImGui::EndTable();
-                    }
-                    if(!view_id.empty())view_prompt_template(prompt_panel_model,view_id);
-                    if(!edit_id.empty())begin_prompt_template_edit(prompt_panel_model,edit_id);
-                    if(!duplicate_id.empty())duplicate_prompt_template(prompt_panel_model,service,duplicate_id);
-                    if(!delete_id.empty())begin_prompt_template_delete(prompt_panel_model,delete_id);
-                    const auto prompt_detail_title=tr(ui_language,UiTextKey::Details)+"##prompt-detail";
-                    const auto prompt_edit_title=tr(ui_language,UiTextKey::Edit)+"##prompt-edit";
-                    const auto prompt_delete_title=tr(ui_language,UiTextKey::Delete)+"##prompt-delete";
-                    if(prompt_panel_model.modal==PromptTemplateModal::View&&prompt_panel_model.draft){
-                        bool detail_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);
-                        const auto detail_rows=std::clamp<std::size_t>(multiline_editor_row_count(prompt_panel_model.draft->system_prompt),2,14);
-                        const float detail_width=std::clamp(80.0F+ImGui::CalcTextSize(prompt_panel_model.draft->system_prompt.c_str()).x,340.0F,620.0F);
-                        ImGui::SetNextWindowSize(ImVec2(detail_width,95+detail_rows*ImGui::GetTextLineHeightWithSpacing()),ImGuiCond_Appearing);
-                        if(ImGui::Begin(prompt_detail_title.c_str(),&detail_open)){copyable_text(prompt_panel_model.draft->name);ImGui::Separator();copyable_text(prompt_panel_model.draft->system_prompt,true);if(ImGui::Button(tr(ui_language,UiTextKey::Close).c_str()))detail_open=false;}ImGui::End();
-                        if(!detail_open)cancel_prompt_template_modal(prompt_panel_model);
-                    }
-                    if(prompt_panel_model.modal==PromptTemplateModal::Edit&&prompt_panel_model.draft){
-                        bool edit_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);ImGui::SetNextWindowSize(ImVec2(600,440),ImGuiCond_FirstUseEver);
-                        if(ImGui::Begin(prompt_edit_title.c_str(),&edit_open)){
-                            input_text_string(tr(ui_language,UiTextKey::TemplateName).c_str(),prompt_panel_model.draft->name);
-                            const float edit_footer_height=3.0F*ImGui::GetFrameHeightWithSpacing();
-                            input_text_string(tr(ui_language,UiTextKey::SystemPrompt).c_str(),
-                                              prompt_panel_model.draft->system_prompt,true,0,-edit_footer_height);
-                            ImGui::Checkbox(tr(ui_language,UiTextKey::Enabled).c_str(),&prompt_panel_model.draft->enabled);
-                            float temperature=static_cast<float>(prompt_panel_model.draft->temperature);
-                            if(ImGui::SliderFloat(tr(ui_language,UiTextKey::Temperature).c_str(),&temperature,0,2))prompt_panel_model.draft->temperature=temperature;
-                            if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){const auto result=save_prompt_template_edit(prompt_panel_model,service);if(result.error.empty())edit_open=false;}
-                            ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str()))edit_open=false;
-                        }ImGui::End();
-                        if(!edit_open&&prompt_panel_model.modal!=PromptTemplateModal::None)cancel_prompt_template_modal(prompt_panel_model);
-                    }
-                    if(prompt_panel_model.modal==PromptTemplateModal::Delete){
-                        bool delete_open=true;ImGui::SetNextWindowClass(&auxiliary_window_class);ImGui::SetNextWindowSize(ImVec2(420,115),ImGuiCond_Appearing);
-                        if(ImGui::Begin(prompt_delete_title.c_str(),&delete_open)){copyable_text(tr(ui_language,UiTextKey::DeleteTemplateText));if(ImGui::Button(tr(ui_language,UiTextKey::ConfirmDelete).c_str())){confirm_prompt_template_delete(prompt_panel_model,service);delete_open=false;}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Keep).c_str()))delete_open=false;}ImGui::End();
-                        if(!delete_open&&prompt_panel_model.modal!=PromptTemplateModal::None)cancel_prompt_template_modal(prompt_panel_model);
-                    }
-                    if(ImGui::Button(tr(ui_language,UiTextKey::NewTemplate).c_str())){std::string error;if(const auto created=service.create("New Prompt","Transform {text}",0.2,error)){prompt_panel_model=build_prompt_templates_panel_model(settings_draft.prompt_templates);begin_prompt_template_edit(prompt_panel_model,created->id);}}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::RestoreDefaults).c_str())){service.restore_defaults();prompt_panel_model=build_prompt_templates_panel_model(settings_draft.prompt_templates);}
-                }
-                if(ImGui::Button(tr(ui_language,UiTextKey::ResetGeneral).c_str())){const auto defaults=default_settings();settings_draft.language=defaults.language;settings_draft.window_opacity=defaults.window_opacity;if(!platform->set_popup_opacity(settings_draft.window_opacity))glfwSetWindowOpacity(window,settings_draft.window_opacity);}ImGui::SameLine();
-                if(ImGui::Button(tr(ui_language,UiTextKey::ResetPaths).c_str())){const auto defaults=default_settings();settings_draft.default_image_directory=defaults.default_image_directory;settings_draft.default_text_directory=defaults.default_text_directory;}ImGui::SameLine();
-                if(ImGui::Button(tr(ui_language,UiTextKey::ResetProviders).c_str())){const auto defaults=default_settings();settings_draft.djev=defaults.djev;settings_draft.general_llm=defaults.general_llm;}
-                ImGui::Separator();ImGui::TextUnformatted("Mermaid: self-contained offline HTML");
-                if(ImGui::SmallButton("Mermaid homepage##aux"))platform->open_uri("https://mermaid.js.org/");ImGui::SameLine();
-                if(ImGui::SmallButton("QR library homepage##aux"))platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
-                if(!settings_status.empty())copyable_text(settings_status,true);
-                if(ImGui::Button(tr(ui_language,UiTextKey::Save).c_str())){AppSettings candidate=settings;std::string error;if(save_settings_draft(settings_store,settings,settings_draft,candidate,error)){settings=candidate;settings_draft=settings;if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window,settings.window_opacity);djev_client=DjevClient(settings.djev.endpoint,settings.djev.model_id,DjevClient::kDefaultTimeout,{},settings.djev.api_key);fast_action_executor.set_renderer_settings(settings.renderers);download_manager.set_options({.keep_part_files_on_cancel=settings.downloads.keep_part_files});annotation_panel.export_directory=settings.annotation.save_directory;annotation_panel.export_format=settings.annotation.export_format;
-                    platform->apply_settings(settings);
-                    settings_status=tr(ui_language,UiTextKey::Saved);show_settings=false;}else settings_status=error;}ImGui::SameLine();if(ImGui::Button(tr(ui_language,UiTextKey::Cancel).c_str())){settings_draft=settings;show_settings=false;}
-            }ImGui::End();
-            if(!show_settings){settings_draft=settings;if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window,settings.window_opacity);}
         }
 
         if (!popup_visible && !has_any_auxiliary_window()) {

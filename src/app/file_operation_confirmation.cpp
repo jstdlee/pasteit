@@ -2,7 +2,7 @@
 #include "util/path_utf8.hpp"
 
 #include "app/generated_filename.hpp"
-#include "history/path_history.hpp"
+#include "storage/path_history.hpp"
 #include "storage/clipboard_store.hpp"
 
 #include <algorithm>

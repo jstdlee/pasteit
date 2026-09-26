@@ -1,7 +1,7 @@
 #include "executor/file_executor.hpp"
 
 #include "detect/resume_detector.hpp"
-#include "history/path_history.hpp"
+#include "storage/path_history.hpp"
 #include "util/json.hpp"
 #include "util/path_utf8.hpp"
 
