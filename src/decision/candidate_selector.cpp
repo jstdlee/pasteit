@@ -24,7 +24,6 @@ bool is_current_source_action(const ActionInstance& action,const DecisionSnapsho
     return !snapshot.clipboard_items.empty()&&action.source_ref==snapshot.clipboard_items.front().ref;
 }
 ActionCatalog select_djev_candidates(const ActionCatalog& full,const DecisionSnapshot& snapshot,std::size_t limit,
-                                     const ActionPreferenceWeights& preferences,
                                      const ActionRankingContext& context){
     std::vector<ActionInstance> ordered;
     for(const auto& action:full.actions) if(action.enabled&&is_current_source_action(action,snapshot)) ordered.push_back(action);
@@ -35,7 +34,7 @@ ActionCatalog select_djev_candidates(const ActionCatalog& full,const DecisionSna
         const double source_prior = action.source_ref == current ? 0.01 : 0.0;
         const double target_prior = default_target(action, snapshot) ? 0.02 : 0.0;
         const double recency_prior = target_time(action, snapshot) > 0 ? 0.002 : 0.0;
-        return action_preference_bonus(preferences, action, context) + source_prior + target_prior + recency_prior;
+        return action_ranking_bonus(action, context) + source_prior + target_prior + recency_prior;
     };
     std::stable_sort(ordered.begin(),ordered.end(),[&](const auto& a,const auto& b){
         return std::tuple{priority(a),source_time(a,snapshot),target_time(a,snapshot),std::string_view{a.id}} >

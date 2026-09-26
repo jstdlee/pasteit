@@ -18,7 +18,8 @@ enum class UiTextKey{
     InvalidFilename,SourceParent,FocusedDirectory,ManualDestination,DeleteTemplateText,DuplicateTemplateText,
     UseAsDestination,OpenParent,Use,Seen,Parent,Reference,CopyHereAction,MoveHereAction,ConfirmFileOperation,
     GraphData,GraphPreview,ChartType,HeaderRow,ConvertDates,SavePngAs,CopyGraphImage,SaveGraphImage,
-    CustomPrompt,PromptInstructions,Generate,AnnotateImage
+    CustomPrompt,PromptInstructions,Generate,AnnotateImage,
+    UsageInsights,UsageInsightsHelp,UsageInsightsEmpty,ResetUsage,UsageReset,FastActions
 };
 UiLanguage resolve_language(UiLanguage requested,std::string_view locale);
 std::string tr(UiLanguage language,UiTextKey key);

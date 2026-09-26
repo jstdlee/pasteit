@@ -569,4 +569,15 @@ FastContentSignals detect_fast_content(ContentKind kind, std::string_view text) 
     return signals;
 }
 
+std::vector<std::string> fast_signal_tags(const FastContentSignals& signals) {
+    std::vector<std::string> tags;
+    if (signals.contact) tags.emplace_back("contact");
+    if (signals.code) tags.emplace_back("code");
+    if (signals.diagram) tags.emplace_back("diagram");
+    if (signals.ip) tags.emplace_back("ip");
+    if (signals.github_url) tags.emplace_back("github");
+    if (signals.date_time) tags.emplace_back("datetime");
+    return tags;
+}
+
 }  // namespace pastit

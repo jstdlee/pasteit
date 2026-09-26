@@ -38,4 +38,7 @@ struct FastContentSignals {
 
 FastContentSignals detect_fast_content(ContentKind kind, std::string_view text);
 
+// Short names of the detected signals, used as usage-learning context.
+std::vector<std::string> fast_signal_tags(const FastContentSignals& signals);
+
 }  // namespace pastit

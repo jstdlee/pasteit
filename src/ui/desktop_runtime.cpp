@@ -31,6 +31,7 @@
 #include "storage/clipboard_store.hpp"
 #include "storage/path_history.hpp"
 #include "util/path_utf8.hpp"
+#include "history/usage_store.hpp"
 #include "ui/desktop_flow.hpp"
 #include "ui/decision_future_slot.hpp"
 #include "ui/ai_result_panel.hpp"
@@ -232,6 +233,10 @@ void load_desktop_environment() {
 
 std::filesystem::path path_history_file() {
     return app_data_dir() / "paths.json";
+}
+
+std::filesystem::path usage_history_file() {
+    return app_data_dir() / "usage.json";
 }
 
 struct ImageTexture {
@@ -556,6 +561,10 @@ int run_desktop_runtime() {
     PathHistoryStore path_history_store(path_history_file());
     auto path_history_load = path_history_store.load();
     PathHistory path_history = std::move(path_history_load.history);
+    UsageStore usage_store(usage_history_file());
+    auto usage_load = usage_store.load();
+    UsageModel usage_model = std::move(usage_load.model);
+    if (!usage_load.warning.empty()) std::cerr << "PasteIt: " << usage_load.warning << '\n';
     if (!platform->register_global_shortcut()) {
         std::cerr << "Could not register global Ctrl+Alt+F; set PASTIT_SHOW_ON_START=1 to open manually.\n";
     }
@@ -728,7 +737,7 @@ int run_desktop_runtime() {
         input.downloads = settings.downloads;
         input.hash = settings.hash;
         input.date_time = settings.date_time;
-        input.action_preferences = settings.action_preferences;
+        input.usage = &usage_model;
         if (focus.current_directory.has_value()) {
             input.focused_current_directory = *focus.current_directory;
         }
@@ -943,12 +952,12 @@ int run_desktop_runtime() {
         const bool follow_up = action->parameters.contains("confirmation_complete") ||
                                supplied_prompt_variables.has_value();
         if (!follow_up) {
-            // Keep the key semantic so regenerated action ids do not erase the
-            // user's local ranking bias.
-            record_action_preference(settings.action_preferences, *action, active_batch.ranking_context);
-            std::string preference_save_error;
-            if (!settings_store.save(settings, preference_save_error) && diagnostics) {
-                std::cerr << "PasteIt action preference save failed: " << preference_save_error << '\n';
+            // Usage keys are semantic (kind, destination path, template), so
+            // regenerated action ids keep accumulating the same habit.
+            record_batch_usage(usage_model, active_batch, *action);
+            std::string usage_save_error;
+            if (!usage_store.save(usage_model, usage_save_error) && diagnostics) {
+                std::cerr << "PasteIt usage history save failed: " << usage_save_error << '\n';
             }
         }
         if (action->kind == ActionKind::Graph) {
@@ -1150,12 +1159,8 @@ int run_desktop_runtime() {
             const auto active_focus = platform->focused_context();
             const auto& current_target = active_focus.window_id == popup_window_id ? target_context : active_focus;
             const auto current = make_batch(current_target, active_batch.request.request_id);
-            active_batch.ranking_context.djev_proposed_kind.reset();
-            if (const auto proposed = active_batch.catalog.find(response.choice); proposed.has_value()) {
-                active_batch.ranking_context.djev_proposed_kind = proposed->kind;
-            }
             const auto prepared = prepare_popup_decision(active_batch.request, response, active_batch.catalog,
-                                                         current.request.snapshot, settings.action_preferences,
+                                                         current.request.snapshot,
                                                          active_batch.ranking_context);
             if (prepared.status == DecisionSessionStatus::Ready) {
                 popup_model = build_popup_model(active_batch.request.snapshot, prepared.ranked);
@@ -1494,7 +1499,35 @@ int run_desktop_runtime() {
                 ImGui::SameLine();
                 if (!llm_test_status.empty()) ImGui::TextUnformatted(llm_test_status.c_str());
             }
-            if (ImGui::CollapsingHeader("Fast actions", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::UsageInsights).c_str())) {
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextDisabled("%s", tr(ui_language,UiTextKey::UsageInsightsHelp).c_str());
+                ImGui::PopTextWrapPos();
+                const auto summary = usage_summary(usage_model, current_time_ms(), 5);
+                if (summary.empty()) ImGui::TextUnformatted(tr(ui_language,UiTextKey::UsageInsightsEmpty).c_str());
+                for (const auto& [kind, habits] : summary) {
+                    ImGui::SeparatorText(kind.c_str());
+                    if (ImGui::BeginTable(("usage-" + kind).c_str(), 3, ImGuiTableFlags_SizingStretchProp)) {
+                        for (const auto& habit : habits) {
+                            ImGui::TableNextRow();
+                            ImGui::TableNextColumn();
+                            ImGui::TextUnformatted(usage_action_label(habit.action_key).c_str());
+                            ImGui::TableNextColumn();
+                            ImGui::ProgressBar(static_cast<float>(habit.share), ImVec2(120.0F, 0.0F), "");
+                            ImGui::TableNextColumn();
+                            ImGui::Text("%3.0f%%  x%u", habit.share * 100.0, habit.count);
+                        }
+                        ImGui::EndTable();
+                    }
+                }
+                if (ImGui::Button(tr(ui_language,UiTextKey::ResetUsage).c_str())) {
+                    usage_model = {};
+                    std::string usage_error;
+                    settings_status = usage_store.save(usage_model, usage_error)
+                        ? tr(ui_language,UiTextKey::UsageReset) : usage_error;
+                }
+            }
+            if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::FastActions).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::TextUnformatted("Mermaid uses mmdc for an in-window image when available; offline HTML is the fallback.");
                 if (ImGui::SmallButton("Mermaid homepage")) platform->open_uri("https://mermaid.js.org/");
                 auto mermaid_cli = path_to_utf8_string(settings_draft.renderers.mermaid_cli_path);

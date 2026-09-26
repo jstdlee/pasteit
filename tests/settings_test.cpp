@@ -79,7 +79,6 @@ int main() {
     settings.date_time.use_24_hour_clock = false;
     settings.annotation.export_format = "png";
     settings.annotation.save_directory = root / "annotations";
-    settings.action_preferences["kind:0"] = 0.12;
     std::string error;
     assert(store.save(settings, error));
     const auto loaded = store.load();
@@ -91,7 +90,6 @@ int main() {
     assert(loaded.settings.general_llm.api_key == "llm-key");
     assert(loaded.settings.default_image_directory == "/tmp/images");
     assert(loaded.settings.prompt_templates.size() == settings.prompt_templates.size());
-    assert(loaded.settings.action_preferences.at("kind:0") == 0.12);
     assert(loaded.settings.renderers.mermaid_cli_path == "/tools/mmdc");
     assert((loaded.settings.renderers.mermaid_arguments == std::vector<std::string>{"--theme", "forest"}));
     assert(loaded.settings.renderers.qrencode_path == "/tools/qrencode");

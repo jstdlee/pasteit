@@ -17,7 +17,6 @@ struct RankedAction {
 };
 
 std::vector<RankedAction> rank_top_actions(const DecisionResponse& response, const ActionCatalog& catalog, std::size_t limit = 5,
-                                           const ActionPreferenceWeights& preferences = {},
                                            const ActionRankingContext& context = {});
 bool response_is_stale(const DecisionRequest& request, const DecisionSnapshot& current_snapshot);
 

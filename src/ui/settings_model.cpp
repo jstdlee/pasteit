@@ -18,7 +18,6 @@ bool save_settings_draft(const SettingsStore& store, const AppSettings& applied,
     if (!validator.save(saved, error)) {
         return false;
     }
-    saved.action_preferences = applied.action_preferences;
     return store.save(saved, error);
 }
 

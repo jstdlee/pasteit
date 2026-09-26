@@ -67,7 +67,14 @@ double local_match_bonus(std::string_view object, std::string_view input, std::u
     return std::clamp(0.01 + 0.04 * coverage, 0.0, 0.05);
 }
 
+constexpr std::size_t kMaximumUsageHints = 5;
+
 }  // namespace
+
+void record_batch_usage(UsageModel& usage, const DesktopDecisionBatch& batch, const ActionInstance& action) {
+    if (batch.usage_context.kind == ContentKind::Unknown) return;
+    record_usage(usage, batch.usage_context, usage_action_key(action, batch.request.snapshot));
+}
 
 bool mermaid_action_requires_generation(const ActionInstance& action) {
     if (action.kind != ActionKind::DrawMermaidDiagram) return false;
@@ -122,6 +129,16 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
         batch.ranking_context.input_kind = item.kind;
         const auto local_text = ranking_text(item);
         const auto signals = detect_fast_content(item.kind, local_text);
+        batch.usage_context = UsageContext{
+            .kind = item.kind,
+            .signals = fast_signal_tags(signals),
+            .app = input.focused_app,
+            .now_ms = input.captured_at_ms,
+        };
+        if (std::any_of(batch.catalog.actions.begin(), batch.catalog.actions.end(),
+                        [](const ActionInstance& action) { return action.kind == ActionKind::Graph; })) {
+            batch.usage_context.signals.emplace_back("numbers");
+        }
         if (item.kind == ContentKind::Image) {
             batch.ranking_context.local_action_bonus[ActionKind::AnnotateImage] = 0.04;
         }
@@ -204,9 +221,28 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
         const bool url_download = action.kind == ActionKind::DownloadUrl || action.kind == ActionKind::SaveUrlFile;
         if (default_download_refs.contains(action.target_ref) && !url_download) action.enabled = false;
     }
-    const auto candidates = select_djev_candidates(batch.catalog, snapshot, 26, input.action_preferences,
-                                                    batch.ranking_context);
+    if (input.usage != nullptr && !snapshot.clipboard_items.empty()) {
+        for (const auto& action : batch.catalog.actions) {
+            const double bonus = usage_bonus(*input.usage, batch.usage_context, usage_action_key(action, snapshot));
+            if (bonus > 0.0) batch.ranking_context.usage_bonus_by_id[action.id] = bonus;
+        }
+    }
+    const auto candidates = select_djev_candidates(batch.catalog, snapshot, 26, batch.ranking_context);
     snapshot.available_actions = candidates.actions;
+    if (input.usage != nullptr && !snapshot.clipboard_items.empty()) {
+        // Tell Djev which offered actions the user habitually picks here, so
+        // the model can weigh frequency against what the content suggests.
+        for (const auto& habit : usage_habits(*input.usage, batch.usage_context, 12)) {
+            if (snapshot.usage_hints.size() >= kMaximumUsageHints) break;
+            if (habit.share < 0.05) continue;
+            const auto offered = std::find_if(snapshot.available_actions.begin(), snapshot.available_actions.end(),
+                                              [&](const ActionInstance& action) {
+                                                  return usage_action_key(action, snapshot) == habit.action_key;
+                                              });
+            if (offered == snapshot.available_actions.end()) continue;
+            snapshot.usage_hints.push_back({offered->id, habit.share, habit.count});
+        }
+    }
     return batch;
 }
 

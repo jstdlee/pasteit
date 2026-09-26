@@ -3,6 +3,7 @@
 #include "core/action.hpp"
 #include "core/types.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -10,6 +11,14 @@
 #include <vector>
 
 namespace pastit {
+
+// A learned habit shared with Djev: how often the user picked this action
+// for similar clipboard content. Contains no clipboard text.
+struct UsageHint {
+    std::string action_id;
+    double share = 0.0;
+    std::uint32_t count = 0;
+};
 
 struct DecisionSnapshot {
     std::string clipboard_hash;
@@ -21,6 +30,7 @@ struct DecisionSnapshot {
     std::vector<ClipboardItem> clipboard_items;
     std::vector<PathLocation> recent_paths;
     std::vector<ActionInstance> available_actions;
+    std::vector<UsageHint> usage_hints;
 };
 
 struct DecisionRequest {

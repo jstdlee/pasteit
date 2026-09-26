@@ -17,6 +17,9 @@ struct ActionCatalog {
     std::optional<ActionInstance> find_by_kind_and_label(ActionKind kind, const std::string& label) const;
 };
 
+// Stable, human-readable name for an action kind (persisted in usage history).
+std::string action_kind_slug(ActionKind kind);
+
 ActionCatalog build_catalog(const DecisionSnapshot& snapshot);
 ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<PromptTemplate>& templates,
                             const ProviderSettings& provider);

@@ -73,7 +73,6 @@ struct AppSettings {
     DateTimeSettings date_time;
     AnnotationSettings annotation;
     std::vector<PromptTemplate> prompt_templates;
-    std::map<std::string, double> action_preferences;
 };
 
 std::vector<PromptTemplate> default_prompt_templates();

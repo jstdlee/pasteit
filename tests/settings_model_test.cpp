@@ -50,22 +50,18 @@ int main(){
     auto applied = pastit::default_settings();
     applied.default_image_directory = root;
     applied.default_text_directory = root;
-    applied.action_preferences["kind:0"] = 0.12;
     auto draft = applied;
     draft.language = pastit::UiLanguage::SimplifiedChinese;
     draft.window_opacity = 0.72F;
-    draft.action_preferences.clear(); // The UI draft predates a runtime preference update.
     assert(pastit::save_settings_on_exit(store, applied, draft, error));
     const auto reloaded = store.load();
     assert(reloaded.loaded_from_disk);
     assert(reloaded.settings.language == pastit::UiLanguage::SimplifiedChinese);
     assert(reloaded.settings.window_opacity == 0.72F);
-    assert(reloaded.settings.action_preferences.at("kind:0") == 0.12);
     draft.djev.endpoint.clear();
     assert(!pastit::save_settings_on_exit(store, applied, draft, error));
     assert(!error.empty());
     const auto fallback = store.load();
     assert(fallback.settings.language == applied.language);
-    assert(fallback.settings.action_preferences.at("kind:0") == 0.12);
     std::filesystem::remove_all(root);
 }

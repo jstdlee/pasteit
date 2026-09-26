@@ -596,6 +596,10 @@ std::optional<ActionInstance> ActionCatalog::find_by_kind_and_label(ActionKind k
     return std::nullopt;
 }
 
+std::string action_kind_slug(ActionKind kind) {
+    return kind_slug(kind);
+}
+
 ActionCatalog build_catalog(const DecisionSnapshot& snapshot) {
     return build_catalog(snapshot, {}, {});
 }

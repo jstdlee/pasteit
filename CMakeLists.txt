@@ -149,6 +149,7 @@ add_library(pastit_core
     src/decision/action_preference.cpp
     src/decision/candidate_selector.cpp
     src/decision/fallback_ranker.cpp
+    src/decision/usage_model.cpp
     src/graph/graph_data.cpp
     src/graph/graph_renderer.cpp
     src/core/core.cpp
@@ -166,6 +167,7 @@ add_library(pastit_core
     src/history/clipboard_history_store.cpp
     src/history/path_history_store.cpp
     src/history/path_target_resolver.cpp
+    src/history/usage_store.cpp
     src/net/http_client.cpp
     src/render/external_renderer.cpp
     third_party/qrcodegen/qrcodegen.cpp
@@ -489,6 +491,10 @@ if (PASTIT_BUILD_TESTS)
     add_executable(clipboard_history_model_test tests/clipboard_history_model_test.cpp)
     target_link_libraries(clipboard_history_model_test PRIVATE pastit_core)
     add_test(NAME clipboard_history_model_test COMMAND clipboard_history_model_test)
+
+    add_executable(usage_model_test tests/usage_model_test.cpp)
+    target_link_libraries(usage_model_test PRIVATE pastit_core)
+    add_test(NAME usage_model_test COMMAND usage_model_test)
 
     add_executable(djev_live_integration tests/djev_live_integration.cpp)
     target_link_libraries(djev_live_integration PRIVATE pastit_core)

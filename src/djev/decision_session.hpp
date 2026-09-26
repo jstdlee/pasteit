@@ -26,7 +26,6 @@ inline constexpr std::size_t kDisplayedActionLimit = 8;
 
 PreparedDecision prepare_ranked_decision(const DecisionRequest& request, const DecisionResponse& response,
                                          const ActionCatalog& catalog, const DecisionSnapshot& current_snapshot,
-                                         const ActionPreferenceWeights& preferences = {},
                                          const ActionRankingContext& context = {});
 
 }  // namespace pastit

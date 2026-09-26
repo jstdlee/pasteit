@@ -55,9 +55,8 @@ PopupModel build_popup_model(const DecisionSnapshot& snapshot, const std::vector
 
 PreparedDecision prepare_popup_decision(const DecisionRequest& request, const DecisionResponse& response,
                                         const ActionCatalog& catalog, const DecisionSnapshot& current_snapshot,
-                                        const ActionPreferenceWeights& preferences,
                                         const ActionRankingContext& context) {
-    return prepare_ranked_decision(request, response, catalog, current_snapshot, preferences, context);
+    return prepare_ranked_decision(request, response, catalog, current_snapshot, context);
 }
 
 }  // namespace pastit

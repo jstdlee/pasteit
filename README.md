@@ -41,7 +41,7 @@ Prompt Templates supports create, edit, delete, duplicate, enable/disable, and r
 
 Custom prompt opens a small dialog for one-off instructions and sends the copied text to the configured general LLM. Numeric sequences separated by commas or spaces, plus two-column data, offer Graph data. Its preview switches between line, bar, and pie charts, can treat the first row as a header, and can space ISO dates along the x axis. Copy image and Save image export the preview as PNG.
 
-Selecting an action also records a small persistent preference bonus in `settings.json`. The key is semantic: action kind, plus a destination path for file/path actions and a prompt-template ID for text transformations; transient action IDs and clipboard contents are not used. The bonus uses diminishing returns and is capped at 0.20, so a repeated choice can move a matching candidate upward without overwhelming the Djev probability or local fallback ranking.
+Selecting an action records it in `data/usage.json`, a decayed frequency model (half-life about 14 days). Choices are counted per context: content kind, detected signals (code, IP, date/time, contact, numbers, …), focused app, and time of day. Action keys are semantic (action kind, destination path, prompt template), never clipboard text. The model does two things. It adds a bounded ranking bonus of at most 0.20, smoothed so a single click cannot dominate, both to the Djev probabilities and to the local fallback. It also sends up to five `state.habits` entries (`action_id`, `share`, `count`) with each Djev request, so the model can weigh your frequent operations against what the content suggests. Settings → Usage insights shows the most frequent choices per content kind and can reset the history.
 
 ## Build And Test
 

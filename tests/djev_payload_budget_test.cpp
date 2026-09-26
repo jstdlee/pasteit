@@ -90,6 +90,20 @@ int main() {
     });
     const auto datetime_payload = pastit::DjevClient::build_payload(datetime_request, "jev-test");
     assert(datetime_payload.find(R"("kind":"datetime")") != std::string::npos);
+    assert(datetime_payload.find("habits") == std::string::npos);
+
+    // Learned habits reach Djev only for actions that are actually offered.
+    auto habit_request = datetime_request;
+    habit_request.snapshot.usage_hints.push_back({"datetime-kind-action", 0.734, 9});
+    habit_request.snapshot.usage_hints.push_back({"not-offered", 0.5, 3});
+    const auto habit_payload = pastit::DjevClient::build_payload(habit_request, "jev-test");
+    const auto habit_root = pastit::parse_json(habit_payload);
+    assert(habit_root.has_value());
+    const auto* habits = habit_root->get("state")->get("habits");
+    assert(habits != nullptr && habits->array() && habits->array()->size() == 1);
+    assert(*habits->array()->front().get("action_id")->string() == "datetime-kind-action");
+    assert(*habits->array()->front().get("share")->number() == 0.73);
+    assert(habit_payload.find("state.habits lists actions") != std::string::npos);
 
     pastit::DecisionRequest request;
     request.protocol_version = 1;

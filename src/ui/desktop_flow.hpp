@@ -4,6 +4,7 @@
 #include "core/protocol.hpp"
 #include "config/app_settings.hpp"
 #include "decision/action_preference.hpp"
+#include "decision/usage_model.hpp"
 
 #include <filesystem>
 #include <string>
@@ -28,7 +29,7 @@ struct DesktopDecisionInput {
     DownloadSettings downloads;
     HashSettings hash;
     DateTimeSettings date_time;
-    ActionPreferenceWeights action_preferences;
+    const UsageModel* usage = nullptr;
 };
 
 struct DesktopDecisionBatch {
@@ -36,10 +37,13 @@ struct DesktopDecisionBatch {
     ActionCatalog catalog;
     ProviderSettings general_llm;
     ActionRankingContext ranking_context;
+    UsageContext usage_context;
 };
 
 bool mermaid_action_requires_generation(const ActionInstance& action);
 DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input);
-bool mermaid_action_requires_generation(const ActionInstance& action);
+
+// Records a root-list choice in the usage model for the batch context.
+void record_batch_usage(UsageModel& usage, const DesktopDecisionBatch& batch, const ActionInstance& action);
 
 }  // namespace pastit

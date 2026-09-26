@@ -141,13 +141,6 @@ SettingsLoadResult SettingsStore::load() const {
             if (!value.id.empty() && !value.name.empty() && !value.system_prompt.empty()) s.prompt_templates.push_back(std::move(value));
         }
     }
-    if (const auto* preferences = root->get("action_preferences"); preferences && preferences->object()) {
-        for (const auto& [key, value] : *preferences->object()) {
-            if (const auto weight = value.number(); weight && *weight >= 0.0 && *weight <= 0.2) {
-                s.action_preferences[key] = *weight;
-            }
-        }
-    }
     normalize_settings(s);
     return result;
 }
@@ -188,13 +181,6 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
         << ",\"use_24_hour_clock\":" << (settings.date_time.use_24_hour_clock ? "true" : "false") << '}';
     out << ",\n\"annotation\":{\"export_format\":" << json_quote(settings.annotation.export_format)
         << ",\"save_directory\":" << json_quote(path_to_utf8_string(settings.annotation.save_directory)) << '}';
-    out << ",\n\"action_preferences\":{";
-    std::size_t preference_index = 0;
-    for (const auto& [key, weight] : settings.action_preferences) {
-        if (preference_index++ != 0) out << ',';
-        out << json_quote(key) << ':' << std::clamp(weight, 0.0, 0.2);
-    }
-    out << '}';
     out << ",\n\"prompt_templates\":[";
     for (std::size_t i=0; i<settings.prompt_templates.size(); ++i) {
         const auto& t=settings.prompt_templates[i]; if (i) out << ',';

@@ -6,6 +6,7 @@
 #include "util/utf8.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -260,9 +261,28 @@ std::string build_compact_payload(const DecisionRequest& request, const std::str
         out << "\"path\":\"" << json_escape(truncate_codepoints(path_to_utf8_string(path.path), 240)) << "\",";
         out << "\"kind\":\"" << path_kind_name(path.kind) << "\"}";
     }
-    out << "]},";
+    out << "]";
+    bool has_habits = false;
+    for (const auto& hint : request.snapshot.usage_hints) {
+        const bool offered = std::any_of(actions.begin(), actions.end(), [&](const ActionInstance& action) {
+            return action.id == hint.action_id;
+        });
+        if (!offered) continue;
+        out << (has_habits ? "," : ",\"habits\":[");
+        has_habits = true;
+        out << "{\"action_id\":\"" << json_escape(hint.action_id) << "\",";
+        out << "\"share\":" << std::round(hint.share * 100.0) / 100.0 << ",";
+        out << "\"count\":" << hint.count << "}";
+    }
+    if (has_habits) out << "]";
+    out << "},";
     out << "\"questions\":{\"best_action\":{\"type\":\"choice\",";
-    out << "\"instructions\":\"Choose the most useful current clipboard action.\",";
+    out << "\"instructions\":\"Choose the most useful current clipboard action.";
+    if (has_habits) {
+        out << " state.habits lists actions this user often picks for similar content (share of past choices);"
+               " prefer them unless the clipboard clearly calls for something else.";
+    }
+    out << "\",";
     out << "\"criteria\":{";
     for (std::size_t index = 0; index < actions.size(); ++index) {
         const auto& action = actions[index];
