@@ -531,7 +531,9 @@ int run_desktop_runtime() {
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+    // No title bar or window buttons: the tab row moves the window and Esc
+    // (or the global shortcut) hides it.
+    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     GLFWwindow* window = glfwCreateWindow(660, 520, "PasteIt", nullptr, nullptr);
@@ -712,6 +714,7 @@ int run_desktop_runtime() {
     DecisionState decision_state = DecisionState::Idle;
     SettingsPage settings_page = SettingsPage::General;
     bool fit_popup_pending = false;
+    bool popup_drag_armed = false;
     std::set<std::uint64_t> owned_sub_windows;
     std::string fitted_status;
     const auto fit_popup_to = [&](int desired_height) {
@@ -1666,6 +1669,31 @@ int run_desktop_runtime() {
                                 page_consent.has_value();
         if (modal_open) ImGui::BeginDisabled();
         const auto& theme_palette = palette();
+        // Dragging anywhere on the tab row moves the undecorated window. Mouse
+        // positions are desktop coordinates with viewports on, so moving the
+        // window does not feed back into the delta.
+        {
+            const float row_bottom = main_viewport->Pos.y + ImGui::GetStyle().WindowPadding.y + ImGui::GetFrameHeight() + 4.0F;
+            const ImVec2 mouse = ImGui::GetIO().MousePos;
+            const bool in_row = mouse.y >= main_viewport->Pos.y && mouse.y <= row_bottom &&
+                                mouse.x >= main_viewport->Pos.x && mouse.x <= main_viewport->Pos.x + main_viewport->Size.x;
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && in_row && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+                popup_drag_armed = true;
+            }
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) popup_drag_armed = false;
+            if (popup_drag_armed && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0F)) {
+                const ImVec2 delta = ImGui::GetIO().MouseDelta;
+                if (delta.x != 0.0F || delta.y != 0.0F) {
+                    int x = 0;
+                    int y = 0;
+                    glfwGetWindowPos(window, &x, &y);
+                    glfwSetWindowPos(window, x + static_cast<int>(delta.x), y + static_cast<int>(delta.y));
+                }
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+            } else if (in_row && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered()) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+            }
+        }
         const auto& theme_fonts = ui_fonts();
         if (ImGui::BeginTabBar("main-tabs")) {
         if (ImGui::BeginTabItem((with_icon(icon::kZap, tr(ui_language,UiTextKey::SmartActions)) + "###tab-smart").c_str())) {
@@ -2754,7 +2782,8 @@ int run_desktop_runtime() {
         int display_height = 0;
         glfwGetFramebufferSize(window, &display_width, &display_height);
         glViewport(0, 0, display_width, display_height);
-        glClearColor(0.055F, 0.06F, 0.075F, 1.0F);
+        const auto clear = palette().background;
+        glClearColor(clear.x, clear.y, clear.z, 1.0F);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
