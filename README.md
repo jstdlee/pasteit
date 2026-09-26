@@ -73,7 +73,7 @@ An optional `openai_live_integration` uses `GENERAL_LLM_URL`, `GENERAL_LLM_MODEL
 - Email: paste, save `.eml`, compose actions, and QR payload generation
 - Image: paste and save original bytes; clicking the thumbnail opens an aspect-preserving, zoomable preview, with actions to copy a temporary preview-file path and open SVG annotation tools
 - Local path and `file://`: copy into a recent directory, move into a recent directory, open Terminal at the containing directory, open with the default application, show in file manager, copy path as text, copy name, copy parent folder, and hash regular files with the enabled SHA-256/SHA-512 defaults
-- JSON: raw save, pretty copy, pretty save, minified copy, YAML, CSV (arrays of objects), jq-style leaf paths, and a custom LLM prompt. YAML output sorts keys.
+- JSON: raw save, pretty copy, pretty save, minified copy, YAML, CSV (arrays of objects), jq-style leaf paths, and a custom LLM prompt. YAML, CSV and jq paths keep the original key order and number formatting.
 - Resume-like text (an email plus section headings such as Experience/Education, or a phone plus a Skills block): copy extracted fields, copy extracted JSON, and save extracted JSON
 - IP addresses: ping, traceroute, reverse DNS, dig, and a combined report. Linux maps these to argv calls for `ping -c 4`, `traceroute`, `getent hosts`, and `dig`; Windows uses `ping`, `tracert`, and `nslookup`. Clipboard text is never shell-concatenated.
 - Date/time values: timezone conversion, Unix timestamp conversion, and normalized copy. The Settings tab supplies the default source and target zones used by the desktop catalog.

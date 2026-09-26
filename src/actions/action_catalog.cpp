@@ -793,7 +793,7 @@ void add_json_utility_actions(ActionCatalog& catalog, const ClipboardItem& item,
     if (const auto minified = minify_json(source_text); minified && *minified != trim_copy(source_text)) {
         add(catalog, item, ActionKind::MinifyJson, "", "Copy minified JSON", "Remove all insignificant whitespace", "minify");
     }
-    add(catalog, item, ActionKind::JsonToYaml, "", "Copy as YAML", "Convert this JSON to YAML (keys sorted)", "yaml");
+    add(catalog, item, ActionKind::JsonToYaml, "", "Copy as YAML", "Convert this JSON to YAML, keeping key order", "yaml");
     if (json_to_csv(source_text)) {
         add(catalog, item, ActionKind::JsonToCsv, "", "Copy as CSV", "Convert this array of objects to CSV rows", "csv");
     }

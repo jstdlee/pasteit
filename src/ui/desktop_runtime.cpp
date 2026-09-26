@@ -36,6 +36,7 @@
 #include "ui/decision_future_slot.hpp"
 #include "ui/ai_result_panel.hpp"
 #include "transform/text_transforms.hpp"
+#include "ui/icons.hpp"
 #include "ui/theme.hpp"
 #include "ui/image_preview_panel.hpp"
 #include "ui/clipboard_history_model.hpp"
@@ -564,7 +565,7 @@ int run_desktop_runtime() {
     ImGui::CreateContext();
     // Dear ImGui 1.92 rasterizes glyphs on demand, so CJK text needs no
     // pre-baked glyph ranges and any font size can be pushed per widget.
-    load_ui_fonts(platform->preferred_ui_fonts());
+    load_ui_fonts(platform->preferred_ui_fonts(), executable_directory() / "lucide.ttf");
     float dpi_scale = 1.0F;
     {
         float scale_x = 1.0F;
@@ -1330,7 +1331,7 @@ int run_desktop_runtime() {
         const auto& theme_palette = palette();
         const auto& theme_fonts = ui_fonts();
         if (ImGui::BeginTabBar("main-tabs")) {
-        if (ImGui::BeginTabItem(tr(ui_language,UiTextKey::SmartActions).c_str())) {
+        if (ImGui::BeginTabItem((with_icon(icon::kZap, tr(ui_language,UiTextKey::SmartActions)) + "###tab-smart").c_str())) {
         ImGui::BeginChild("smart-actions-body", ImVec2(0.0F, 0.0F), false);
         const float body_top = ImGui::GetCursorScreenPos().y;
         const ClipboardItem* current_item = active_batch.request.snapshot.clipboard_items.empty()
@@ -1430,7 +1431,7 @@ int run_desktop_runtime() {
 
         // Quick tools that open a dialog rather than run immediately.
         bool any_tool = false;
-        const auto tool_button = [&](ActionKind kind, UiTextKey key) {
+        const auto tool_button = [&](ActionKind kind, UiTextKey key, const char* glyph) {
             const auto choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
                 [kind](const ActionInstance& action) { return action.kind == kind && action.enabled; });
             if (choice == active_batch.catalog.actions.end()) return;
@@ -1441,12 +1442,16 @@ int run_desktop_runtime() {
             any_tool = true;
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 999.0F);
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.0F, 4.0F));
-            if (ImGui::Button(tr(ui_language, key).c_str())) activated_action = choice->id;
+            if (ImGui::Button(with_icon(glyph, tr(ui_language, key)).c_str())) activated_action = choice->id;
             ImGui::PopStyleVar(2);
         };
-        tool_button(ActionKind::Graph, UiTextKey::GraphData);
-        tool_button(ActionKind::AnnotateImage, UiTextKey::AnnotateImage);
-        tool_button(ActionKind::CustomPrompt, UiTextKey::CustomPrompt);
+        tool_button(ActionKind::ViewTable, UiTextKey::ViewTable, icon::kTable);
+        tool_button(ActionKind::PreviewMarkdown, UiTextKey::PreviewMarkdown, icon::kBook);
+        tool_button(ActionKind::Graph, UiTextKey::GraphData, icon::kChart);
+        tool_button(ActionKind::RunPipeline, UiTextKey::Pipeline, icon::kPipeline);
+        tool_button(ActionKind::AnonymizeText, UiTextKey::Anonymize, icon::kEyeOff);
+        tool_button(ActionKind::AnnotateImage, UiTextKey::AnnotateImage, icon::kEdit);
+        tool_button(ActionKind::CustomPrompt, UiTextKey::CustomPrompt, icon::kAi);
 
         if (popup_model.rows.empty()) {
             ImGui::Spacing();
@@ -1517,7 +1522,7 @@ int run_desktop_runtime() {
         ImGui::EndChild();
         ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr(ui_language,UiTextKey::RecentPaths).c_str())) {
+        if (ImGui::BeginTabItem((with_icon(icon::kFolder, tr(ui_language,UiTextKey::RecentPaths)) + "###tab-paths").c_str())) {
             const auto recent_model = build_recent_paths_model(path_history.recent(100), recent_paths_state,
                                                                active_batch.catalog);
             const auto command = render_recent_paths_panel(recent_paths_state, recent_model, ui_language);
@@ -1535,7 +1540,7 @@ int run_desktop_runtime() {
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr(ui_language,UiTextKey::ClipboardHistory).c_str())) {
+        if (ImGui::BeginTabItem((with_icon(icon::kHistory, tr(ui_language,UiTextKey::ClipboardHistory)) + "###tab-history").c_str())) {
             auto history_model = build_clipboard_history_model(
                 clipboard_store.items_newest_first(50), clipboard_history_state);
             if (history_model.detail && !history_model.detail->is_image) {
@@ -1590,7 +1595,7 @@ int run_desktop_runtime() {
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(tr(ui_language,UiTextKey::Settings).c_str())) {
+        if (ImGui::BeginTabItem((with_icon(icon::kSettings, tr(ui_language,UiTextKey::Settings)) + "###tab-settings").c_str())) {
             const auto settings_body_height = std::max(0.0F, ImGui::GetContentRegionAvail().y);
             ImGui::BeginChild("settings-tab-body", ImVec2(0.0F, settings_body_height), false);
             if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::General).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {

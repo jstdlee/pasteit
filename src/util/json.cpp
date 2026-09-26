@@ -427,4 +427,230 @@ std::optional<std::string> pretty_json(std::string_view input) {
     return out;
 }
 
+namespace {
+
+class OrderedParser {
+public:
+    explicit OrderedParser(std::string_view input) : input_(input) {}
+
+    std::optional<OrderedJson> parse() {
+        auto value = parse_value(0);
+        skip_space();
+        if (!value || position_ != input_.size()) return std::nullopt;
+        return value;
+    }
+
+private:
+    static constexpr int kMaxDepth = 256;
+
+    void skip_space() {
+        while (position_ < input_.size() && (input_[position_] == ' ' || input_[position_] == '\n' ||
+                                             input_[position_] == '\r' || input_[position_] == '\t')) {
+            ++position_;
+        }
+    }
+
+    bool literal(std::string_view word) {
+        if (input_.substr(position_, word.size()) != word) return false;
+        position_ += word.size();
+        return true;
+    }
+
+    static void append_utf8(std::string& out, unsigned int codepoint) {
+        if (codepoint < 0x80) {
+            out += static_cast<char>(codepoint);
+        } else if (codepoint < 0x800) {
+            out += static_cast<char>(0xC0 | (codepoint >> 6));
+            out += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else if (codepoint < 0x10000) {
+            out += static_cast<char>(0xE0 | (codepoint >> 12));
+            out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (codepoint & 0x3F));
+        } else {
+            out += static_cast<char>(0xF0 | (codepoint >> 18));
+            out += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (codepoint & 0x3F));
+        }
+    }
+
+    std::optional<unsigned int> hex4() {
+        if (position_ + 4 > input_.size()) return std::nullopt;
+        unsigned int value = 0;
+        for (int index = 0; index < 4; ++index) {
+            const char ch = input_[position_++];
+            value <<= 4;
+            if (ch >= '0' && ch <= '9') value |= static_cast<unsigned int>(ch - '0');
+            else if (ch >= 'a' && ch <= 'f') value |= static_cast<unsigned int>(ch - 'a' + 10);
+            else if (ch >= 'A' && ch <= 'F') value |= static_cast<unsigned int>(ch - 'A' + 10);
+            else return std::nullopt;
+        }
+        return value;
+    }
+
+    std::optional<std::string> parse_string() {
+        if (position_ >= input_.size() || input_[position_] != '"') return std::nullopt;
+        ++position_;
+        std::string out;
+        while (position_ < input_.size()) {
+            const char ch = input_[position_++];
+            if (ch == '"') return out;
+            if (static_cast<unsigned char>(ch) < 0x20) return std::nullopt;
+            if (ch != '\\') {
+                out += ch;
+                continue;
+            }
+            if (position_ >= input_.size()) return std::nullopt;
+            const char escape = input_[position_++];
+            switch (escape) {
+                case '"': out += '"'; break;
+                case '\\': out += '\\'; break;
+                case '/': out += '/'; break;
+                case 'b': out += '\b'; break;
+                case 'f': out += '\f'; break;
+                case 'n': out += '\n'; break;
+                case 'r': out += '\r'; break;
+                case 't': out += '\t'; break;
+                case 'u': {
+                    auto codepoint = hex4();
+                    if (!codepoint) return std::nullopt;
+                    if (*codepoint >= 0xD800 && *codepoint <= 0xDBFF && input_.substr(position_, 2) == "\\u") {
+                        position_ += 2;
+                        const auto low = hex4();
+                        if (!low || *low < 0xDC00 || *low > 0xDFFF) return std::nullopt;
+                        codepoint = 0x10000 + ((*codepoint - 0xD800) << 10) + (*low - 0xDC00);
+                    }
+                    append_utf8(out, *codepoint);
+                    break;
+                }
+                default: return std::nullopt;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<OrderedJson> parse_value(int depth) {
+        if (depth > kMaxDepth) return std::nullopt;
+        skip_space();
+        if (position_ >= input_.size()) return std::nullopt;
+        OrderedJson value;
+        const char ch = input_[position_];
+        if (ch == '{') {
+            ++position_;
+            value.type = OrderedJson::Type::Object;
+            skip_space();
+            if (position_ < input_.size() && input_[position_] == '}') {
+                ++position_;
+                return value;
+            }
+            for (;;) {
+                skip_space();
+                auto key = parse_string();
+                if (!key) return std::nullopt;
+                skip_space();
+                if (position_ >= input_.size() || input_[position_++] != ':') return std::nullopt;
+                auto member = parse_value(depth + 1);
+                if (!member) return std::nullopt;
+                value.members.emplace_back(std::move(*key), std::move(*member));
+                skip_space();
+                if (position_ >= input_.size()) return std::nullopt;
+                const char next = input_[position_++];
+                if (next == '}') return value;
+                if (next != ',') return std::nullopt;
+            }
+        }
+        if (ch == '[') {
+            ++position_;
+            value.type = OrderedJson::Type::Array;
+            skip_space();
+            if (position_ < input_.size() && input_[position_] == ']') {
+                ++position_;
+                return value;
+            }
+            for (;;) {
+                auto item = parse_value(depth + 1);
+                if (!item) return std::nullopt;
+                value.items.push_back(std::move(*item));
+                skip_space();
+                if (position_ >= input_.size()) return std::nullopt;
+                const char next = input_[position_++];
+                if (next == ']') return value;
+                if (next != ',') return std::nullopt;
+            }
+        }
+        if (ch == '"') {
+            auto text = parse_string();
+            if (!text) return std::nullopt;
+            value.type = OrderedJson::Type::String;
+            value.text = std::move(*text);
+            return value;
+        }
+        if (literal("true")) { value.type = OrderedJson::Type::Bool; value.boolean = true; return value; }
+        if (literal("false")) { value.type = OrderedJson::Type::Bool; return value; }
+        if (literal("null")) return value;
+        const auto start = position_;
+        if (input_[position_] == '-') ++position_;
+        const auto digits = [&] {
+            const auto begin = position_;
+            while (position_ < input_.size() && input_[position_] >= '0' && input_[position_] <= '9') ++position_;
+            return position_ > begin;
+        };
+        if (!digits()) return std::nullopt;
+        if (position_ < input_.size() && input_[position_] == '.') {
+            ++position_;
+            if (!digits()) return std::nullopt;
+        }
+        if (position_ < input_.size() && (input_[position_] == 'e' || input_[position_] == 'E')) {
+            ++position_;
+            if (position_ < input_.size() && (input_[position_] == '+' || input_[position_] == '-')) ++position_;
+            if (!digits()) return std::nullopt;
+        }
+        value.type = OrderedJson::Type::Number;
+        value.text = std::string{input_.substr(start, position_ - start)};
+        return value;
+    }
+
+    std::string_view input_;
+    std::size_t position_ = 0;
+};
+
+}  // namespace
+
+const OrderedJson* OrderedJson::get(std::string_view key) const {
+    for (const auto& [name, value] : members) {
+        if (name == key) return &value;
+    }
+    return nullptr;
+}
+
+std::optional<OrderedJson> parse_ordered_json(std::string_view input) {
+    return OrderedParser(input).parse();
+}
+
+std::string ordered_json_compact(const OrderedJson& value) {
+    switch (value.type) {
+        case OrderedJson::Type::Null: return "null";
+        case OrderedJson::Type::Bool: return value.boolean ? "true" : "false";
+        case OrderedJson::Type::Number: return value.text;
+        case OrderedJson::Type::String: return json_quote(value.text);
+        case OrderedJson::Type::Array: {
+            std::string out = "[";
+            for (std::size_t index = 0; index < value.items.size(); ++index) {
+                if (index != 0) out += ',';
+                out += ordered_json_compact(value.items[index]);
+            }
+            return out + "]";
+        }
+        case OrderedJson::Type::Object: {
+            std::string out = "{";
+            for (std::size_t index = 0; index < value.members.size(); ++index) {
+                if (index != 0) out += ',';
+                out += json_quote(value.members[index].first) + ":" + ordered_json_compact(value.members[index].second);
+            }
+            return out + "}";
+        }
+    }
+    return "null";
+}
+
 }  // namespace pastit

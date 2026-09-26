@@ -36,13 +36,19 @@ struct UiPalette {
 struct UiFonts {
     ImFont* regular = nullptr;
     ImFont* bold = nullptr;
+    bool icons = false;  // Lucide glyphs merged into both fonts
     float body = 16.0F;
     float small = 13.0F;
     float heading = 18.0F;
 };
 
-// Loads the regular and bold variant of the first available UI font.
-UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates);
+// Loads the regular and bold variant of the first available UI font and
+// merges the Lucide icon font (next to the executable) into both.
+UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates,
+                      const std::filesystem::path& icon_font = {});
+const char* category_icon(ActionCategory category);
+// Text with a leading icon when the icon font is available.
+std::string with_icon(const char* glyph, std::string_view text);
 void apply_theme(UiTheme theme, float dpi_scale);
 const UiPalette& palette();
 const UiFonts& ui_fonts();

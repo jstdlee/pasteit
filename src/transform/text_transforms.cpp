@@ -90,49 +90,25 @@ std::string yaml_scalar(const std::string& value) {
     return plain ? value : json_quote(value);
 }
 
-void write_yaml(std::ostringstream& out, const JsonValue& value, int indent, bool inline_start);
+using JsonType = OrderedJson::Type;
 
-std::string compact_json(const JsonValue& value) {
-    if (value.object()) {
-        std::string out = "{";
-        bool first = true;
-        for (const auto& [key, item] : *value.object()) {
-            if (!first) out += ',';
-            first = false;
-            out += json_quote(key) + ":" + compact_json(item);
-        }
-        return out + "}";
-    }
-    if (value.array()) {
-        std::string out = "[";
-        for (std::size_t index = 0; index < value.array()->size(); ++index) {
-            if (index != 0) out += ',';
-            out += compact_json((*value.array())[index]);
-        }
-        return out + "]";
-    }
-    if (value.string()) return json_quote(*value.string());
-    if (const auto number = value.number()) return format_number(*number);
-    if (const auto boolean = value.boolean()) return *boolean ? "true" : "false";
-    return "null";
+std::string yaml_leaf(const OrderedJson& value) {
+    if (value.type == JsonType::String) return yaml_scalar(value.text);
+    if (value.type == JsonType::Object && value.members.empty()) return "{}";
+    if (value.type == JsonType::Array && value.items.empty()) return "[]";
+    return ordered_json_compact(value);
 }
 
-std::string yaml_leaf(const JsonValue& value) {
-    if (value.string()) return yaml_scalar(*value.string());
-    if (value.object() && value.object()->empty()) return "{}";
-    if (value.array() && value.array()->empty()) return "[]";
-    return compact_json(value);
+bool is_container(const OrderedJson& value) {
+    return (value.type == JsonType::Object && !value.members.empty()) ||
+           (value.type == JsonType::Array && !value.items.empty());
 }
 
-bool is_container(const JsonValue& value) {
-    return (value.object() && !value.object()->empty()) || (value.array() && !value.array()->empty());
-}
-
-void write_yaml(std::ostringstream& out, const JsonValue& value, int indent, bool inline_start) {
+void write_yaml(std::ostringstream& out, const OrderedJson& value, int indent, bool inline_start) {
     const std::string pad(static_cast<std::size_t>(indent), ' ');
-    if (value.object() && !value.object()->empty()) {
+    if (value.type == JsonType::Object && !value.members.empty()) {
         bool first = true;
-        for (const auto& [key, item] : *value.object()) {
+        for (const auto& [key, item] : value.members) {
             if (!(first && inline_start)) out << pad;
             first = false;
             out << yaml_scalar(key) << ':';
@@ -145,8 +121,8 @@ void write_yaml(std::ostringstream& out, const JsonValue& value, int indent, boo
         }
         return;
     }
-    if (value.array() && !value.array()->empty()) {
-        for (const auto& item : *value.array()) {
+    if (value.type == JsonType::Array && !value.items.empty()) {
+        for (const auto& item : value.items) {
             out << pad << "- ";
             if (is_container(item)) {
                 write_yaml(out, item, indent + 2, true);
@@ -159,19 +135,19 @@ void write_yaml(std::ostringstream& out, const JsonValue& value, int indent, boo
     out << (inline_start ? "" : pad) << yaml_leaf(value) << '\n';
 }
 
-void collect_paths(const JsonValue& value, const std::string& prefix, std::vector<std::string>& out) {
+void collect_paths(const OrderedJson& value, const std::string& prefix, std::vector<std::string>& out) {
     static const std::regex identifier(R"(^[A-Za-z_][A-Za-z0-9_]*$)");
     if (out.size() >= 500) return;
-    if (value.object() && !value.object()->empty()) {
-        for (const auto& [key, item] : *value.object()) {
+    if (value.type == JsonType::Object && !value.members.empty()) {
+        for (const auto& [key, item] : value.members) {
             const auto segment = std::regex_match(key, identifier) ? "." + key : "[" + json_quote(key) + "]";
             collect_paths(item, prefix + segment, out);
         }
         return;
     }
-    if (value.array() && !value.array()->empty()) {
-        for (std::size_t index = 0; index < value.array()->size(); ++index) {
-            collect_paths((*value.array())[index], prefix + "[" + std::to_string(index) + "]", out);
+    if (value.type == JsonType::Array && !value.items.empty()) {
+        for (std::size_t index = 0; index < value.items.size(); ++index) {
+            collect_paths(value.items[index], prefix + "[" + std::to_string(index) + "]", out);
         }
         return;
     }
@@ -418,7 +394,7 @@ std::optional<std::string> minify_json(std::string_view text) {
 }
 
 std::optional<std::string> json_to_yaml(std::string_view text) {
-    const auto root = parse_json(text);
+    const auto root = parse_ordered_json(text);
     if (!root) return std::nullopt;
     std::ostringstream out;
     write_yaml(out, *root, 0, false);
@@ -428,32 +404,32 @@ std::optional<std::string> json_to_yaml(std::string_view text) {
 }
 
 std::optional<std::string> json_to_csv(std::string_view text) {
-    const auto root = parse_json(text);
-    if (!root || !root->array() || root->array()->empty()) return std::nullopt;
+    const auto root = parse_ordered_json(text);
+    if (!root || root->type != JsonType::Array || root->items.empty()) return std::nullopt;
     std::vector<std::string> columns;
     std::set<std::string> known;
-    for (const auto& row : *root->array()) {
-        if (!row.object()) return std::nullopt;
-        for (const auto& [key, value] : *row.object()) {
+    for (const auto& row : root->items) {
+        if (row.type != JsonType::Object) return std::nullopt;
+        for (const auto& [key, value] : row.members) {
             if (known.insert(key).second) columns.push_back(key);
         }
     }
     std::ostringstream out;
     for (std::size_t index = 0; index < columns.size(); ++index) out << (index ? "," : "") << csv_cell(columns[index]);
-    for (const auto& row : *root->array()) {
+    for (const auto& row : root->items) {
         out << '\n';
         for (std::size_t index = 0; index < columns.size(); ++index) {
             if (index != 0) out << ',';
             const auto* value = row.get(columns[index]);
-            if (value == nullptr || std::holds_alternative<std::nullptr_t>(value->value)) continue;
-            out << csv_cell(value->string() ? *value->string() : compact_json(*value));
+            if (value == nullptr || value->type == JsonType::Null) continue;
+            out << csv_cell(value->type == JsonType::String ? value->text : ordered_json_compact(*value));
         }
     }
     return out.str();
 }
 
 std::optional<std::string> json_paths(std::string_view text) {
-    const auto root = parse_json(text);
+    const auto root = parse_ordered_json(text);
     if (!root || !is_container(*root)) return std::nullopt;
     std::vector<std::string> paths;
     collect_paths(*root, "", paths);

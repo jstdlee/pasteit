@@ -270,6 +270,9 @@ install(TARGETS pastit RUNTIME DESTINATION bin)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/mermaid.min.js
                ${CMAKE_CURRENT_BINARY_DIR}/mermaid.min.js COPYONLY)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/mermaid.min.js DESTINATION bin)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/lucide.ttf
+               ${CMAKE_CURRENT_BINARY_DIR}/lucide.ttf COPYONLY)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/lucide.ttf DESTINATION bin)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/MERMAID_LICENSE DESTINATION bin)
 
 if (PASTIT_BUILD_TESTS)

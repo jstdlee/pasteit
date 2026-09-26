@@ -63,11 +63,13 @@ void transforms() {
     assert(!url_decode("plain text"));
 
     assert(minify_json("{ \"a\" : [1, 2], \"b\": \"x y\" }") == "{\"a\":[1,2],\"b\":\"x y\"}");
-    assert(json_to_yaml(R"({"name":"PasteIt","tags":["a","b"],"nested":{"on":true,"n":2}})") ==
-           "name: PasteIt\nnested:\n  n: 2\n  \"on\": true\ntags:\n  - a\n  - b");
-    assert(json_to_csv(R"([{"a":1,"b":"x,y"},{"a":2,"c":null}])") == "a,b,c\n1,\"x,y\",\n2,,");
+    // Key order and number text are kept exactly as written.
+    assert(json_to_yaml(R"({"name":"PasteIt","tags":["a","b"],"nested":{"on":true,"n":2.50}})") ==
+           "name: PasteIt\ntags:\n  - a\n  - b\nnested:\n  \"on\": true\n  n: 2.50");
+    assert(json_to_csv(R"([{"b":"x,y","a":1},{"a":2,"c":null}])") == "b,a,c\n\"x,y\",1,\n,2,");
+    assert(json_to_yaml(R"({"s":"caf\u00e9 \ud83d\ude00"})") == "s: caf\xC3\xA9 \xF0\x9F\x98\x80");
     assert(!json_to_csv(R"({"a":1})"));
-    assert(json_paths(R"({"items":[{"name":"x"}],"odd key":1})") == ".items[0].name\n[\"odd key\"]");
+    assert(json_paths(R"({"odd key":1,"items":[{"name":"x"}]})") == "[\"odd key\"]\n.items[0].name");
 
     assert(clean_tracking_url("https://ex.com/p?id=3&utm_source=x&fbclid=y#top") == "https://ex.com/p?id=3#top");
     assert(clean_tracking_url("https://ex.com/p?utm_medium=a") == "https://ex.com/p");
@@ -223,7 +225,7 @@ void execution() {
     assert(store.read_text(*run(ActionKind::CopyColorHex, color).output_clipboard_ref) == "#ff0000");
 
     const auto json = put(R"({"b":1,"a":[true]})", ContentKind::Json);
-    assert(store.read_text(*run(ActionKind::JsonToYaml, json).output_clipboard_ref) == "a:\n  - true\nb: 1");
+    assert(store.read_text(*run(ActionKind::JsonToYaml, json).output_clipboard_ref) == "b: 1\na:\n  - true");
 
     const auto file = root / "out" / "report.txt";
     std::ofstream(file) << "x";

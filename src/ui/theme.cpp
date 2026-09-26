@@ -1,5 +1,6 @@
 #include "ui/theme.hpp"
 
+#include "ui/icons.hpp"
 #include "util/path_utf8.hpp"
 
 #include <algorithm>
@@ -69,9 +70,20 @@ std::filesystem::path bold_variant(const std::filesystem::path& regular) {
 
 }  // namespace
 
-UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates) {
+UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates, const std::filesystem::path& icon_font) {
     UiFonts fonts;
     auto& atlas = *ImGui::GetIO().Fonts;
+    std::error_code icon_error;
+    const bool has_icons = !icon_font.empty() && std::filesystem::is_regular_file(icon_font, icon_error);
+    // A merged font attaches to the most recently added base font, so each
+    // base font is followed by its own icon merge.
+    const auto merge_icons = [&] {
+        if (!has_icons) return false;
+        ImFontConfig config;
+        config.MergeMode = true;
+        config.GlyphOffset = ImVec2(0.0F, 2.0F);
+        return atlas.AddFontFromFileTTF(path_to_utf8_string(icon_font).c_str(), fonts.body, &config) != nullptr;
+    };
     for (const auto& path : candidates) {
         std::error_code error;
         if (!std::filesystem::is_regular_file(path, error)) continue;
@@ -79,16 +91,41 @@ UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates) {
         config.OversampleH = 2;
         fonts.regular = atlas.AddFontFromFileTTF(path_to_utf8_string(path).c_str(), fonts.body, &config);
         if (fonts.regular == nullptr) continue;
+        fonts.icons = merge_icons();
         if (const auto bold = bold_variant(path); !bold.empty()) {
             fonts.bold = atlas.AddFontFromFileTTF(path_to_utf8_string(bold).c_str(), fonts.body, &config);
+            if (fonts.bold != nullptr) fonts.icons = merge_icons() && fonts.icons;
         }
         break;
     }
-    if (fonts.regular == nullptr) fonts.regular = atlas.AddFontDefault();
+    if (fonts.regular == nullptr) {
+        fonts.regular = atlas.AddFontDefault();
+        fonts.icons = merge_icons();
+    }
     if (fonts.bold == nullptr) fonts.bold = fonts.regular;
     ImGui::GetIO().FontDefault = fonts.regular;
     current_fonts = fonts;
     return fonts;
+}
+
+const char* category_icon(ActionCategory category) {
+    switch (category) {
+        case ActionCategory::Paste: return icon::kPaste;
+        case ActionCategory::Open: return icon::kOpen;
+        case ActionCategory::Save: return icon::kSave;
+        case ActionCategory::Convert: return icon::kConvert;
+        case ActionCategory::Extract: return icon::kExtract;
+        case ActionCategory::Network: return icon::kNetwork;
+        case ActionCategory::Code: return icon::kCode;
+        case ActionCategory::Ai: return icon::kAi;
+        case ActionCategory::Media: return icon::kMedia;
+    }
+    return icon::kInfo;
+}
+
+std::string with_icon(const char* glyph, std::string_view text) {
+    if (!current_fonts.icons || glyph == nullptr) return std::string{text};
+    return std::string{glyph} + "  " + std::string{text};
 }
 
 const UiFonts& ui_fonts() {
@@ -223,6 +260,14 @@ ImVec4 category_color(ActionCategory category) {
 }
 
 void draw_category_icon(ImDrawList* draw, ImVec2 center, float size, ActionCategory category, ImU32 color) {
+    if (current_fonts.icons) {
+        const char* glyph = category_icon(category);
+        ImFont* font = current_fonts.regular;
+        const float font_size = size * 1.15F;
+        const ImVec2 extent = font->CalcTextSizeA(font_size, 1000.0F, 0.0F, glyph);
+        draw->AddText(font, font_size, ImVec2(center.x - extent.x * 0.5F, center.y - extent.y * 0.5F - 1.0F), color, glyph);
+        return;
+    }
     const float s = size * 0.5F;
     const float t = std::max(1.5F, size / 11.0F);
     const auto at = [&](float x, float y) { return ImVec2(center.x + x * s, center.y + y * s); };
