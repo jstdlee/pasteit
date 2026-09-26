@@ -1,4 +1,5 @@
 #include "graph/graph_renderer.hpp"
+#include "graph/chart.hpp"
 
 #include <stb_image_write.h>
 
@@ -167,6 +168,90 @@ std::vector<std::byte> render_graph_png(const GraphData& data, GraphType type) {
             if (count <= 12 || index % std::max<std::size_t>(1, count / 8) == 0) {
                 label(canvas, std::max(left, x - 16), bottom + 12, data.points[index].label.substr(0, 9));
             }
+        }
+    }
+    std::vector<std::byte> output;
+    if (!stbi_write_png_to_func(write_png, &output, width, height, 3, canvas.pixels.data(), width * 3)) return {};
+    return output;
+}
+
+std::vector<std::byte> render_chart_png(const ChartSpec& spec) {
+    if (!chart_problem(spec).empty()) return {};
+    if (spec.kind == ChartKind::Pie) {
+        GraphData data;
+        data.title = spec.title;
+        for (std::size_t index = 0; index < spec.labels.size(); ++index) {
+            data.points.push_back({spec.labels[index], spec.series.front().values[index], 0.0});
+        }
+        if (data.points.size() < 2) data.points.push_back({"", 0.0, 0.0});
+        return render_graph_png(data, GraphType::Pie);
+    }
+    Canvas canvas;
+    label(canvas, 42, 24, spec.title.empty() ? "CHART" : spec.title);
+    constexpr int left = 76, right = 755, top = 65, bottom = 405;
+    double minimum = 0.0, maximum = 0.0;
+    bool first = true;
+    for (const auto& series : spec.series) {
+        for (const double value : series.values) {
+            minimum = first ? std::min(0.0, value) : std::min(minimum, value);
+            maximum = first ? value : std::max(maximum, value);
+            first = false;
+        }
+    }
+    if (minimum == maximum) { minimum -= 1.0; maximum += 1.0; }
+    const auto y_for = [&](double value) {
+        return bottom - static_cast<int>((value - minimum) / (maximum - minimum) * (bottom - top));
+    };
+    for (int step = 0; step <= 4; ++step) {
+        const int y = top + (bottom - top) * step / 4;
+        canvas.line(left, y, right, y, grid);
+        label(canvas, 6, y - 5, format_axis_number(maximum - (maximum - minimum) * step / 4).substr(0, 8));
+    }
+    canvas.line(left, top, left, bottom, ink);
+    canvas.line(left, bottom, right, bottom, ink);
+    const auto count = spec.labels.size();
+    double first_x = 0.0, last_x = 1.0;
+    if (spec.numeric_x && !spec.x.empty()) {
+        const auto [low, high] = std::minmax_element(spec.x.begin(), spec.x.end());
+        first_x = *low;
+        last_x = *high > *low ? *high : *low + 1.0;
+    }
+    const auto x_for = [&](std::size_t index) {
+        const double position = spec.numeric_x && spec.kind != ChartKind::Bar && spec.kind != ChartKind::Histogram
+            ? (spec.x[index] - first_x) / (last_x - first_x)
+            : (static_cast<double>(index) + 0.5) / static_cast<double>(count);
+        return left + 15 + static_cast<int>(position * (right - left - 30));
+    };
+    const int groups = static_cast<int>(spec.series.size());
+    const int slot = std::max(3, (right - left - 30) / static_cast<int>(std::max<std::size_t>(count, 1)));
+    for (std::size_t series_index = 0; series_index < spec.series.size(); ++series_index) {
+        const auto& values = spec.series[series_index].values;
+        const auto color = palette[series_index % palette.size()];
+        for (std::size_t index = 0; index < values.size() && index < count; ++index) {
+            const int x = x_for(index), y = y_for(values[index]);
+            if (spec.kind == ChartKind::Bar || spec.kind == ChartKind::Histogram) {
+                const int bar = spec.kind == ChartKind::Histogram ? slot - 2 : std::max(2, slot * 2 / 3 / groups);
+                const int x0 = spec.kind == ChartKind::Histogram ? x - bar / 2
+                             : x - slot / 3 + static_cast<int>(series_index) * bar;
+                canvas.rect(x0, std::min(y, y_for(0.0)), x0 + bar, std::max(y, y_for(0.0)) + 1, color);
+            } else if (spec.kind == ChartKind::Scatter) {
+                canvas.rect(x - 3, y - 3, x + 4, y + 4, color);
+            } else {
+                if (index > 0) canvas.line(x_for(index - 1), y_for(values[index - 1]), x, y, color);
+                canvas.rect(x - 2, y - 2, x + 3, y + 3, color);
+            }
+        }
+    }
+    for (std::size_t index = 0; index < count; ++index) {
+        if (count <= 12 || index % std::max<std::size_t>(1, count / 8) == 0) {
+            label(canvas, std::max(left, x_for(index) - 16), bottom + 12, spec.labels[index].substr(0, 9));
+        }
+    }
+    if (spec.series.size() > 1) {
+        for (std::size_t index = 0; index < spec.series.size() && index < 6; ++index) {
+            const int x = 420 + static_cast<int>(index % 3) * 115, y = 22 + static_cast<int>(index / 3) * 16;
+            canvas.rect(x, y, x + 10, y + 10, palette[index % palette.size()]);
+            label(canvas, x + 14, y, spec.series[index].name.substr(0, 11));
         }
     }
     std::vector<std::byte> output;

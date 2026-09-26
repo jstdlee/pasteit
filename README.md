@@ -86,6 +86,14 @@ Annotation export keeps the overlay non-destructive while editing. The current e
 
 Compose opens the local `mailto:` handler. Direct email sending is enabled only when `PASTIT_SENDMAIL` names a local executable; PasteIt invokes it with the destination address as its first argument.
 
+## Data Views
+
+Before ranking, PasteIt profiles the clipboard from a bounded sample (the first rows, a middle probe and the tail, plus the total length) and judges its general shape with a confidence: JSON, NDJSON, CSV/TSV, Markdown, code, logs, key-value, YAML, HTML/XML, SQL, URL or path lists, number series, prose or a single token. Small items are confirmed by a full parse; large ones are marked as sampled. The profile decides which specialised actions are offered, feeds usage learning, and is sent to Jev; when the local guess is uncertain, Jev also answers which content type it is.
+
+- **Table view** (CSV/TSV/pipe tables, JSON arrays of objects, NDJSON): sortable and filterable columns, a statistics row (type, filled, distinct, sum/mean/min/max), column visibility, and copy as Markdown, CSV, JSON or SQL `INSERT` statements.
+- **Charts**: line, bar, pie, scatter and histogram, drawn live with hover values. From a table, pick the X column and one or more numeric series; number lists open directly. Charts copy or save as PNG.
+- **Markdown preview**: headings, emphasis, links, code, quotes, nested and task lists, tables and fenced code, with copy as HTML or plain text.
+
 ## Desktop Popup
 
 `pastit` is the desktop entry point. A per-user lock prevents duplicate V2 processes. Start it once, then press `Ctrl+Alt+F` to capture the focused target and open the popup. The movable, opacity-configurable popup shows the top eight Djev/fallback actions as cards: a category icon, the label, the shortened destination (`~/…`) or a one-line description, and a confidence bar when Jev ranked the list (the local fallback is an ordering, so it shows no bar). Click a card, press its number key 1–8, or use Up/Down and Enter. The header shows the content kind, detected signals (color, code, JSON, …), the size, and whether Jev or the local fallback ranked the list; colors show a swatch. The window height fits its content after each ranking. The root window is a normal decorated window, so other applications can cover it; Escape closes without executing.

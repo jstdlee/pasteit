@@ -701,7 +701,13 @@ bool has_ascii_letter(std::string_view text) {
 }
 
 void add_text_utility_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::vector<PathLocation>& targets,
-                              const FastContentSignals& signals, const std::string& source_text) {
+                              const FastContentSignals& signals, const std::string& source_text,
+                              const ContentProfile& profile) {
+    // Case and line tools would mangle structured documents.
+    const bool structured = profile.confidence >= 0.6 &&
+        (profile.shape == DataShape::Markdown || profile.shape == DataShape::Code || profile.shape == DataShape::Json ||
+         profile.shape == DataShape::Html || profile.shape == DataShape::Xml || profile.shape == DataShape::Yaml ||
+         profile.shape == DataShape::Sql);
     if (source_text.size() > kMaxUtilityTextBytes) return;
     const auto text = trim_copy(source_text);
     if (text.empty()) return;
@@ -760,7 +766,7 @@ void add_text_utility_actions(ActionCatalog& catalog, const ClipboardItem& item,
             catalog.actions.back().filename = "clipboard." + extension;
         }
     }
-    if (text.size() <= 4 * 1024 && has_ascii_letter(text) && !signals.code) {
+    if (text.size() <= 4 * 1024 && has_ascii_letter(text) && !signals.code && !structured) {
         if (to_upper_ascii(text) != text) {
             add(catalog, item, ActionKind::ToUpperCase, "", "UPPERCASE", "Convert letters to upper case", "case");
         }
@@ -775,7 +781,7 @@ void add_text_utility_actions(ActionCatalog& catalog, const ClipboardItem& item,
         add(catalog, item, ActionKind::TidyWhitespace, "", "Tidy whitespace",
             "Strip trailing spaces and collapse repeated blank lines", "lines");
     }
-    if (lines >= 3 && !signals.code) {
+    if (lines >= 3 && !signals.code && !structured) {
         add(catalog, item, ActionKind::SortLines, "", "Sort lines", "Sort lines alphabetically", "lines");
         if (dedupe_lines(text) != text) {
             add(catalog, item, ActionKind::DedupeLines, "", "Remove duplicate lines",
@@ -882,7 +888,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                 }
                 add_qr_action(catalog, item, signals, source_text);
                 add_profile_actions(catalog, item, profile);
-                add_text_utility_actions(catalog, item, targets, signals, source_text);
+                add_text_utility_actions(catalog, item, targets, signals, source_text, profile);
                 add_prompt_actions(catalog, item, templates, provider, signals);
                 add(catalog, item, ActionKind::CustomPrompt, "", "Custom prompt",
                     "Enter a prompt and send this clipboard text to the configured general LLM", "ai");

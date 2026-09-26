@@ -38,6 +38,7 @@
 #include "transform/text_transforms.hpp"
 #include "ui/icons.hpp"
 #include "util/utf8.hpp"
+#include "ui/data_views.hpp"
 #include "ui/theme.hpp"
 #include "ui/image_preview_panel.hpp"
 #include "ui/clipboard_history_model.hpp"
@@ -286,21 +287,6 @@ struct CustomPromptDialog {
     bool focus_pending = true;
     ActionInstance action;
     std::string prompt;
-};
-
-struct GraphDialog {
-    bool open = false;
-    bool focus_pending = true;
-    std::string source;
-    int type = 0;
-    bool header = false;
-    bool convert_dates = false;
-    bool dirty = true;
-    std::string save_path;
-    std::string status;
-    std::optional<GraphData> data;
-    std::vector<std::byte> png;
-    ImageTexture texture;
 };
 
 struct AuxiliaryPanelWindow {
@@ -624,7 +610,30 @@ int run_desktop_runtime() {
     std::vector<std::unique_ptr<GenerationJob>> generation_jobs;
     PromptParameterDialog prompt_parameter_dialog;
     CustomPromptDialog custom_prompt_dialog;
-    GraphDialog graph_dialog;
+    ChartViewState chart_view;
+    TableViewState table_view;
+    MarkdownViewState markdown_view;
+    const auto default_chart_path = [&] {
+        const auto directory = settings.default_image_directory.empty()
+            ? std::filesystem::current_path() : settings.default_image_directory;
+        return path_to_utf8_string(directory / "chart.png");
+    };
+    const DataViewHost data_view_host{
+        .copy_text = [&](std::string_view text) { platform->copy_text(text); },
+        .copy_png = [&](const std::vector<std::byte>& png) { return platform->publish_image(png, "image/png"); },
+        .open_uri = [&](std::string_view uri) { platform->open_uri(uri); },
+        .save_file = [&](const std::string& path_text, const std::vector<std::byte>& bytes) -> std::string {
+            const auto path = path_from_utf8_string(trim(path_text));
+            if (path.empty()) return "Choose a file path first";
+            std::ofstream output(path, std::ios::binary | std::ios::trunc);
+            output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            output.close();
+            if (!output) return "Could not write " + path_to_utf8_string(path);
+            (void)path_history.observe_path(path, PathKind::File, "chart", current_time_ms());
+            path_history.record_use(path.parent_path(), current_time_ms());
+            return {};
+        },
+    };
     std::map<std::string, std::map<std::string, std::string>> prompt_parameter_memory;
     std::optional<std::future<std::string>> pending_provider_test;
     bool pending_provider_test_is_djev = false;
@@ -707,7 +716,8 @@ int run_desktop_runtime() {
 
     const auto has_any_auxiliary_window = [&] {
         return image_preview.open || file_confirmation.has_value() ||
-               prompt_parameter_dialog.open || custom_prompt_dialog.open || graph_dialog.open ||
+               prompt_parameter_dialog.open || custom_prompt_dialog.open || chart_view.open || table_view.open ||
+               markdown_view.open ||
                has_fast_action_result_panel() ||
                std::any_of(generation_jobs.begin(), generation_jobs.end(), [](const auto& job) {
                    return job->panel.open;
@@ -1045,17 +1055,30 @@ int run_desktop_runtime() {
             }
         }
         if (action->kind == ActionKind::Graph) {
-            graph_dialog.open = true;
-            graph_dialog.focus_pending = true;
-            graph_dialog.source = clipboard_store.read_text(action->source_ref);
-            graph_dialog.type = 0;
-            graph_dialog.header = !parse_graph_data(graph_dialog.source, false, false).has_value();
-            graph_dialog.convert_dates = false;
-            graph_dialog.dirty = true;
-            graph_dialog.status.clear();
-            const auto directory = settings.default_image_directory.empty()
-                ? std::filesystem::current_path() : settings.default_image_directory;
-            graph_dialog.save_path = path_to_utf8_string(directory / "graph.png");
+            open_chart_from_series(chart_view, clipboard_store.read_text(action->source_ref), default_chart_path());
+            return;
+        }
+        if (action->kind == ActionKind::ViewTable) {
+            const auto text = clipboard_store.read_text(action->source_ref);
+            const auto format = action->parameters.contains("format") ? action->parameters.at("format") : "delimited";
+            std::optional<TableData> table;
+            if (format == "json") {
+                table = parse_json_table(text);
+            } else {
+                const auto delimiter = action->parameters.contains("delimiter") && !action->parameters.at("delimiter").empty()
+                    ? action->parameters.at("delimiter").front() : '\0';
+                const bool header = !action->parameters.contains("header") || action->parameters.at("header") == "1";
+                table = parse_delimited_table(text, delimiter, header);
+            }
+            if (!table) {
+                execution_status = "Could not read this clipboard as a table";
+                return;
+            }
+            open_table_view(table_view, std::move(*table), tr(UiTextKey::ViewTable));
+            return;
+        }
+        if (action->kind == ActionKind::PreviewMarkdown) {
+            open_markdown_view(markdown_view, clipboard_store.read_text(action->source_ref));
             return;
         }
         if (action->kind == ActionKind::CustomPrompt) {
@@ -2119,82 +2142,9 @@ int run_desktop_runtime() {
             ImGui::End();
         }
 
-        if (graph_dialog.open) {
-            if (graph_dialog.dirty) {
-                graph_dialog.dirty = false;
-                graph_dialog.data = parse_graph_data(graph_dialog.source, graph_dialog.header, graph_dialog.convert_dates);
-                graph_dialog.png.clear();
-                graph_dialog.texture.clear();
-                graph_dialog.status.clear();
-                if (graph_dialog.data) {
-                    graph_dialog.png = render_graph_png(*graph_dialog.data, static_cast<GraphType>(graph_dialog.type));
-                    if (!graph_dialog.png.empty()) (void)load_image_texture(graph_dialog.png, graph_dialog.texture);
-                }
-                if (graph_dialog.png.empty()) graph_dialog.status =
-                    graph_dialog.data && graph_dialog.type == static_cast<int>(GraphType::Pie)
-                        ? "Pie charts need nonnegative values with a positive total."
-                        : "No valid numeric series for these options.";
-            }
-            if (graph_dialog.focus_pending) {
-                ImGui::SetNextWindowFocus();
-                ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-            }
-            ImGui::SetNextWindowClass(&auxiliary_window_class);
-            const auto* graph_viewport = ImGui::GetMainViewport();
-            const float graph_width = std::max(420.0F, std::min(820.0F, graph_viewport->WorkSize.x - 40.0F));
-            const float preview_scale = std::min(1.0F, (graph_width - 24.0F) / 800.0F);
-            const float graph_height = std::min(graph_viewport->WorkSize.y - 40.0F,
-                                                165.0F + 480.0F * preview_scale);
-            ImGui::SetNextWindowSize(ImVec2(graph_width, graph_height), ImGuiCond_Appearing);
-            const auto graph_title = tr(ui_language, UiTextKey::GraphPreview) + "##graph";
-            if (ImGui::Begin(graph_title.c_str(), &graph_dialog.open,
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse)) {
-                if (graph_dialog.focus_pending) {
-                    ImGui::SetWindowFocus();
-                    graph_dialog.focus_pending = false;
-                }
-                const bool chinese = ui_language == UiLanguage::SimplifiedChinese;
-                const char* types[] = {chinese ? "折线图" : "Line", chinese ? "柱状图" : "Bar",
-                                       chinese ? "饼图" : "Pie"};
-                graph_dialog.dirty |= ImGui::Combo(tr(ui_language, UiTextKey::ChartType).c_str(), &graph_dialog.type, types, 3);
-                ImGui::SameLine();
-                graph_dialog.dirty |= ImGui::Checkbox(tr(ui_language, UiTextKey::HeaderRow).c_str(), &graph_dialog.header);
-                ImGui::SameLine();
-                graph_dialog.dirty |= ImGui::Checkbox(tr(ui_language, UiTextKey::ConvertDates).c_str(), &graph_dialog.convert_dates);
-                if (graph_dialog.texture.id != 0) {
-                    const float scale = std::max(0.1F, std::min({1.0F, ImGui::GetContentRegionAvail().x / graph_dialog.texture.width,
-                                                  (graph_height - 165.0F) / graph_dialog.texture.height}));
-                    ImGui::Image((ImTextureID)(intptr_t)graph_dialog.texture.id,
-                                 ImVec2(graph_dialog.texture.width * scale, graph_dialog.texture.height * scale));
-                }
-                if (graph_dialog.data) {
-                    ImGui::Text("%zu %s", graph_dialog.data->points.size(), tr(UiTextKey::Points).c_str());
-                    if (graph_dialog.data->has_dates) ImGui::SameLine(), ImGui::TextUnformatted(tr(UiTextKey::DateSpacingEnabled).c_str());
-                }
-                input_text_string(tr(ui_language, UiTextKey::SavePngAs).c_str(), graph_dialog.save_path);
-                const bool has_image = !graph_dialog.png.empty();
-                if (!has_image) ImGui::BeginDisabled();
-                if (ImGui::Button(tr(ui_language, UiTextKey::CopyGraphImage).c_str())) {
-                    graph_dialog.status = platform->publish_image(graph_dialog.png, "image/png")
-                        ? "Graph copied to clipboard" : "Could not copy graph image";
-                }
-                ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language, UiTextKey::SaveGraphImage).c_str())) {
-                    const auto path = path_from_utf8_string(trim(graph_dialog.save_path));
-                    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-                    output.write(reinterpret_cast<const char*>(graph_dialog.png.data()),
-                                 static_cast<std::streamsize>(graph_dialog.png.size()));
-                    output.close();
-                    graph_dialog.status = output ? "Saved graph: " + path_to_utf8_string(path) : "Could not save graph image";
-                    if (output) (void)path_history.observe_path(path, PathKind::File, "graph", current_time_ms());
-                }
-                if (!has_image) ImGui::EndDisabled();
-                ImGui::SameLine();
-                if (ImGui::Button(tr(ui_language, UiTextKey::Close).c_str())) graph_dialog.open = false;
-                if (!graph_dialog.status.empty()) copyable_text(graph_dialog.status, true);
-            }
-            ImGui::End();
-        }
+        draw_chart_view(chart_view, data_view_host, ui_language);
+        draw_table_view(table_view, chart_view, data_view_host, ui_language, default_chart_path());
+        draw_markdown_view(markdown_view, data_view_host, ui_language);
 
         if (file_confirmation) {
             auto& state = *file_confirmation;
