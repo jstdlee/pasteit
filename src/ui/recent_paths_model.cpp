@@ -1,5 +1,6 @@
 #include "ui/recent_paths_model.hpp"
 #include "ui/clipboard_history_model.hpp"
+#include "storage/path_history.hpp"
 #include "util/path_utf8.hpp"
 #include "util/utf8.hpp"
 
@@ -55,10 +56,11 @@ RecentPathRow row_from_path(const PathLocation& value, const ActionCatalog& cata
         .display_path = abbreviate_middle_impl(path_to_utf8_string(value.path), 72),
         .parent_path = path_to_utf8_string(value.path.parent_path()),
         .source = value.source,
-        .last_seen_label = timestamp_label(value.last_seen_ms),
+        .last_seen_label = timestamp_label(std::max(value.last_seen_ms, value.last_used_ms)),
         .copy_here_action_id = copy_here_id,
         .move_here_action_id = move_here_id,
-        .last_seen_ms = value.last_seen_ms,
+        .last_seen_ms = std::max(value.last_seen_ms, value.last_used_ms),
+        .use_count = value.use_count,
         .exists = value.exists,
         .selected = selected,
         .can_copy_path = true,
@@ -113,12 +115,14 @@ RecentPathsModel build_recent_paths_model(const std::vector<PathLocation>& paths
                                           const ActionCatalog& catalog) {
     RecentPathsModel model;
     model.rows.reserve(paths.size());
-    for (const auto& value : paths) {
+    auto ranked = paths;
+    std::int64_t now_ms = 0;
+    for (const auto& value : ranked) now_ms = std::max({now_ms, value.last_seen_ms, value.last_used_ms});
+    sort_paths_by_rank(ranked, now_ms);
+    for (const auto& value : ranked) {
         model.rows.push_back(row_from_path(value, catalog, !state.detail_ref.empty() && value.ref == state.detail_ref));
     }
-    std::stable_sort(model.rows.begin(), model.rows.end(), [](const RecentPathRow& left, const RecentPathRow& right) {
-        return left.last_seen_ms > right.last_seen_ms;
-    });
+    // Rows keep PathHistory's rank order (use frequency, then recency).
 
     if (!state.detail_ref.empty()) {
         const auto* selected = find_row(model, state.detail_ref);

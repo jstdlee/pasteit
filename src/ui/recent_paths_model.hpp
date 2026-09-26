@@ -46,6 +46,7 @@ struct RecentPathRow {
     std::string copy_here_action_id;
     std::string move_here_action_id;
     std::int64_t last_seen_ms = 0;
+    std::uint32_t use_count = 0;
     bool exists = false;
     bool selected = false;
     bool can_copy_path = true;

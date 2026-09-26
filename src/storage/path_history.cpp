@@ -1,4 +1,7 @@
 #include "storage/path_history.hpp"
+
+#include <algorithm>
+#include <cmath>
 #include "util/path_utf8.hpp"
 
 #include <algorithm>
@@ -159,18 +162,59 @@ PathLocation PathHistory::observe_path(const std::filesystem::path& path, PathKi
     return location;
 }
 
+double path_rank_score(const PathLocation& location, std::int64_t now_ms) {
+    constexpr double kDay = 24.0 * 60.0 * 60.0 * 1000.0;
+    const auto age = [&](std::int64_t then) { return std::max(0.0, static_cast<double>(now_ms - then)); };
+    const double use = location.use_weight * std::pow(0.5, age(location.last_used_ms) / (14.0 * kDay));
+    const double lifetime = 0.3 * std::log1p(static_cast<double>(location.use_count));
+    const double seen = location.last_seen_ms > 0 ? 0.5 * std::pow(0.5, age(location.last_seen_ms) / (2.0 * kDay)) : 0.0;
+    return use + lifetime + seen;
+}
+
+void sort_paths_by_rank(std::vector<PathLocation>& paths, std::int64_t now_ms) {
+    std::stable_sort(paths.begin(), paths.end(), [now_ms](const PathLocation& left, const PathLocation& right) {
+        if (left.exists != right.exists) return left.exists && !right.exists;
+        const double left_score = path_rank_score(left, now_ms);
+        const double right_score = path_rank_score(right, now_ms);
+        if (std::abs(left_score - right_score) > 1e-9) return left_score > right_score;
+        return std::max(left.last_used_ms, left.last_seen_ms) > std::max(right.last_used_ms, right.last_seen_ms);
+    });
+}
+
+void PathHistory::record_use(const std::filesystem::path& directory, std::int64_t now_ms) {
+    if (directory.empty()) return;
+    (void)observe_path(directory, PathKind::Directory, "pastit", now_ms);
+    const auto normalized = normalize_path(directory);
+    for (auto& location : locations_) {
+        if (location.path != normalized) continue;
+        constexpr double kDay = 24.0 * 60.0 * 60.0 * 1000.0;
+        const double age = std::max(0.0, static_cast<double>(now_ms - location.last_used_ms));
+        location.use_weight = location.use_weight * std::pow(0.5, age / (14.0 * kDay)) + 1.0;
+        ++location.use_count;
+        location.last_used_ms = now_ms;
+        return;
+    }
+}
+
+void PathHistory::restore_use(const std::filesystem::path& path, double weight, std::uint32_t count,
+                              std::int64_t last_used_ms) {
+    const auto normalized = normalize_path(path);
+    for (auto& location : locations_) {
+        if (location.path != normalized) continue;
+        location.use_weight = std::isfinite(weight) ? std::max(0.0, weight) : 0.0;
+        location.use_count = count;
+        location.last_used_ms = last_used_ms;
+        return;
+    }
+}
+
 std::vector<PathLocation> PathHistory::recent(std::size_t limit) const {
     auto out = locations_;
     std::erase_if(out, [](const auto& value) { return value.source == "proc-fd"; });
-    std::sort(out.begin(), out.end(), [](const PathLocation& left, const PathLocation& right) {
-        if (left.exists != right.exists) {
-            return left.exists && !right.exists;
-        }
-        if (left.kind != right.kind) {
-            return left.kind == PathKind::Directory;
-        }
-        return left.last_seen_ms > right.last_seen_ms;
-    });
+    // Rank relative to the newest activity so ordering is stable over time.
+    std::int64_t now_ms = 0;
+    for (const auto& value : out) now_ms = std::max({now_ms, value.last_seen_ms, value.last_used_ms});
+    sort_paths_by_rank(out, now_ms);
     if (out.size() > limit) {
         out.resize(limit);
     }

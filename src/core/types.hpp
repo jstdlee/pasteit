@@ -55,6 +55,10 @@ struct PathLocation {
     std::int64_t last_seen_ms = 0;
     std::string source;
     bool exists = false;
+    // Explicit use as a save/copy/move destination (see path_rank_score).
+    double use_weight = 0.0;  // decayed, halves every 14 days
+    std::uint32_t use_count = 0;  // lifetime total
+    std::int64_t last_used_ms = 0;
 };
 
 }  // namespace pastit

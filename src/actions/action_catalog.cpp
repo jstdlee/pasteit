@@ -386,9 +386,7 @@ std::vector<PathLocation> path_targets(const DecisionSnapshot& snapshot) {
             out.push_back(path);
         }
     }
-    std::sort(out.begin(), out.end(), [](const PathLocation& left, const PathLocation& right) {
-        return left.last_seen_ms > right.last_seen_ms;
-    });
+    sort_paths_by_rank(out, snapshot.captured_at_ms);
     if (out.size() > kMaxPathTargets) {
         out.resize(kMaxPathTargets);
     }

@@ -50,9 +50,19 @@ int main() {
     RecentPathsState state;
     auto model = build_recent_paths_model(paths, state, catalog);
     assert(model.rows.size() == 3);
+    // Existing paths first, then by rank (recency here, no uses yet).
     assert(model.rows[0].ref == "file");
-    assert(model.rows[1].ref == "missing");
-    assert(model.rows[2].ref == "dest");
+    assert(model.rows[1].ref == "dest");
+    assert(model.rows[2].ref == "missing");
+
+    // A frequently used folder outranks a path that was merely seen later.
+    auto used = paths;
+    used[0].use_weight = 4.0;
+    used[0].use_count = 12;
+    used[0].last_used_ms = 5;
+    RecentPathsState used_state;
+    const auto used_model = build_recent_paths_model(used, used_state, catalog);
+    assert(used_model.rows[0].ref == "dest" && used_model.rows[0].use_count == 12);
 
     const auto& file_row = model.rows[0];
     assert(file_row.type_label == "file");
@@ -67,13 +77,13 @@ int main() {
     assert(!file_row.can_move_here);
     assert(!file_row.can_use_as_destination);
 
-    const auto& missing_row = model.rows[1];
+    const auto& missing_row = model.rows[2];
     assert(!missing_row.can_open);
     assert(!missing_row.can_use_as_destination);
     assert(!missing_row.can_copy_here);
     assert(missing_row.copy_here_action_id.empty());
 
-    const auto& dest_row = model.rows[2];
+    const auto& dest_row = model.rows[1];
     assert(dest_row.type_label == "folder");
     assert(dest_row.can_copy_here);
     assert(dest_row.can_move_here);
@@ -89,7 +99,7 @@ int main() {
     assert(model.detail->parent_path == "/tmp");
     assert(model.detail->copy_here_action_id == "copy_dest_exact");
     assert(model.detail->move_here_action_id == "move_dest_exact");
-    assert(model.rows[2].selected);
+    assert(model.rows[1].selected);
 
     model = build_recent_paths_model({paths[1], paths[0]}, state, catalog);
     assert(model.detail.has_value());

@@ -993,6 +993,10 @@ int run_desktop_runtime() {
         if (result.status != ExecutionStatus::Completed) {
             return;
         }
+        // The folder a result landed in is a used destination.
+        if (result.output_path.has_value() && !result.output_path->parent_path().empty()) {
+            path_history.record_use(result.output_path->parent_path(), current_time_ms());
+        }
         std::string path_save_error;
         (void)path_history_store.save(path_history, path_save_error);
         if (!publish_clipboard_result(result)) {
@@ -1320,6 +1324,9 @@ int run_desktop_runtime() {
         const auto flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                            ImGuiWindowFlags_NoSavedSettings;
         ImGui::Begin("PasteItPopup", nullptr, flags);
+        // A pending confirmation or parameter dialog owns input until closed.
+        const bool modal_open = file_confirmation.has_value() || prompt_parameter_dialog.open || custom_prompt_dialog.open;
+        if (modal_open) ImGui::BeginDisabled();
         const auto& theme_palette = palette();
         const auto& theme_fonts = ui_fonts();
         if (ImGui::BeginTabBar("main-tabs")) {
@@ -1865,7 +1872,13 @@ int run_desktop_runtime() {
         }
         ImGui::EndTabBar();
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (modal_open) {
+            ImGui::EndDisabled();
+            ImGui::GetForegroundDrawList(ImGui::GetWindowViewport())->AddRectFilled(
+                main_viewport->Pos, ImVec2(main_viewport->Pos.x + main_viewport->Size.x, main_viewport->Pos.y + main_viewport->Size.y),
+                ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg));
+        }
+        if (!modal_open && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             popup_visible = false;
             const bool keep_visible=has_any_auxiliary_window();
             if (!keep_visible) {

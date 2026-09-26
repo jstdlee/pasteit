@@ -58,11 +58,12 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
     constexpr auto flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable |
                            ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
                            ImGuiTableFlags_SizingStretchProp;
-    if (ImGui::BeginTable("recent-paths-table", 5, flags, ImVec2(0.0F, 0.0F))) {
+    if (ImGui::BeginTable("recent-paths-table", 6, flags, ImVec2(0.0F, 0.0F))) {
         ImGui::TableSetupColumn(tr(language, UiTextKey::Type).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Path).c_str(), ImGuiTableColumnFlags_WidthStretch, 4.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Source).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
-        ImGui::TableSetupColumn(tr(language, UiTextKey::Seen).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
+        ImGui::TableSetupColumn(tr(language, UiTextKey::Uses).c_str(), ImGuiTableColumnFlags_WidthFixed, 48.0F);
+        ImGui::TableSetupColumn(tr(language, UiTextKey::Seen).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.4F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 150.0F);
         ImGui::TableHeadersRow();
 
@@ -81,6 +82,9 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             }
             ImGui::TableNextColumn();
             copyable_text(row.source);
+            ImGui::TableNextColumn();
+            if (row.use_count > 0) ImGui::Text("%u", row.use_count);
+            else ImGui::TextDisabled("-");
             ImGui::TableNextColumn();
             copyable_text(row.last_seen_label);
             ImGui::TableNextColumn();
