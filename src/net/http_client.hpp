@@ -3,7 +3,7 @@
 #include <map>
 #include <memory>
 #include <string>
-namespace pastit {
+namespace pasteit {
 struct HttpRequest {
     std::string url;
     std::string body;

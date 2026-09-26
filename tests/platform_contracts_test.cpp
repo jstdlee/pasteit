@@ -12,18 +12,18 @@
 
 namespace {
 
-class FakePlatformServices final : public pastit::PlatformServices {
+class FakePlatformServices final : public pasteit::PlatformServices {
 public:
-    void apply_settings(const pastit::AppSettings&) override {}
-    std::optional<pastit::ClipboardCapture> poll_clipboard() override { return capture; }
+    void apply_settings(const pasteit::AppSettings&) override {}
+    std::optional<pasteit::ClipboardCapture> poll_clipboard() override { return capture; }
     void process_events() override {}
     bool publish_text(std::string_view) override { return true; }
     bool publish_image(const std::vector<std::byte>&, std::string_view) override { return true; }
-    pastit::PlatformFocusContext focused_context() override { return focus; }
-    std::vector<pastit::PlatformRecentPath> recent_paths() override { return paths; }
+    pasteit::PlatformFocusContext focused_context() override { return focus; }
+    std::vector<pasteit::PlatformRecentPath> recent_paths() override { return paths; }
     bool register_global_shortcut() override { return true; }
     bool global_shortcut_activated() override { return false; }
-    bool restore_focus_and_paste(const pastit::PlatformFocusContext&) override { return true; }
+    bool restore_focus_and_paste(const pasteit::PlatformFocusContext&) override { return true; }
     bool open_path(const std::filesystem::path&) override { return true; }
     bool open_uri(std::string_view) override { return true; }
     bool copy_text(std::string_view) override { return true; }
@@ -34,23 +34,23 @@ public:
         return chosen_directory.value_or(initial_directory);
     }
 
-    std::optional<pastit::ClipboardCapture> capture;
-    pastit::PlatformFocusContext focus;
-    std::vector<pastit::PlatformRecentPath> paths;
+    std::optional<pasteit::ClipboardCapture> capture;
+    pasteit::PlatformFocusContext focus;
+    std::vector<pasteit::PlatformRecentPath> paths;
     std::optional<std::filesystem::path> chosen_directory;
 };
 
-class MissingDirectoryChooserServices : public pastit::PlatformServices {
+class MissingDirectoryChooserServices : public pasteit::PlatformServices {
 public:
-    std::optional<pastit::ClipboardCapture> poll_clipboard() override { return std::nullopt; }
+    std::optional<pasteit::ClipboardCapture> poll_clipboard() override { return std::nullopt; }
     void process_events() override {}
     bool publish_text(std::string_view) override { return true; }
     bool publish_image(const std::vector<std::byte>&, std::string_view) override { return true; }
-    pastit::PlatformFocusContext focused_context() override { return {}; }
-    std::vector<pastit::PlatformRecentPath> recent_paths() override { return {}; }
+    pasteit::PlatformFocusContext focused_context() override { return {}; }
+    std::vector<pasteit::PlatformRecentPath> recent_paths() override { return {}; }
     bool register_global_shortcut() override { return true; }
     bool global_shortcut_activated() override { return false; }
-    bool restore_focus_and_paste(const pastit::PlatformFocusContext&) override { return true; }
+    bool restore_focus_and_paste(const pasteit::PlatformFocusContext&) override { return true; }
     bool open_path(const std::filesystem::path&) override { return true; }
     bool open_uri(std::string_view) override { return true; }
     bool copy_text(std::string_view) override { return true; }
@@ -62,16 +62,16 @@ public:
 }  // namespace
 
 int main() {
-    static_assert(std::is_abstract_v<pastit::PlatformServices>);
+    static_assert(std::is_abstract_v<pasteit::PlatformServices>);
     static_assert(std::is_abstract_v<MissingDirectoryChooserServices>);
 #if !defined(_WIN32)
     // Full opacity must not wrap to 0 (invisible window).
-    assert(pastit::x11_opacity_cardinal(1.0F) == 0xFFFFFFFFUL);
-    assert(pastit::x11_opacity_cardinal(0.0F) == 0UL);
-    assert(pastit::x11_opacity_cardinal(0.5F) > 0x7FFFFF00UL && pastit::x11_opacity_cardinal(0.5F) < 0x80000100UL);
+    assert(pasteit::x11_opacity_cardinal(1.0F) == 0xFFFFFFFFUL);
+    assert(pasteit::x11_opacity_cardinal(0.0F) == 0UL);
+    assert(pasteit::x11_opacity_cardinal(0.5F) > 0x7FFFFF00UL && pasteit::x11_opacity_cardinal(0.5F) < 0x80000100UL);
 #endif
     FakePlatformServices fake;
-    fake.paths.push_back({.path = "/tmp/example", .kind = pastit::PathKind::Directory, .source = "test"});
+    fake.paths.push_back({.path = "/tmp/example", .kind = pasteit::PathKind::Directory, .source = "test"});
     fake.focus.app_name = "editor";
     assert(fake.recent_paths().front().path == "/tmp/example");
     assert(fake.focused_context().app_name == "editor");
@@ -83,26 +83,26 @@ int main() {
     assert(chosen == "/tmp/chosen");
 #if !defined(_WIN32)
     const auto root = std::filesystem::temp_directory_path() /
-        ("pastit-browser-preview-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ("pasteit-browser-preview-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     const auto home = root / "home";
     std::filesystem::create_directories(home);
     const auto previews = home / "PasteIt Previews";
     std::filesystem::create_directory(previews);
     std::filesystem::permissions(previews, std::filesystem::perms::owner_all,
                                  std::filesystem::perm_options::replace);
-    const auto old_preview = previews / "pastit-render-expired.html";
+    const auto old_preview = previews / "pasteit-render-expired.html";
     const auto unrelated_preview = previews / "keep.html";
     { std::ofstream(old_preview) << "old"; }
     { std::ofstream(unrelated_preview) << "keep"; }
     std::filesystem::last_write_time(old_preview, std::filesystem::file_time_type::clock::now() -
                                      std::chrono::hours(48));
     const auto rendered = std::filesystem::temp_directory_path() /
-        ("pastit-render-platform-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".html");
+        ("pasteit-render-platform-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".html");
     {
         std::ofstream out(rendered);
         out << "<!doctype html><html><pre class=\"mermaid\">graph TD</pre></html>";
     }
-    const auto staged = pastit::browser_open_path(rendered, home);
+    const auto staged = pasteit::browser_open_path(rendered, home);
     assert(staged.has_value());
     assert(staged->parent_path() == home / "PasteIt Previews");
     assert(std::filesystem::is_regular_file(*staged));
@@ -113,9 +113,9 @@ int main() {
            "<!doctype html><html><pre class=\"mermaid\">graph TD</pre></html>");
     const auto permissions = std::filesystem::status(staged->parent_path()).permissions();
     assert((permissions & std::filesystem::perms::others_all) == std::filesystem::perms::none);
-    assert(pastit::browser_open_path(rendered, home) == staged);
+    assert(pasteit::browser_open_path(rendered, home) == staged);
     const auto unrelated = root / "ordinary.html";
-    assert(pastit::browser_open_path(unrelated, home) == unrelated);
+    assert(pasteit::browser_open_path(unrelated, home) == unrelated);
     std::filesystem::remove(rendered);
     std::filesystem::remove_all(root);
 #endif

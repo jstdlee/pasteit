@@ -1,6 +1,6 @@
 #include "ui/settings_model.hpp"
 #include "config/settings_store.hpp"
-namespace pastit {
+namespace pasteit {
 void SettingsModel::cancel(){working_=original_;}
 bool SettingsModel::save(AppSettings& destination,std::string& error){
  auto valid_dir=[&](const auto& path){std::error_code ec;return path.empty()||std::filesystem::is_directory(path,ec);};

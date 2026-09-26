@@ -1,7 +1,7 @@
 #include "decision/fallback_ranker.hpp"
 #include "decision/candidate_selector.hpp"
 
-namespace pastit {
+namespace pasteit {
 std::vector<RankedAction> rank_fallback(const ActionCatalog& catalog,const DecisionSnapshot& snapshot,std::size_t limit,
                                         const ActionRankingContext& context){
     auto display_context=context;
@@ -16,4 +16,4 @@ std::vector<RankedAction> rank_fallback(const ActionCatalog& catalog,const Decis
     }
     return result;
 }
-}  // namespace pastit
+}  // namespace pasteit

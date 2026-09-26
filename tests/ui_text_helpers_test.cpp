@@ -5,23 +5,23 @@
 #include <string>
 #include <utility>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #include <imgui_internal.h>
 
 namespace {
-class ClipboardPlatform final : public pastit::PlatformServices {
+class ClipboardPlatform final : public pasteit::PlatformServices {
 public:
-    void apply_settings(const pastit::AppSettings&) override {}
-    std::optional<pastit::ClipboardCapture> poll_clipboard() override { return std::nullopt; }
+    void apply_settings(const pasteit::AppSettings&) override {}
+    std::optional<pasteit::ClipboardCapture> poll_clipboard() override { return std::nullopt; }
     void process_events() override {}
     bool publish_text(std::string_view) override { return true; }
     bool publish_image(const std::vector<std::byte>&, std::string_view) override { return true; }
-    pastit::PlatformFocusContext focused_context() override { return {}; }
-    std::vector<pastit::PlatformRecentPath> recent_paths() override { return {}; }
+    pasteit::PlatformFocusContext focused_context() override { return {}; }
+    std::vector<pasteit::PlatformRecentPath> recent_paths() override { return {}; }
     bool register_global_shortcut() override { return false; }
     bool global_shortcut_activated() override { return false; }
-    bool restore_focus_and_paste(const pastit::PlatformFocusContext&) override { return false; }
+    bool restore_focus_and_paste(const pasteit::PlatformFocusContext&) override { return false; }
     bool open_path(const std::filesystem::path&) override { return false; }
     bool open_uri(std::string_view) override { return false; }
     bool copy_text(std::string_view text) override { copied = std::string{text}; return true; }
@@ -37,12 +37,12 @@ public:
 #endif
 
 int main() {
-    assert(pastit::multiline_editor_row_count("") == 1);
-    assert(pastit::multiline_editor_row_count("one\ntwo\nthree") == 3);
-    assert(pastit::multiline_editor_visible_rows(std::string(100, 'x')) == 3);
-    assert(pastit::multiline_editor_visible_rows("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11") == 10);
+    assert(pasteit::multiline_editor_row_count("") == 1);
+    assert(pasteit::multiline_editor_row_count("one\ntwo\nthree") == 3);
+    assert(pasteit::multiline_editor_visible_rows(std::string(100, 'x')) == 3);
+    assert(pasteit::multiline_editor_visible_rows("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11") == 10);
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     ImGui::CreateContext();
     auto& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(720.0F, 560.0F);
@@ -54,7 +54,7 @@ int main() {
         ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
         ImGui::SetNextWindowSize(io.DisplaySize);
         ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoDecoration);
-        pastit::input_text_string("Default image directory", value);
+        pasteit::input_text_string("Default image directory", value);
         const bool active = ImGui::IsItemActive();
         const ImVec2 min = ImGui::GetItemRectMin();
         const ImVec2 max = ImGui::GetItemRectMax();
@@ -84,7 +84,7 @@ int main() {
     ClipboardPlatform clipboard;
     auto& platform_io = ImGui::GetPlatformIO();
     platform_io.Platform_GetClipboardTextFn = [](ImGuiContext*) { return "external text"; };
-    pastit::install_imgui_clipboard_bridge(clipboard);
+    pasteit::install_imgui_clipboard_bridge(clipboard);
     ImGui::SetClipboardText("Jev API endpoint");
     assert(clipboard.copied == "Jev API endpoint" && "copy must use PasteIt's clipboard owner");
     clipboard.owned = "http://127.0.0.1:8011";
@@ -98,7 +98,7 @@ int main() {
     ImGui::Begin("Result editor size", nullptr, ImGuiWindowFlags_NoDecoration);
     const ImVec2 result_space = ImGui::GetContentRegionAvail();
     std::string result_text = "Short response";
-    pastit::input_text_string("##result", result_text, true, 0, -1.0F);
+    pasteit::input_text_string("##result", result_text, true, 0, -1.0F);
     const ImVec2 result_size = ImGui::GetItemRectSize();
     assert(result_size.x >= result_space.x - 2.0F);
     assert(result_size.y >= result_space.y - 2.0F);
@@ -111,7 +111,7 @@ int main() {
     ImGui::Begin("Edit editor size", nullptr, ImGuiWindowFlags_NoDecoration);
     std::string prompt_text = "Short prompt";
     const float footer_height = 3.0F * ImGui::GetFrameHeightWithSpacing();
-    pastit::input_text_string("System prompt", prompt_text, true, 0, -footer_height);
+    pasteit::input_text_string("System prompt", prompt_text, true, 0, -footer_height);
     const float remaining_height = ImGui::GetContentRegionAvail().y;
     assert(ImGui::GetItemRectSize().x >= ImGui::GetContentRegionAvail().x - 2.0F);
     assert(remaining_height >= footer_height - ImGui::GetStyle().ItemSpacing.y - 2.0F);
@@ -125,7 +125,7 @@ int main() {
         ImGui::SetNextWindowSize(ImVec2(width, 120.0F));
         ImGui::Begin(title, nullptr, ImGuiWindowFlags_NoDecoration);
         std::string long_line(300, 'a');
-        pastit::input_text_string("##wrapped", long_line, true, flags, 80.0F);
+        pasteit::input_text_string("##wrapped", long_line, true, flags, 80.0F);
         ImGuiWindow* wrap_window = ImGui::GetCurrentWindow();
         assert(wrap_window->DC.ChildWindows.Size == 1);
         const ImGuiWindow* text_area = wrap_window->DC.ChildWindows[0];

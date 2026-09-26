@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class ColumnType { Text, Number, Date, Empty };
 
@@ -57,4 +57,4 @@ std::string table_to_sql(const TableData& table, const std::vector<std::size_t>&
 
 std::string column_type_name(ColumnType type);
 
-}  // namespace pastit
+}  // namespace pasteit

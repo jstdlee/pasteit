@@ -11,7 +11,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string ascii_lower(std::string value) {
@@ -183,4 +183,4 @@ std::string generated_filename(
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

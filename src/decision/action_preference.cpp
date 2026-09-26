@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr double kMaximumLocalBonus = 0.05;
@@ -27,4 +27,4 @@ double action_ranking_bonus(const ActionInstance& action, const ActionRankingCon
     return std::clamp(bonus, 0.0, kMaximumTotalBonus);
 }
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -7,7 +7,7 @@
 #include "executor/utility_executor.hpp"
 #include "platform/fast_action_services.hpp"
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 bool is_fast_action(ActionKind kind) {
@@ -102,4 +102,4 @@ ExecutionResult execute_action(const ActionInstance& action, ExecutionContext& c
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

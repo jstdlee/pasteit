@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 struct SettingsLoadResult {
     AppSettings settings;
     std::string warning;
@@ -24,4 +24,4 @@ public:
 private:
     std::filesystem::path path_;
 };
-}  // namespace pastit
+}  // namespace pasteit

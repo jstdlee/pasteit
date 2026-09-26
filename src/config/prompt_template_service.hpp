@@ -5,7 +5,7 @@
 #include <functional>
 #include <optional>
 
-namespace pastit {
+namespace pasteit {
 class PromptTemplateService {
 public:
     using IdGenerator = std::function<std::string()>;
@@ -21,4 +21,4 @@ private:
     std::vector<PromptTemplate>& templates_;
     IdGenerator ids_;
 };
-}  // namespace pastit
+}  // namespace pasteit

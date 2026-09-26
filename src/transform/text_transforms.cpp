@@ -17,7 +17,7 @@
 #include <set>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::string_view kBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1036,4 +1036,4 @@ std::string split_subnet(const Ipv4Subnet& subnet, int new_prefix, std::size_t l
     return out.str();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

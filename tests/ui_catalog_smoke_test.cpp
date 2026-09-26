@@ -7,7 +7,7 @@
 #include <string>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     DecisionSnapshot snapshot;
     snapshot.clipboard_hash = "clip_hash";

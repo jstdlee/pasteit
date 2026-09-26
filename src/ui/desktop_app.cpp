@@ -3,14 +3,14 @@
 
 #include <iostream>
 
-namespace pastit {
+namespace pasteit {
 
 std::string desktop_dependency_status() {
-    return PASTIT_DESKTOP_MISSING;
+    return PASTEIT_DESKTOP_MISSING;
 }
 
 int run_desktop_app() {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     return run_desktop_runtime();
 #else
     std::cout << "PasteIt MVP core is available.\n";
@@ -19,4 +19,4 @@ int run_desktop_app() {
 #endif
 }
 
-}  // namespace pastit
+}  // namespace pasteit

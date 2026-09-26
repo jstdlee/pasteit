@@ -6,7 +6,7 @@
 #include "platform/platform_services.hpp"
 #include "config/app_settings.hpp"
 
-namespace pastit {
+namespace pasteit {
 
 std::optional<std::filesystem::path> browser_open_path(const std::filesystem::path& path,
                                                       const std::filesystem::path& home_directory);
@@ -48,4 +48,4 @@ private:
     std::uint64_t popup_window_id_ = 0;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

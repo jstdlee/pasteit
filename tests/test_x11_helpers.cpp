@@ -26,7 +26,7 @@ bool contains_modifier(const std::vector<unsigned int>& values, unsigned int wan
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const auto paths = parse_x11_uri_list(
         "# copied from a file manager\r\n"

@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 
 inline constexpr std::size_t kMermaidInputBudgetBytes = 4096;
 
@@ -26,4 +26,4 @@ MermaidNormalizationResult normalize_mermaid_response(std::string raw_source);
 
 bool has_supported_mermaid_header(std::string_view source);
 
-}  // namespace pastit
+}  // namespace pasteit

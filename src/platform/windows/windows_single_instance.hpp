@@ -3,7 +3,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-namespace pastit {
+namespace pasteit {
 
 class WindowsSingleInstance {
 public:
@@ -20,4 +20,4 @@ private:
     bool acquired_ = false;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

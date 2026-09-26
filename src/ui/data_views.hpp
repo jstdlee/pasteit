@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // What the data-view windows need from the desktop shell.
 struct DataViewHost {
@@ -71,7 +71,7 @@ void open_chart_from_series(ChartViewState& state, std::string source, std::stri
 void open_chart_from_table(ChartViewState& state, const TableData& table, std::vector<std::size_t> rows,
                            std::string save_path);
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_markdown_blocks(const std::vector<MdBlock>& blocks, const std::function<void(std::string_view)>& open_uri);
 // Live, anti-aliased chart with hover values.
 void draw_chart(const ChartSpec& spec, float width, float height);
@@ -82,4 +82,4 @@ void draw_markdown_view(MarkdownViewState& state, const DataViewHost& host, UiLa
 void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage language);
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

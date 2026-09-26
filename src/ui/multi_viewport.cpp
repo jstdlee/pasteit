@@ -7,7 +7,7 @@
 #include <chrono>
 #include <fstream>
 
-namespace pastit {
+namespace pasteit {
 
 IndependentViewportDescriptor independent_panel_viewport(std::string title, ViewportSize size) {
     return IndependentViewportDescriptor{
@@ -125,7 +125,7 @@ void RendererPreviewPanelState::poll() {
     }
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void configure_independent_viewports(ImGuiIO& io, ImGuiStyle& style) {
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     style.WindowRounding = 8.0F;
@@ -143,4 +143,4 @@ ImGuiWindowClass independent_window_class() {
 
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

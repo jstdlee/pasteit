@@ -6,7 +6,7 @@
 #include <cctype>
 #include <regex>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string lower(std::string_view text) {
@@ -184,4 +184,4 @@ PageText extract_page_text(std::string_view body, std::string_view content_type,
     return page;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

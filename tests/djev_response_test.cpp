@@ -7,8 +7,8 @@
 
 namespace {
 
-pastit::ActionInstance action(std::string id, pastit::ActionKind kind, double index) {
-    pastit::ActionInstance out;
+pasteit::ActionInstance action(std::string id, pasteit::ActionKind kind, double index) {
+    pasteit::ActionInstance out;
     out.id = std::move(id);
     out.kind = kind;
     out.source_ref = "clip_1";
@@ -18,36 +18,36 @@ pastit::ActionInstance action(std::string id, pastit::ActionKind kind, double in
     return out;
 }
 
-pastit::DecisionRequest request_with_actions() {
-    pastit::DecisionRequest request;
+pasteit::DecisionRequest request_with_actions() {
+    pasteit::DecisionRequest request;
     request.request_id = "req_184";
     request.snapshot.clipboard_hash = "clip_hash";
     request.snapshot.focused_target_hash = "target_hash";
     request.snapshot.focused_app = "Code";
     request.snapshot.focused_window_title = "notes.txt — Code";
     request.snapshot.focused_current_directory = "/tmp/project";
-    request.snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    request.snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = "clip_1",
         .mime_types = {"text/plain"},
-        .kind = pastit::ContentKind::Text,
+        .kind = pasteit::ContentKind::Text,
         .preview = "hello",
         .size_bytes = 5,
     });
-    request.snapshot.recent_paths.push_back(pastit::PathLocation{
+    request.snapshot.recent_paths.push_back(pasteit::PathLocation{
         .ref = "path_01",
         .path = "/tmp",
-        .kind = pastit::PathKind::Directory,
+        .kind = pasteit::PathKind::Directory,
         .last_seen_ms = 1,
         .source = "test",
         .exists = true,
     });
     request.snapshot.available_actions = {
-        action("a1", pastit::ActionKind::PasteText, 1),
-        action("a2", pastit::ActionKind::SaveTextFile, 2),
-        action("a3", pastit::ActionKind::OpenUrl, 3),
-        action("a4", pastit::ActionKind::CopyPath, 4),
-        action("a5", pastit::ActionKind::PrettyJson, 5),
-        action("a6", pastit::ActionKind::SaveJsonFile, 6),
+        action("a1", pasteit::ActionKind::PasteText, 1),
+        action("a2", pasteit::ActionKind::SaveTextFile, 2),
+        action("a3", pasteit::ActionKind::OpenUrl, 3),
+        action("a4", pasteit::ActionKind::CopyPath, 4),
+        action("a5", pasteit::ActionKind::PrettyJson, 5),
+        action("a6", pasteit::ActionKind::SaveJsonFile, 6),
     };
     return request;
 }
@@ -55,7 +55,7 @@ pastit::DecisionRequest request_with_actions() {
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const auto request = request_with_actions();
     const auto catalog = ActionCatalog{request.snapshot.available_actions};

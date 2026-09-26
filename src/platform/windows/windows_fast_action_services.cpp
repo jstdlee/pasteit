@@ -20,7 +20,7 @@
 #include <thread>
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 void close_handle(HANDLE& handle) {
@@ -448,4 +448,4 @@ std::filesystem::path WindowsFastActionServices::terminal_working_directory(cons
     return directory.lexically_normal();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

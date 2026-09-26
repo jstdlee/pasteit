@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 enum class DateTimeResultStatus { Idle, Completed, Failed };
 
@@ -29,4 +29,4 @@ private:
     DateTimeResult active_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

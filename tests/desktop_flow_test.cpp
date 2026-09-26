@@ -7,7 +7,7 @@
 #include <filesystem>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     ActionInstance mermaid_action;
     mermaid_action.kind = ActionKind::DrawMermaidDiagram;

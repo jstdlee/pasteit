@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string abbreviate_middle_impl(std::string_view value, std::size_t max_bytes) {
@@ -221,4 +221,4 @@ RecentPathCommand close_recent_path_detail(RecentPathsState& state) {
     return command(RecentPathCommandKind::CloseDetail, ref);
 }
 
-}  // namespace pastit
+}  // namespace pasteit

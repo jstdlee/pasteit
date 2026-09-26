@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 struct ImageSize {
@@ -175,7 +175,7 @@ void write_stroke(std::ostream& output, const AnnotationStroke& stroke) {
                << "\" stroke=\"" << color << "\" stroke-width=\"" << stroke.width
                << "\" stroke-linecap=\"round\"";
         if (stroke.tool == AnnotationTool::Arrow) {
-            output << " marker-end=\"url(#pastit-arrowhead)\"";
+            output << " marker-end=\"url(#pasteit-arrowhead)\"";
         }
         output << "/>\n";
         return;
@@ -226,7 +226,7 @@ AnnotationExportResult export_annotation_svg(const AnnotationDocument& document,
 
     output << "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" << size.width << "\" height=\""
            << size.height << "\" viewBox=\"0 0 " << size.width << ' ' << size.height << "\">\n";
-    output << "<defs><marker id=\"pastit-arrowhead\" markerWidth=\"10\" markerHeight=\"7\" refX=\"9\" refY=\"3.5\" orient=\"auto\">"
+    output << "<defs><marker id=\"pasteit-arrowhead\" markerWidth=\"10\" markerHeight=\"7\" refX=\"9\" refY=\"3.5\" orient=\"auto\">"
               "<polygon points=\"0 0, 10 3.5, 0 7\" fill=\"#FF0000\"/></marker></defs>\n";
     output << "<image x=\"0\" y=\"0\" width=\"" << size.width << "\" height=\"" << size.height
            << "\" href=\"data:" << mime_type_for(document.original_image()) << ";base64,"
@@ -246,4 +246,4 @@ AnnotationExportResult export_annotation_svg(const AnnotationDocument& document,
     return {.success = true, .output_path = output_path, .format = "svg", .error = {}};
 }
 
-}  // namespace pastit
+}  // namespace pasteit

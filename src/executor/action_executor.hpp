@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 
 class DownloadManager;
 class FastActionExecutor;
@@ -31,4 +31,4 @@ struct ExecutionContext {
 
 ExecutionResult execute_action(const ActionInstance& action, ExecutionContext& context);
 
-}  // namespace pastit
+}  // namespace pasteit

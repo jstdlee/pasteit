@@ -7,7 +7,7 @@
 #include <regex>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::size_t kMaxScanBytes = 512 * 1024;
@@ -521,4 +521,4 @@ AnonymizeResult anonymize_text(std::string_view text, const AnonymizeOptions& op
     return apply_anonymization(text, find_pii(text, options), options.style, vault);
 }
 
-}  // namespace pastit
+}  // namespace pasteit

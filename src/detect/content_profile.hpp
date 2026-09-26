@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // General shape of clipboard data, judged from a bounded sample (first rows,
 // a middle probe, and the tail) plus the total length.
@@ -78,4 +78,4 @@ inline ContentProfile profile_content(ContentKind kind, std::string_view text) {
 std::string data_shape_name(DataShape shape);
 std::string data_shape_description(DataShape shape);
 
-}  // namespace pastit
+}  // namespace pasteit

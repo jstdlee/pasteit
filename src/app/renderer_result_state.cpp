@@ -10,11 +10,11 @@
 #include <limits>
 #include <string_view>
 #include <vector>
-#if defined(PASTIT_HAS_ZLIB)
+#if defined(PASTEIT_HAS_ZLIB)
 #include <zlib.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 
 void RendererResultState::prepare(RendererResult result) {
     active_ = std::move(result);
@@ -49,7 +49,7 @@ std::uint32_t be32(const unsigned char* value) {
 bool png_decodes(const std::vector<unsigned char>& data) {
     constexpr std::array<unsigned char, 8> signature{137, 80, 78, 71, 13, 10, 26, 10};
     if (data.size() < 45 || !std::equal(signature.begin(), signature.end(), data.begin())) return false;
-#if !defined(PASTIT_HAS_ZLIB)
+#if !defined(PASTEIT_HAS_ZLIB)
     if (be32(data.data() + 8) != 13 || !std::equal(data.data() + 12, data.data() + 16, "IHDR")) {
         return false;
     }
@@ -133,4 +133,4 @@ bool rendered_output_decodes(RendererResultKind kind, const std::filesystem::pat
     return false;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

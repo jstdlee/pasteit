@@ -25,7 +25,7 @@ void write_file(const std::filesystem::path& path, std::string_view text) {
     out << text;
 }
 
-std::size_t count_hash(const std::vector<pastit::ClipboardItem>& items, const std::string& hash) {
+std::size_t count_hash(const std::vector<pasteit::ClipboardItem>& items, const std::string& hash) {
     return static_cast<std::size_t>(std::count_if(items.begin(), items.end(), [&](const auto& item) {
         return item.content_hash == hash;
     }));
@@ -34,9 +34,9 @@ std::size_t count_hash(const std::vector<pastit::ClipboardItem>& items, const st
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    const auto root = std::filesystem::temp_directory_path() / "pastit_clipboard_orphan_cleanup_test";
+    const auto root = std::filesystem::temp_directory_path() / "pasteit_clipboard_orphan_cleanup_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "blobs");
 

@@ -5,7 +5,7 @@
 #include <string>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     DecisionRequest request;
     request.request_id = "req_session";

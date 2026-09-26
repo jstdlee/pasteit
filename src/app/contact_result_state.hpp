@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class ContactResultStatus { Idle, Ready, Failed };
 
@@ -31,4 +31,4 @@ private:
     ContactResultRecord active_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

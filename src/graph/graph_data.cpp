@@ -7,7 +7,7 @@
 #include <cctype>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string trim(std::string_view text) {
@@ -122,4 +122,4 @@ std::optional<GraphData> parse_graph_data(std::string_view text, bool has_header
     return graph;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

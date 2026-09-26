@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace pastit {
+namespace pasteit {
 
 std::string normalize_models_endpoint(std::string endpoint) {
     while (!endpoint.empty() && endpoint.back() == '/') endpoint.pop_back();
@@ -66,4 +66,4 @@ ModelListResult OpenAiCompatibleModelClient::list_models(const ModelListRequest&
     return result;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

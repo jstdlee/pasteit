@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 using ClipboardCapture = ClipboardData;
 
@@ -63,4 +63,4 @@ public:
     virtual FastActionServices& fast_actions() { return empty_fast_action_services(); }
 };
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -2,7 +2,7 @@
 
 #include <filesystem>
 
-namespace pastit {
+namespace pasteit {
 
 class LinuxSingleInstance {
 public:
@@ -23,4 +23,4 @@ private:
     std::filesystem::path path_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

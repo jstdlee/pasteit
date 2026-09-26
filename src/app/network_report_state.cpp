@@ -2,7 +2,7 @@
 
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 
 std::string_view network_probe_label(NetworkProbe probe) {
     switch (probe) {
@@ -77,4 +77,4 @@ std::string NetworkReportState::copy_text() const {
     return out.str();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

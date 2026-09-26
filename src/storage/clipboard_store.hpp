@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ClipboardData {
     std::vector<std::string> mime_types;
@@ -44,4 +44,4 @@ private:
 
 std::string content_hash_hex(const std::vector<std::byte>& bytes);
 
-}  // namespace pastit
+}  // namespace pasteit

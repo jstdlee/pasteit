@@ -4,7 +4,7 @@
 #include <map>
 #include <optional>
 #include <string>
-namespace pastit {
+namespace pasteit {
 enum class FeedbackCommand{CopyOutputPath,OpenOutput,OpenContainingDirectory};
 struct ExecutionFeedbackEntry{std::string request_id,action_id;ExecutionStatus status=ExecutionStatus::Prepared;ExecutionResult result;};
 class ExecutionFeedback{

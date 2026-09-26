@@ -1,6 +1,6 @@
 #include "ui/pipeline_view.hpp"
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include "ui/icons.hpp"
 #include "ui/imgui_widgets.hpp"
 #include "ui/theme.hpp"
@@ -10,7 +10,7 @@
 
 #include <algorithm>
 
-namespace pastit {
+namespace pasteit {
 
 void open_pipeline_view(PipelineViewState& state, std::string input, std::string command) {
     if (state.pending) {
@@ -29,7 +29,7 @@ void open_pipeline_view(PipelineViewState& state, std::string input, std::string
     state.edited = std::chrono::steady_clock::now() - std::chrono::seconds(1);
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 
 namespace {
 
@@ -226,4 +226,4 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
 
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

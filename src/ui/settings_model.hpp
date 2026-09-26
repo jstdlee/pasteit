@@ -1,7 +1,7 @@
 #pragma once
 #include "config/app_settings.hpp"
 #include <string>
-namespace pastit {
+namespace pasteit {
 class SettingsStore;
 enum class SettingsSection{General,Paths,Djev,GeneralLlm,PromptTemplates,FastActions};
 class SettingsModel{

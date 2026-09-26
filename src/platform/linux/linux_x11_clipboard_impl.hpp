@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 std::vector<std::filesystem::path> parse_x11_uri_list(std::string_view text);
 ContentKind classify_x11_clipboard_payload(const std::vector<std::string>& mime_types,
@@ -53,4 +53,4 @@ private:
     std::vector<OutgoingTransfer> outgoing_transfers_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

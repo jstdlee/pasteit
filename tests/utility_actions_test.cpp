@@ -15,7 +15,7 @@
 
 namespace {
 
-using namespace pastit;
+using namespace pasteit;
 
 std::vector<std::byte> bytes(std::string_view text) {
     std::vector<std::byte> out;
@@ -242,7 +242,7 @@ void ranking_and_display() {
 }
 
 void execution() {
-    const auto root = std::filesystem::temp_directory_path() / "pastit_utility_actions_test";
+    const auto root = std::filesystem::temp_directory_path() / "pasteit_utility_actions_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "out");
     ClipboardStore store(root / "store");

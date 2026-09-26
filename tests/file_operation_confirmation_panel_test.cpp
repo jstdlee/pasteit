@@ -8,10 +8,10 @@
 
 namespace {
 
-pastit::ActionInstance save_action(const std::string& source_ref, const std::string& target_ref) {
-    pastit::ActionInstance action;
+pasteit::ActionInstance save_action(const std::string& source_ref, const std::string& target_ref) {
+    pasteit::ActionInstance action;
     action.id = "save-current-text";
-    action.kind = pastit::ActionKind::SaveTextFile;
+    action.kind = pasteit::ActionKind::SaveTextFile;
     action.source_ref = source_ref;
     action.target_ref = target_ref;
     action.label = "Save text";
@@ -20,21 +20,21 @@ pastit::ActionInstance save_action(const std::string& source_ref, const std::str
     return action;
 }
 
-pastit::PathLocation directory(std::string ref, std::filesystem::path path) {
-    return pastit::PathLocation{
+pasteit::PathLocation directory(std::string ref, std::filesystem::path path) {
+    return pasteit::PathLocation{
         .ref = std::move(ref),
         .path = std::move(path),
-        .kind = pastit::PathKind::Directory,
+        .kind = pasteit::PathKind::Directory,
         .last_seen_ms = 100,
         .source = "test",
         .exists = true,
     };
 }
 
-pastit::FileOperationConfirmationViewState view_state(
+pasteit::FileOperationConfirmationViewState view_state(
     const std::filesystem::path& primary,
     const std::filesystem::path& alternate) {
-    pastit::FileOperationDraft draft;
+    pasteit::FileOperationDraft draft;
     draft.frozen_action = save_action("clipboard-1", "primary");
     draft.source_ref = "clipboard-1";
     draft.destination = primary;
@@ -44,7 +44,7 @@ pastit::FileOperationConfirmationViewState view_state(
         directory("alternate", alternate),
     };
 
-    return pastit::FileOperationConfirmationViewState{
+    return pasteit::FileOperationConfirmationViewState{
         .draft = std::move(draft),
         .source_preview = "hello",
         .can_confirm = true,
@@ -54,10 +54,10 @@ pastit::FileOperationConfirmationViewState view_state(
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    const std::filesystem::path primary{"/tmp/pastit-primary"};
-    const std::filesystem::path alternate{"/tmp/pastit-alternate"};
+    const std::filesystem::path primary{"/tmp/pasteit-primary"};
+    const std::filesystem::path alternate{"/tmp/pasteit-alternate"};
     auto state = view_state(primary, alternate);
 
     const auto model = build_file_operation_confirmation_panel_model(state);

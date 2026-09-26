@@ -10,7 +10,7 @@
 #include <iterator>
 #include <system_error>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string trim(std::string value) {
@@ -208,4 +208,4 @@ std::optional<ActionInstance> confirmed_action(const FileOperationDraft& draft, 
     return confirmed;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -5,7 +5,7 @@
 #include <set>
 #include <tuple>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 std::int64_t source_time(const ActionInstance& action, const DecisionSnapshot& snapshot) {
     const auto it=std::find_if(snapshot.clipboard_items.begin(),snapshot.clipboard_items.end(),[&](const auto&i){return i.ref==action.source_ref;});
@@ -56,4 +56,4 @@ ActionCatalog select_djev_candidates(const ActionCatalog& full,const DecisionSna
     }
     return selected;
 }
-}  // namespace pastit
+}  // namespace pasteit

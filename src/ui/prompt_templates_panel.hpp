@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 class PromptTemplateService;
 
@@ -67,4 +67,4 @@ PromptTemplateCommandResult begin_prompt_template_delete(PromptTemplatesPanelMod
 PromptTemplateCommandResult confirm_prompt_template_delete(PromptTemplatesPanelModel& model, PromptTemplateService& service);
 PromptTemplateCommandResult cancel_prompt_template_modal(PromptTemplatesPanelModel& model);
 
-}  // namespace pastit
+}  // namespace pasteit

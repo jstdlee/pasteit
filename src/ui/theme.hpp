@@ -9,16 +9,16 @@
 #include <string_view>
 #include <vector>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 
 // Path shown to users: home directory as "~", middle elided to max_chars.
 std::string display_path(std::string_view path, std::size_t max_chars = 64);
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 
 struct UiPalette {
     ImVec4 background;
@@ -113,4 +113,4 @@ bool action_card(const char* id, const ActionCardModel& model);
 
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -11,7 +11,7 @@
 #include <tuple>
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr double kMillisecondsPerDay = 24.0 * 60.0 * 60.0 * 1000.0;
@@ -221,4 +221,4 @@ void prune_usage(UsageModel& model, std::int64_t now_ms) {
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

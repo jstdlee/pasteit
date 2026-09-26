@@ -8,7 +8,7 @@
 #include <optional>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 struct UtilityOutput {
@@ -223,11 +223,11 @@ ExecutionResult execute_utility_action(const ActionInstance& action, ExecutionCo
         .bytes = std::vector<std::byte>(reinterpret_cast<const std::byte*>(output->text.data()),
                                         reinterpret_cast<const std::byte*>(output->text.data() + output->text.size())),
         .kind = output->kind,
-        .source_app = "pastit",
+        .source_app = "pasteit",
         .captured_at_ms = context.now_ms,
     });
     result.output_clipboard_ref = item.ref;
     return result;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

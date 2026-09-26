@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class FileOperationConfirmationCommand {
     None,
@@ -60,4 +60,4 @@ FileOperationConfirmationCommandResult apply_file_operation_shortcut(
 FileOperationConfirmationCommandResult confirm_file_operation(const FileOperationConfirmationViewState& state);
 FileOperationConfirmationCommandResult cancel_file_operation(const FileOperationConfirmationViewState& state);
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -4,7 +4,7 @@
 
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::vector<ContactField> fields_from_json(std::string_view json) {
@@ -75,4 +75,4 @@ std::string ContactResultState::copy_text() const {
     return out.str();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

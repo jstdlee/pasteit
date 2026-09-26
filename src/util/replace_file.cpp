@@ -5,7 +5,7 @@
 #include <windows.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 
 void replace_file(const std::filesystem::path& replacement,
                   const std::filesystem::path& destination, std::error_code& error) {
@@ -21,4 +21,4 @@ void replace_file(const std::filesystem::path& replacement,
 #endif
 }
 
-}  // namespace pastit
+}  // namespace pasteit

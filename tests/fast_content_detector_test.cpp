@@ -7,7 +7,7 @@
 
 namespace {
 
-bool has_field(const std::vector<pastit::ContactField>& fields,
+bool has_field(const std::vector<pasteit::ContactField>& fields,
                std::string_view kind,
                std::string_view value) {
     return std::any_of(fields.begin(), fields.end(), [&](const auto& field) {
@@ -18,7 +18,7 @@ bool has_field(const std::vector<pastit::ContactField>& fields,
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const auto contact = detect_fast_content(
         ContentKind::Text,

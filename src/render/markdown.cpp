@@ -5,7 +5,7 @@
 #include <regex>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string_view trim_view(std::string_view text) {
@@ -421,4 +421,4 @@ std::string markdown_to_plain_text(const std::vector<MdBlock>& blocks) {
     return text;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

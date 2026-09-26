@@ -36,10 +36,10 @@ std::filesystem::path sample_png_fixture() {
     return std::filesystem::path{__FILE__}.parent_path() / "fixtures" / "sample.png";
 }
 
-pastit::ClipboardItem put_text(pastit::ClipboardStore& store,
+pasteit::ClipboardItem put_text(pasteit::ClipboardStore& store,
                                std::string text,
-                               pastit::ContentKind kind = pastit::ContentKind::Text) {
-    return store.put(pastit::ClipboardData{
+                               pasteit::ContentKind kind = pasteit::ContentKind::Text) {
+    return store.put(pasteit::ClipboardData{
         .mime_types = {"text/plain"},
         .bytes = bytes(text),
         .kind = kind,
@@ -48,8 +48,8 @@ pastit::ClipboardItem put_text(pastit::ClipboardStore& store,
     });
 }
 
-pastit::ActionInstance action(pastit::ActionKind kind, const std::string& source_ref = {}) {
-    pastit::ActionInstance out;
+pasteit::ActionInstance action(pasteit::ActionKind kind, const std::string& source_ref = {}) {
+    pasteit::ActionInstance out;
     out.id = "action";
     out.kind = kind;
     out.source_ref = source_ref;
@@ -58,29 +58,29 @@ pastit::ActionInstance action(pastit::ActionKind kind, const std::string& source
     return out;
 }
 
-class FakeServices final : public pastit::FastActionServices {
+class FakeServices final : public pasteit::FastActionServices {
 public:
     bool open_terminal(const std::filesystem::path& directory) override {
         terminal_directory = directory;
         return true;
     }
 
-    pastit::ProcessOutput run_network_probe(pastit::NetworkProbe probe, std::string_view host) override {
+    pasteit::ProcessOutput run_network_probe(pasteit::NetworkProbe probe, std::string_view host) override {
         probes.emplace_back(probe, std::string{host});
         switch (probe) {
-            case pastit::NetworkProbe::Ping:
+            case pasteit::NetworkProbe::Ping:
                 return {.exit_code = 0, .stdout_text = "ping ok"};
-            case pastit::NetworkProbe::TraceRoute:
+            case pasteit::NetworkProbe::TraceRoute:
                 return {.exit_code = 0, .stdout_text = "trace ok"};
-            case pastit::NetworkProbe::ReverseDns:
+            case pasteit::NetworkProbe::ReverseDns:
                 return {.exit_code = 2, .stderr_text = "rdns miss"};
-            case pastit::NetworkProbe::Dig:
+            case pasteit::NetworkProbe::Dig:
                 return {.exit_code = 0, .stdout_text = "dig ok"};
         }
         return {};
     }
 
-    pastit::ProcessOutput clone_repository(std::string_view url,
+    pasteit::ProcessOutput clone_repository(std::string_view url,
                                            const std::filesystem::path& destination) override {
         clone_url = std::string{url};
         clone_destination = destination;
@@ -100,13 +100,13 @@ public:
         return formatted_value;
     }
 
-    std::string hash_file(const std::filesystem::path& path, pastit::HashAlgorithm algorithm) override {
+    std::string hash_file(const std::filesystem::path& path, pasteit::HashAlgorithm algorithm) override {
         hashed_path = path;
         hashed_algorithm = algorithm;
-        return algorithm == pastit::HashAlgorithm::Sha512 ? "sha512-digest" : "sha256-digest";
+        return algorithm == pasteit::HashAlgorithm::Sha512 ? "sha512-digest" : "sha256-digest";
     }
 
-    pastit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
+    pasteit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
         argv_calls.push_back(argv);
         if (render_mode == RenderMode::MissingTool) {
             return {.exit_code = 127, .stderr_text = "tool unavailable"};
@@ -137,7 +137,7 @@ public:
     RenderMode render_mode = RenderMode::ProduceOutput;
 
     std::filesystem::path terminal_directory;
-    std::vector<std::pair<pastit::NetworkProbe, std::string>> probes;
+    std::vector<std::pair<pasteit::NetworkProbe, std::string>> probes;
     std::string clone_url;
     std::filesystem::path clone_destination;
     std::string parsed_value;
@@ -146,15 +146,15 @@ public:
     std::string formatted_zone;
     std::string formatted_value = "1970-01-01T00:02:03Z";
     std::filesystem::path hashed_path;
-    pastit::HashAlgorithm hashed_algorithm = pastit::HashAlgorithm::Sha256;
+    pasteit::HashAlgorithm hashed_algorithm = pasteit::HashAlgorithm::Sha256;
     std::vector<std::vector<std::string>> argv_calls;
 };
 
-class BlockingServices final : public pastit::FastActionServices {
+class BlockingServices final : public pasteit::FastActionServices {
 public:
     bool open_terminal(const std::filesystem::path&) override { return true; }
 
-    pastit::ProcessOutput run_network_probe(pastit::NetworkProbe probe, std::string_view host) override {
+    pasteit::ProcessOutput run_network_probe(pasteit::NetworkProbe probe, std::string_view host) override {
         {
             std::lock_guard lock(mutex_);
             ++started_;
@@ -167,14 +167,14 @@ public:
         return {.exit_code = 0, .stdout_text = "async probe done"};
     }
 
-    pastit::ProcessOutput clone_repository(std::string_view, const std::filesystem::path&) override {
+    pasteit::ProcessOutput clone_repository(std::string_view, const std::filesystem::path&) override {
         return {.exit_code = 0, .stdout_text = "async clone done"};
     }
 
     std::optional<std::int64_t> parse_datetime(std::string_view, std::string_view) override { return 0; }
     std::string format_datetime(std::int64_t, std::string_view) override { return {}; }
 
-    std::string hash_file(const std::filesystem::path&, pastit::HashAlgorithm) override {
+    std::string hash_file(const std::filesystem::path&, pasteit::HashAlgorithm) override {
         {
             std::lock_guard lock(mutex_);
             ++started_;
@@ -185,7 +185,7 @@ public:
         return "async-digest";
     }
 
-    pastit::ProcessOutput run_argv(const std::vector<std::string>&) override {
+    pasteit::ProcessOutput run_argv(const std::vector<std::string>&) override {
         {
             std::lock_guard lock(mutex_);
             ++started_;
@@ -210,7 +210,7 @@ public:
         changed_.notify_all();
     }
 
-    pastit::NetworkProbe last_probe = pastit::NetworkProbe::Ping;
+    pasteit::NetworkProbe last_probe = pasteit::NetworkProbe::Ping;
     std::string last_host;
 
 private:
@@ -220,25 +220,25 @@ private:
     bool released_ = false;
 };
 
-class ThrowingServices final : public pastit::FastActionServices {
+class ThrowingServices final : public pasteit::FastActionServices {
 public:
     bool open_terminal(const std::filesystem::path&) override { return true; }
-    pastit::ProcessOutput run_network_probe(pastit::NetworkProbe, std::string_view) override {
+    pasteit::ProcessOutput run_network_probe(pasteit::NetworkProbe, std::string_view) override {
         throw std::runtime_error("probe exploded");
     }
-    pastit::ProcessOutput clone_repository(std::string_view, const std::filesystem::path&) override {
+    pasteit::ProcessOutput clone_repository(std::string_view, const std::filesystem::path&) override {
         throw std::runtime_error("clone exploded");
     }
     std::optional<std::int64_t> parse_datetime(std::string_view, std::string_view) override { return 0; }
     std::string format_datetime(std::int64_t, std::string_view) override { return {}; }
-    std::string hash_file(const std::filesystem::path&, pastit::HashAlgorithm) override {
+    std::string hash_file(const std::filesystem::path&, pasteit::HashAlgorithm) override {
         throw std::runtime_error("hash exploded");
     }
-    pastit::ProcessOutput run_argv(const std::vector<std::string>&) override { return {}; }
+    pasteit::ProcessOutput run_argv(const std::vector<std::string>&) override { return {}; }
 };
 
-std::vector<pastit::ExecutionResult> poll_until_done(pastit::FastActionExecutor& executor,
-                                                     pastit::ExecutionContext& context) {
+std::vector<pasteit::ExecutionResult> poll_until_done(pasteit::FastActionExecutor& executor,
+                                                     pasteit::ExecutionContext& context) {
     for (int attempt = 0; attempt < 100; ++attempt) {
         auto results = executor.poll(context);
         if (!results.empty()) {
@@ -253,9 +253,9 @@ std::vector<pastit::ExecutionResult> poll_until_done(pastit::FastActionExecutor&
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    const auto root = std::filesystem::temp_directory_path() / "pastit-fast-action-executor-test";
+    const auto root = std::filesystem::temp_directory_path() / "pasteit-fast-action-executor-test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "target");
 

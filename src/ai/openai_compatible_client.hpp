@@ -3,7 +3,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
-namespace pastit {
+namespace pasteit {
 struct TextGenerationRequest {
     std::string request_id,endpoint,api_key,model_id,system_message,user_message;
     double temperature=0.2;

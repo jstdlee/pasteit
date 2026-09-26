@@ -3,13 +3,13 @@
 
 #include "ui/imgui_widgets.hpp"
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include "ui/multi_viewport.hpp"
 
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 
 FastActionPanelModel build_contact_result_panel_model(const ContactResultState& state) {
     const auto& active = state.active();
@@ -32,7 +32,7 @@ FastActionPanelModel build_contact_result_panel_model(const ContactResultState& 
     return model;
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_contact_result_panel(const ContactResultState& state, bool& open, bool& focus_pending) {
     auto model = build_contact_result_panel_model(state);
     if (begin_tool_window(model.viewport.title, &open,
@@ -73,4 +73,4 @@ void draw_contact_result_panel(const ContactResultState& state, bool& open, bool
 }
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

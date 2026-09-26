@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct PopupRow {
     std::string action_id;
@@ -35,4 +35,4 @@ PreparedDecision prepare_popup_decision(const DecisionRequest& request, const De
                                         const ActionCatalog& catalog, const DecisionSnapshot& current_snapshot,
                                         const ActionRankingContext& context = {});
 
-}  // namespace pastit
+}  // namespace pasteit

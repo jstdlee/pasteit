@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
                      "   or: x11_clipboard_seed --image FILE MIME [SECONDS]\n";
         return 2;
     }
-    pastit::X11ClipboardWatcher owner;
+    pasteit::X11ClipboardWatcher owner;
     if (!owner.available()) {
         std::cerr << "could not open the X11 display\n";
         return 1;

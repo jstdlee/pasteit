@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct AnnotationPoint {
     float x = 0.0F;
@@ -80,4 +80,4 @@ private:
 AnnotationColor annotation_red();
 AnnotationColor annotation_white();
 
-}  // namespace pastit
+}  // namespace pasteit

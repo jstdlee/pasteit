@@ -2,7 +2,7 @@
 #include "ai/openai_compatible_client.hpp"
 #include <optional>
 #include <string>
-namespace pastit {
+namespace pasteit {
 enum class AiResultStatus{Idle,Pending,Completed,Failed};
 struct AiResultRecord{
     std::string request_id,action_id,source_text,editable_text,error;

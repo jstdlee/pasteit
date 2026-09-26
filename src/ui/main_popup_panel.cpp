@@ -1,5 +1,5 @@
 #include "ui/main_popup_panel.hpp"
-namespace pastit {
+namespace pasteit {
 void MainPopupPanelState::clamp_rows(){if(smart_rows.size()>kDisplayedActionLimit)smart_rows.resize(kDisplayedActionLimit);}
 
 std::vector<ActionInstance> current_prompt_actions(const ActionCatalog& catalog, std::string_view current_ref) {

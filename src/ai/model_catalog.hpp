@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ModelListRequest {
     std::string endpoint;
@@ -33,4 +33,4 @@ private:
     std::shared_ptr<HttpTransport> transport_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

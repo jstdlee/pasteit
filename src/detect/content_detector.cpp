@@ -8,7 +8,7 @@
 #include <cctype>
 #include <regex>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string trim(std::string_view input) {
@@ -114,4 +114,4 @@ DetectionResult detect_content(const std::vector<std::string>& mime_types, std::
     return result;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

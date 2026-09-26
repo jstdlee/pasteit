@@ -6,23 +6,23 @@
 
 namespace {
 
-pastit::DecisionRequest mermaid_request() {
-    pastit::ActionInstance action;
+pasteit::DecisionRequest mermaid_request() {
+    pasteit::ActionInstance action;
     action.id = "a_draw_mermaid_diagram_clip_current";
-    action.kind = pastit::ActionKind::DrawMermaidDiagram;
+    action.kind = pasteit::ActionKind::DrawMermaidDiagram;
     action.source_ref = "clip_current";
     action.label = "Draw Mermaid diagram";
     action.description = "Generate Mermaid diagram source from this relationship-like text";
     action.enabled = true;
 
-    pastit::DecisionRequest request;
+    pasteit::DecisionRequest request;
     request.request_id = "req_mermaid";
     request.snapshot.clipboard_hash = "clip_hash";
     request.snapshot.focused_target_hash = "target_hash";
-    request.snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    request.snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = "clip_current",
         .mime_types = {"text/plain"},
-        .kind = pastit::ContentKind::Text,
+        .kind = pasteit::ContentKind::Text,
         .preview = "A depends on B",
         .size_bytes = 14,
         .captured_at_ms = 1,
@@ -34,7 +34,7 @@ pastit::DecisionRequest mermaid_request() {
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     ProviderSettings provider{
         .endpoint = "http://localhost:11434/v1",

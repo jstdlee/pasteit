@@ -4,7 +4,7 @@
 #include <optional>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 enum class RendererResultKind { Unknown, Mermaid, Qr, Annotation, ExplainText, ExplainCode };
 enum class RendererResultStatus { Idle, Rendering, Ready, Unavailable, Failed };
@@ -41,4 +41,4 @@ private:
 
 bool rendered_output_decodes(RendererResultKind kind, const std::filesystem::path& path);
 
-}  // namespace pastit
+}  // namespace pasteit

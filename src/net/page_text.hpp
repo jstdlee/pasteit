@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 
 struct PageText {
     std::string title;
@@ -17,4 +17,4 @@ struct PageText {
 // decoded and block elements on their own lines. Plain text passes through.
 PageText extract_page_text(std::string_view body, std::string_view content_type, std::size_t max_chars = 12000);
 
-}  // namespace pastit
+}  // namespace pasteit

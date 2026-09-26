@@ -20,7 +20,7 @@
 #include <unistd.h>
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 void append_bounded(std::string& output, const char* data, std::size_t size, std::size_t limit) {
@@ -569,4 +569,4 @@ std::filesystem::path LinuxFastActionServices::terminal_working_directory(const 
     return directory.lexically_normal();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

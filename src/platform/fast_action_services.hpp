@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ProcessOutput {
     int exit_code = -1;
@@ -50,4 +50,4 @@ inline FastActionServices& empty_fast_action_services() {
     return services;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

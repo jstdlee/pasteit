@@ -2,16 +2,16 @@
 #include "ui/theme.hpp"
 #include "ui/icons.hpp"
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include "ui/multi_viewport.hpp"
 #include "ui/imgui_widgets.hpp"
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 bool compact_button(const char* label, const std::string& ref) {
     const auto id = std::string(label) + "##recent-" + ref;
     return ImGui::SmallButton(id.c_str());
@@ -58,7 +58,7 @@ void detail_text(const char* label, const std::string& value) {
 
 RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const RecentPathsModel& model,
                                             UiLanguage language) {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     RecentPathCommand command;
     constexpr auto flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable |
                            ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
@@ -204,4 +204,4 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
 #endif
 }
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -8,7 +8,7 @@
 #include <system_error>
 #include <unordered_set>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 bool path_like_clipboard_item(const ClipboardItem& item) {
@@ -156,4 +156,4 @@ std::vector<DestinationCandidate> resolve_file_targets(
     return candidates;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

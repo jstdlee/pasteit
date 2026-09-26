@@ -10,8 +10,8 @@
 
 namespace {
 
-pastit::ClipboardItem item(std::string ref, pastit::ContentKind kind, std::string preview) {
-    pastit::ClipboardItem out;
+pasteit::ClipboardItem item(std::string ref, pasteit::ContentKind kind, std::string preview) {
+    pasteit::ClipboardItem out;
     out.ref = std::move(ref);
     out.kind = kind;
     out.preview = std::move(preview);
@@ -20,19 +20,19 @@ pastit::ClipboardItem item(std::string ref, pastit::ContentKind kind, std::strin
     return out;
 }
 
-pastit::PathLocation directory(std::string ref, const std::filesystem::path& path, std::int64_t seen) {
-    pastit::PathLocation out;
+pasteit::PathLocation directory(std::string ref, const std::filesystem::path& path, std::int64_t seen) {
+    pasteit::PathLocation out;
     out.ref = std::move(ref);
     out.path = path;
-    out.kind = pastit::PathKind::Directory;
+    out.kind = pasteit::PathKind::Directory;
     out.last_seen_ms = seen;
     out.source = "test";
     out.exists = true;
     return out;
 }
 
-pastit::DecisionSnapshot snapshot_with(pastit::ClipboardItem clipboard_item) {
-    pastit::DecisionSnapshot snapshot;
+pasteit::DecisionSnapshot snapshot_with(pasteit::ClipboardItem clipboard_item) {
+    pasteit::DecisionSnapshot snapshot;
     snapshot.clipboard_hash = "hash";
     snapshot.focused_target_hash = "target";
     snapshot.captured_at_ms = 101;
@@ -41,8 +41,8 @@ pastit::DecisionSnapshot snapshot_with(pastit::ClipboardItem clipboard_item) {
     return snapshot;
 }
 
-pastit::DecisionSnapshot snapshot_with_items(std::vector<pastit::ClipboardItem> clipboard_items) {
-    pastit::DecisionSnapshot snapshot;
+pasteit::DecisionSnapshot snapshot_with_items(std::vector<pasteit::ClipboardItem> clipboard_items) {
+    pasteit::DecisionSnapshot snapshot;
     snapshot.clipboard_hash = "hash";
     snapshot.focused_target_hash = "target";
     snapshot.captured_at_ms = 101;
@@ -51,16 +51,16 @@ pastit::DecisionSnapshot snapshot_with_items(std::vector<pastit::ClipboardItem> 
     return snapshot;
 }
 
-std::vector<pastit::PromptTemplate> seeded_templates() {
-    auto settings = pastit::default_settings();
+std::vector<pasteit::PromptTemplate> seeded_templates() {
+    auto settings = pasteit::default_settings();
     return settings.prompt_templates;
 }
 
-pastit::ProviderSettings provider() {
+pasteit::ProviderSettings provider() {
     return {.endpoint = "http://127.0.0.1:9999/v1/chat/completions", .model_id = "local-model"};
 }
 
-std::optional<pastit::ActionInstance> find_kind(const pastit::ActionCatalog& catalog, pastit::ActionKind kind) {
+std::optional<pasteit::ActionInstance> find_kind(const pasteit::ActionCatalog& catalog, pasteit::ActionKind kind) {
     for (const auto& action : catalog.actions) {
         if (action.kind == kind) {
             return action;
@@ -69,7 +69,7 @@ std::optional<pastit::ActionInstance> find_kind(const pastit::ActionCatalog& cat
     return std::nullopt;
 }
 
-std::optional<pastit::ActionInstance> find_label(const pastit::ActionCatalog& catalog, std::string_view label) {
+std::optional<pasteit::ActionInstance> find_label(const pasteit::ActionCatalog& catalog, std::string_view label) {
     for (const auto& action : catalog.actions) {
         if (action.label == label) {
             return action;
@@ -78,22 +78,22 @@ std::optional<pastit::ActionInstance> find_label(const pastit::ActionCatalog& ca
     return std::nullopt;
 }
 
-bool has_kind(const pastit::ActionCatalog& catalog, pastit::ActionKind kind) {
+bool has_kind(const pasteit::ActionCatalog& catalog, pasteit::ActionKind kind) {
     return find_kind(catalog, kind).has_value();
 }
 
-bool has_id(const pastit::ActionCatalog& catalog, const std::string& id) {
+bool has_id(const pasteit::ActionCatalog& catalog, const std::string& id) {
     return catalog.find(id).has_value();
 }
 
-std::vector<pastit::PromptTemplate> without_explain_templates(std::vector<pastit::PromptTemplate> templates) {
+std::vector<pasteit::PromptTemplate> without_explain_templates(std::vector<pasteit::PromptTemplate> templates) {
     std::erase_if(templates, [](const auto& value) {
         return value.id == "builtin-explain-text" || value.id == "builtin-explain-code";
     });
     return templates;
 }
 
-std::vector<pastit::PromptTemplate> disabled_explain_templates(std::vector<pastit::PromptTemplate> templates) {
+std::vector<pasteit::PromptTemplate> disabled_explain_templates(std::vector<pasteit::PromptTemplate> templates) {
     for (auto& value : templates) {
         if (value.id == "builtin-explain-text" || value.id == "builtin-explain-code") {
             value.enabled = false;
@@ -105,7 +105,7 @@ std::vector<pastit::PromptTemplate> disabled_explain_templates(std::vector<pasti
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const auto templates = seeded_templates();
     const auto llm = provider();
@@ -186,7 +186,7 @@ int main() {
     assert(has_id(multi_item_catalog, "a_paste_text_current"));
     assert(!has_id(multi_item_catalog, "a_paste_text_stale"));
 
-    const auto file_path = std::filesystem::temp_directory_path() / "pastit-action-catalog-hash-input.txt";
+    const auto file_path = std::filesystem::temp_directory_path() / "pasteit-action-catalog-hash-input.txt";
     {
         std::ofstream output(file_path, std::ios::binary | std::ios::trunc);
         output << "hash me";

@@ -5,7 +5,7 @@
 #include <iostream>
 #include <string>
 
-using namespace pastit;
+using namespace pasteit;
 
 namespace {
 
@@ -95,7 +95,8 @@ int main() {
         options.allowed_tools = {"awk"};
         assert(run("a,1\nb,2\nc,3", "awk -F, '{s+=$2} END {print s}'", options) == "6");
         // Clipboard text is data: shell syntax inside it is never executed.
-        assert(run("$(touch /tmp/pastit-pwned); `id`", "awk '{print length($0)}'", options) == "32");
+        const std::string hostile = "$(touch /tmp/pasteit-pwned); `id`";
+        assert(run(hostile, "awk '{print length($0)}'", options) == std::to_string(hostile.size()));
         options.timeout = std::chrono::milliseconds{300};
         const auto slow = run_pipeline("", "awk 'BEGIN { while (1) {} }'", options);
         assert(!slow.ok && slow.error.find("timed out") != std::string::npos);

@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::vector<std::string> prompt_template_columns() {
@@ -221,4 +221,4 @@ PromptTemplateCommandResult cancel_prompt_template_modal(PromptTemplatesPanelMod
     return result;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

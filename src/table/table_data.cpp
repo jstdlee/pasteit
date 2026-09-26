@@ -12,7 +12,7 @@
 #include <set>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string trim(std::string_view text) {
@@ -399,4 +399,4 @@ std::string column_type_name(ColumnType type) {
     return "text";
 }
 
-}  // namespace pastit
+}  // namespace pasteit

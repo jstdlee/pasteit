@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 volatile std::sig_atomic_t show_request_pending = 0;
@@ -26,7 +26,7 @@ LinuxSingleInstance::LinuxSingleInstance(std::filesystem::path dir) {
     }
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
-    path_ = dir / ("pastit-" + std::to_string(getuid()) + ".lock");
+    path_ = dir / ("pasteit-" + std::to_string(getuid()) + ".lock");
     fd_ = open(path_.c_str(), O_CREAT | O_RDWR, 0600);
     acquired_ = fd_ >= 0 && flock(fd_, LOCK_EX | LOCK_NB) == 0;
     if (!acquired_) return;
@@ -66,4 +66,4 @@ bool LinuxSingleInstance::take_show_request() const {
     return true;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

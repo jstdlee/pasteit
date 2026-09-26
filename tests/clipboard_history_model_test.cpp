@@ -8,8 +8,8 @@
 
 namespace {
 
-pastit::ClipboardItem clipboard_item(std::string ref, pastit::ContentKind kind, std::int64_t captured_at_ms) {
-    pastit::ClipboardItem item;
+pasteit::ClipboardItem clipboard_item(std::string ref, pasteit::ContentKind kind, std::int64_t captured_at_ms) {
+    pasteit::ClipboardItem item;
     item.ref = std::move(ref);
     item.kind = kind;
     item.preview = "preview-" + item.ref;
@@ -21,8 +21,8 @@ pastit::ClipboardItem clipboard_item(std::string ref, pastit::ContentKind kind, 
     return item;
 }
 
-bool has_row(const pastit::ClipboardHistoryModel& model, const std::string& ref) {
-    return std::any_of(model.rows.begin(), model.rows.end(), [&](const pastit::ClipboardHistoryRow& row) {
+bool has_row(const pasteit::ClipboardHistoryModel& model, const std::string& ref) {
+    return std::any_of(model.rows.begin(), model.rows.end(), [&](const pasteit::ClipboardHistoryRow& row) {
         return row.ref == ref;
     });
 }
@@ -30,7 +30,7 @@ bool has_row(const pastit::ClipboardHistoryModel& model, const std::string& ref)
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     std::vector<ClipboardItem> many_items;
     for (int index = 0; index < 55; ++index) {

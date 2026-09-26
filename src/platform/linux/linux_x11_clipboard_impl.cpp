@@ -8,12 +8,12 @@
 #include <string>
 #include <thread>
 
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 [[maybe_unused]] std::int64_t now_ms() {
@@ -132,7 +132,7 @@ bool looks_like_local_path(std::string_view value) {
     return std::to_string(hash);
 }
 
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
 
 struct X11Atoms {
     Atom clipboard = None;
@@ -162,7 +162,7 @@ X11Atoms make_atoms(Display* display) {
         .image_png = XInternAtom(display, "image/png", False),
         .image_jpeg = XInternAtom(display, "image/jpeg", False),
         .incr = XInternAtom(display, "INCR", False),
-        .pasteit_property = XInternAtom(display, "PASTIT_SELECTION", False),
+        .pasteit_property = XInternAtom(display, "PASTEIT_SELECTION", False),
     };
 }
 
@@ -381,7 +381,7 @@ ContentKind classify_x11_clipboard_payload(const std::vector<std::string>& mime_
 }
 
 X11ClipboardWatcher::X11ClipboardWatcher() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     display_ = XOpenDisplay(nullptr);
     if (display_ != nullptr) {
         auto* display = static_cast<Display*>(display_);
@@ -393,7 +393,7 @@ X11ClipboardWatcher::X11ClipboardWatcher() {
 }
 
 X11ClipboardWatcher::~X11ClipboardWatcher() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ != nullptr) {
         auto* display = static_cast<Display*>(display_);
         const auto atoms = make_atoms(display);
@@ -413,7 +413,7 @@ bool X11ClipboardWatcher::available() const {
 }
 
 std::optional<std::string> X11ClipboardWatcher::owned_text_if_current() const {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr) return std::nullopt;
     auto* display = static_cast<Display*>(display_);
     const auto clipboard = XInternAtom(display, "CLIPBOARD", False);
@@ -426,7 +426,7 @@ std::optional<std::string> X11ClipboardWatcher::owned_text_if_current() const {
 }
 
 std::optional<ClipboardData> X11ClipboardWatcher::poll() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr) {
         return std::nullopt;
     }
@@ -438,7 +438,7 @@ std::optional<ClipboardData> X11ClipboardWatcher::poll() {
 }
 
 void X11ClipboardWatcher::process_events() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr) {
         return;
     }
@@ -452,7 +452,7 @@ void X11ClipboardWatcher::process_events() {
 }
 
 bool X11ClipboardWatcher::set_text(std::string_view text) {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr || window_ == 0) {
         return false;
     }
@@ -476,7 +476,7 @@ bool X11ClipboardWatcher::set_text(std::string_view text) {
 }
 
 bool X11ClipboardWatcher::set_image(const std::vector<std::byte>& bytes, std::string_view mime_type) {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr || window_ == 0 || bytes.empty()) {
         return false;
     }
@@ -499,7 +499,7 @@ bool X11ClipboardWatcher::set_image(const std::vector<std::byte>& bytes, std::st
 }
 
 bool X11ClipboardWatcher::handle_x11_event(void* event) {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr || event == nullptr) {
         return false;
     }
@@ -593,7 +593,7 @@ bool X11ClipboardWatcher::handle_x11_event(void* event) {
 }
 
 std::optional<ClipboardData> X11ClipboardWatcher::read_current_selection() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     auto* display = static_cast<Display*>(display_);
     const auto atoms = make_atoms(display);
     const Window owner = XGetSelectionOwner(display, atoms.clipboard);
@@ -683,4 +683,4 @@ std::optional<ClipboardData> X11ClipboardWatcher::read_current_selection() {
 #endif
 }
 
-}  // namespace pastit
+}  // namespace pasteit

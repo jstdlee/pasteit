@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ActionCatalog {
     std::vector<ActionInstance> actions;
@@ -33,4 +33,4 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot);
 ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<PromptTemplate>& templates,
                             const ProviderSettings& provider);
 
-}  // namespace pastit
+}  // namespace pasteit

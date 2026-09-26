@@ -8,7 +8,7 @@
 #include <string_view>
 #include <memory>
 
-namespace pastit {
+namespace pasteit {
 
 class DjevClient {
 public:
@@ -35,4 +35,4 @@ private:
     bool autojev_mode_ = false;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

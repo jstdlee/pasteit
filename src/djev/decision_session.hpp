@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class DecisionSessionStatus {
     Ready,
@@ -28,4 +28,4 @@ PreparedDecision prepare_ranked_decision(const DecisionRequest& request, const D
                                          const ActionCatalog& catalog, const DecisionSnapshot& current_snapshot,
                                          const ActionRankingContext& context = {});
 
-}  // namespace pastit
+}  // namespace pasteit

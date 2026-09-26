@@ -6,7 +6,7 @@
 #include <vector>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     std::vector<PromptTemplate> templates{
         {.id = "builtin", .name = "Summarize", .system_prompt = "Summarize {text}", .temperature = 0.2, .enabled = true, .built_in = true},

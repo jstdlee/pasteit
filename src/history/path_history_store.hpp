@@ -2,7 +2,7 @@
 #include "storage/path_history.hpp"
 #include <filesystem>
 #include <string>
-namespace pastit {
+namespace pasteit {
 struct PathHistoryLoadResult{PathHistory history;std::string warning;};
 class PathHistoryStore{
 public:PathHistoryStore(std::filesystem::path path,std::size_t limit=100):path_(std::move(path)),limit_(limit){}

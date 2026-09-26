@@ -1,6 +1,6 @@
 #include "ui/localization.hpp"
 #include <array>
-namespace pastit {
+namespace pasteit {
 UiLanguage resolve_language(UiLanguage requested,std::string_view locale){if(requested!=UiLanguage::System)return requested;return locale.starts_with("zh")?UiLanguage::SimplifiedChinese:UiLanguage::English;}
 std::string tr(UiLanguage language,UiTextKey key){
  const bool zh=language==UiLanguage::SimplifiedChinese;

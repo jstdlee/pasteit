@@ -88,7 +88,7 @@
 #include <thread>
 #include <vector>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include "ui/multi_viewport.hpp"
 #if defined(_WIN32)
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -114,10 +114,10 @@ extern char** environ;
 #endif
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 
 std::int64_t current_time_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -231,7 +231,7 @@ void load_dotenv_file(const std::filesystem::path& path) {
 }
 
 void load_desktop_environment() {
-    if (const char* explicit_path = std::getenv("PASTIT_ENV_FILE")) {
+    if (const char* explicit_path = std::getenv("PASTEIT_ENV_FILE")) {
         load_dotenv_file(explicit_path);
         return;
     }
@@ -494,7 +494,7 @@ std::string preview_excerpt(std::string_view text, std::size_t max_lines) {
 }  // namespace
 
 int run_desktop_runtime() {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     load_desktop_environment();
 #if defined(_WIN32)
     WindowsSingleInstance single_instance;
@@ -610,7 +610,7 @@ int run_desktop_runtime() {
     UsageModel usage_model = std::move(usage_load.model);
     if (!usage_load.warning.empty()) std::cerr << "PasteIt: " << usage_load.warning << '\n';
     if (!platform->register_global_shortcut()) {
-        std::cerr << "Could not register global Ctrl+Alt+F; set PASTIT_SHOW_ON_START=1 to open manually.\n";
+        std::cerr << "Could not register global Ctrl+Alt+F; set PASTEIT_SHOW_ON_START=1 to open manually.\n";
     }
 
     DjevClient djev_client(settings.djev.endpoint, settings.djev.model_id, DjevClient::kDefaultTimeout, {},
@@ -889,7 +889,7 @@ int run_desktop_runtime() {
         if (!settings_status.empty()) settings_status += "\n";
         settings_status += clipboard_history_load.warning;
     }
-    const bool diagnostics = std::getenv("PASTIT_DIAGNOSTICS") != nullptr;
+    const bool diagnostics = std::getenv("PASTEIT_DIAGNOSTICS") != nullptr;
     auto last_clipboard_poll = std::chrono::steady_clock::time_point{};
     if(!platform->set_popup_opacity(settings.window_opacity))glfwSetWindowOpacity(window, settings.window_opacity);
 
@@ -993,7 +993,7 @@ int run_desktop_runtime() {
         input.focused_target_hash = focus.focused_target_hash;
         input.focused_app = focus.app_name;
         input.focused_window_title = focus.window_title;
-        input.direct_send_available = std::getenv("PASTIT_SENDMAIL") != nullptr;
+        input.direct_send_available = std::getenv("PASTEIT_SENDMAIL") != nullptr;
         input.prompt_templates = settings.prompt_templates;
         input.general_llm = settings.general_llm;
         input.default_image_directory = settings.default_image_directory;
@@ -1108,7 +1108,7 @@ int run_desktop_runtime() {
             return std::nullopt;
         }
         const auto output = std::filesystem::temp_directory_path() /
-            ("pastit-annotation-" + item->ref + image_extension_for(*item));
+            ("pasteit-annotation-" + item->ref + image_extension_for(*item));
         std::ofstream stream(output, std::ios::binary | std::ios::trunc);
         const auto bytes = clipboard_store.read(item->ref);
         stream.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
@@ -1147,13 +1147,13 @@ int run_desktop_runtime() {
                 mermaid_panel.bring_to_front();
                 mermaid_preview_state.mode = RendererPreviewPanelState::Mode::Source;
                 mermaid_preview_state.destination = path_to_utf8_string(std::filesystem::temp_directory_path() /
-                    ("pastit-" + renderer.action_id + ".mmd"));
+                    ("pasteit-" + renderer.action_id + ".mmd"));
                 break;
             case RendererResultKind::Qr:
                 qr_panel.bring_to_front();
                 qr_preview_state.mode = RendererPreviewPanelState::Mode::Source;
                 qr_preview_state.destination = path_to_utf8_string(std::filesystem::temp_directory_path() /
-                    ("pastit-" + renderer.action_id + ".txt"));
+                    ("pasteit-" + renderer.action_id + ".txt"));
                 break;
             case RendererResultKind::Annotation: {
                 annotation_panel.open = true;
@@ -1180,7 +1180,7 @@ int run_desktop_runtime() {
             .clipboard_store = clipboard_store,
             .path_history = path_history,
             .request_id = std::move(request_id),
-            .direct_send_configured = std::getenv("PASTIT_SENDMAIL") != nullptr,
+            .direct_send_configured = std::getenv("PASTEIT_SENDMAIL") != nullptr,
             .now_ms = current_time_ms(),
             .open_uri = {},
             .send_email = {},
@@ -1192,7 +1192,7 @@ int run_desktop_runtime() {
             return platform->open_uri(uri);
         };
         context.send_email = [](std::string_view email) {
-            const char* adapter = std::getenv("PASTIT_SENDMAIL");
+            const char* adapter = std::getenv("PASTEIT_SENDMAIL");
             return adapter != nullptr && spawn_detached({adapter, std::string{email}});
         };
         return context;
@@ -1516,7 +1516,7 @@ int run_desktop_runtime() {
         }
     };
 
-    bool show_on_start = std::getenv("PASTIT_SHOW_ON_START") != nullptr;
+    bool show_on_start = std::getenv("PASTEIT_SHOW_ON_START") != nullptr;
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         platform->process_events();
@@ -2757,7 +2757,7 @@ int run_desktop_runtime() {
                 ImGui::SameLine();
                 if(ImGui::Button(tr(ui_language,UiTextKey::OpenTemporaryFile).c_str())&&!active_batch.request.snapshot.clipboard_items.empty()){
                     const auto& item=active_batch.request.snapshot.clipboard_items.front();std::string extension=".bin";for(const auto& mime:item.mime_types){if(mime=="image/png")extension=".png";else if(mime=="image/jpeg"||mime=="image/jpg")extension=".jpg";else if(mime=="image/bmp")extension=".bmp";}
-                    const auto output=std::filesystem::temp_directory_path()/("pastit-preview-"+item.ref+extension);std::ofstream stream(output,std::ios::binary|std::ios::trunc);const auto bytes=clipboard_store.read(item.ref);stream.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));stream.close();if(stream){(void)path_history.observe_path(output,PathKind::File,"preview",current_time_ms());platform->open_path(output);execution_status=tr(ui_language,UiTextKey::OpenedTemporaryImage)+path_to_utf8_string(output);}
+                    const auto output=std::filesystem::temp_directory_path()/("pasteit-preview-"+item.ref+extension);std::ofstream stream(output,std::ios::binary|std::ios::trunc);const auto bytes=clipboard_store.read(item.ref);stream.write(reinterpret_cast<const char*>(bytes.data()),static_cast<std::streamsize>(bytes.size()));stream.close();if(stream){(void)path_history.observe_path(output,PathKind::File,"preview",current_time_ms());platform->open_path(output);execution_status=tr(ui_language,UiTextKey::OpenedTemporaryImage)+path_to_utf8_string(output);}
                 }
                 ImGui::BeginChild("image-scroll",ImVec2(0,0),true,ImGuiWindowFlags_HorizontalScrollbar);
                 if(ImGui::IsWindowHovered())image_preview.set_zoom(image_preview.zoom+ImGui::GetIO().MouseWheel*0.1F);
@@ -2876,4 +2876,4 @@ int run_desktop_runtime() {
 #endif
 }
 
-}  // namespace pastit
+}  // namespace pasteit

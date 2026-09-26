@@ -6,7 +6,7 @@
 #include <string>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
     using namespace std::chrono_literals;
 
     DecisionFutureSlot slot;

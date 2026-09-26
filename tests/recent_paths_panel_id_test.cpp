@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -17,9 +17,9 @@ int main() {
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
 
-    pastit::RecentPathsModel model;
+    pasteit::RecentPathsModel model;
     for (int index = 0; index < 10; ++index) {
-        pastit::RecentPathRow row;
+        pasteit::RecentPathRow row;
         row.ref = "path-" + std::to_string(index);
         row.type_label = "folder";
         row.display_path = "/tmp/path-" + std::to_string(index);
@@ -27,7 +27,7 @@ int main() {
         row.last_seen_label = "same time";
         model.rows.push_back(std::move(row));
     }
-    pastit::RecentPathsState state;
+    pasteit::RecentPathsState state;
 
     // Scan across cells without clicking. Dear ImGui counts all visible items
     // sharing the ID hovered in the prior frame, even those in other rows.
@@ -41,7 +41,7 @@ int main() {
                 ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
                 ImGui::SetNextWindowSize(io.DisplaySize);
                 ImGui::Begin("Path History", nullptr, ImGuiWindowFlags_NoDecoration);
-                pastit::render_recent_paths_panel(state, model, pastit::UiLanguage::English);
+                pasteit::render_recent_paths_panel(state, model, pasteit::UiLanguage::English);
                 ImGui::End();
                 ImGui::Render();
             }

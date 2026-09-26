@@ -7,18 +7,18 @@
 
 namespace {
 
-bool is_red(const pastit::AnnotationColor& color) {
+bool is_red(const pasteit::AnnotationColor& color) {
     return color.r == 255 && color.g == 0 && color.b == 0 && color.a == 255;
 }
 
-bool is_white(const pastit::AnnotationColor& color) {
+bool is_white(const pasteit::AnnotationColor& color) {
     return color.r == 255 && color.g == 255 && color.b == 255 && color.a == 255;
 }
 
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     {
         AnnotationDocument doc("/tmp/original.png");

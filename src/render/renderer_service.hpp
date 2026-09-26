@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 
 struct RenderResult {
     bool available = false;
@@ -39,4 +39,4 @@ private:
     RendererSettings settings_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -4,7 +4,7 @@
 #include <cassert>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
     DecisionSnapshot snapshot;
     snapshot.clipboard_items = {
         {.ref="text", .kind=ContentKind::Text, .preview="Hello {world}"},

@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace pastit {
+namespace pasteit {
 
 std::vector<RankedAction> rank_top_actions(const DecisionResponse& response, const ActionCatalog& catalog, std::size_t limit,
                                            const ActionRankingContext& context) {
@@ -45,4 +45,4 @@ bool response_is_stale(const DecisionRequest& request, const DecisionSnapshot& c
            request.snapshot.focused_target_hash != current_snapshot.focused_target_hash;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

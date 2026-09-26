@@ -12,7 +12,7 @@
 #include <sstream>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 std::string string_value(const JsonValue* value, std::string fallback = {}) {
     return value != nullptr && value->string() != nullptr ? *value->string() : std::move(fallback);
@@ -267,4 +267,4 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
     if (ec) { std::filesystem::remove(temporary); error = ec.message(); return false; }
     error.clear(); return true;
 }
-}  // namespace pastit
+}  // namespace pasteit

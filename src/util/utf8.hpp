@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 
 namespace utf8_detail {
 
@@ -69,4 +69,4 @@ inline std::string utf8_prefix_bytes(std::string_view value, std::size_t max_byt
     return std::string{value.substr(0, offset)};
 }
 
-}  // namespace pastit
+}  // namespace pasteit

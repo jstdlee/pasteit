@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <functional>
 
-namespace pastit {
+namespace pasteit {
 
 class LinuxFastActionServices final : public FastActionServices {
 public:
@@ -41,4 +41,4 @@ private:
     TerminalLauncher terminal_launcher_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

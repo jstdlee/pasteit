@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 
 void DateTimeResultState::complete(DateTimeResult result) {
     result.status = DateTimeResultStatus::Completed;
@@ -27,4 +27,4 @@ std::string DateTimeResultState::copy_text() const {
     return active_.formatted;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

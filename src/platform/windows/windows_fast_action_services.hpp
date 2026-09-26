@@ -4,7 +4,7 @@
 
 #include <cstddef>
 
-namespace pastit {
+namespace pasteit {
 
 class WindowsFastActionServices final : public FastActionServices {
 public:
@@ -33,4 +33,4 @@ private:
     Options options_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

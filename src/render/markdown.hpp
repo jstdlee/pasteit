@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // A small CommonMark-flavoured parser for previewing clipboard Markdown:
 // headings (ATX and setext), paragraphs, fenced code, quotes, nested and
@@ -46,4 +46,4 @@ std::vector<MdBlock> parse_markdown(std::string_view text);
 std::string markdown_to_html(const std::vector<MdBlock>& blocks);
 std::string markdown_to_plain_text(const std::vector<MdBlock>& blocks);
 
-}  // namespace pastit
+}  // namespace pasteit

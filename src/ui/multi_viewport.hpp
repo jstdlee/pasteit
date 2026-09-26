@@ -9,11 +9,11 @@
 #include <future>
 #include <optional>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 
 struct ViewportSize {
     float width = 640.0F;
@@ -87,9 +87,9 @@ struct RendererPreviewPanelState {
 IndependentViewportDescriptor independent_panel_viewport(std::string title, ViewportSize size);
 std::size_t panel_text_visible_rows(std::string_view value);
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void configure_independent_viewports(ImGuiIO& io, ImGuiStyle& style);
 ImGuiWindowClass independent_window_class();
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

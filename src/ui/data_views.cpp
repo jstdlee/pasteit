@@ -2,7 +2,7 @@
 
 #include "graph/graph_data.hpp"
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include "ui/icons.hpp"
 #include "ui/imgui_widgets.hpp"
 #include "ui/theme.hpp"
@@ -14,7 +14,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace pastit {
+namespace pasteit {
 
 void open_table_view(TableViewState& state, TableData table, std::string title) {
     state = {};
@@ -66,7 +66,7 @@ void open_chart_from_table(ChartViewState& state, const TableData& table, std::v
     state.save_path = std::move(save_path);
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 
 namespace {
 
@@ -680,4 +680,4 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
 
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

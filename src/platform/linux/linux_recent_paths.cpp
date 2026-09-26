@@ -6,7 +6,7 @@
 #include <sstream>
 #include <string_view>
 #include <sys/stat.h>
-namespace pastit {
+namespace pasteit {
 namespace {
 bool numeric(std::string_view value){return !value.empty()&&std::all_of(value.begin(),value.end(),[](unsigned char c){return std::isdigit(c);});}
 std::int64_t link_time(const std::filesystem::path& value){struct stat info{};return lstat(value.c_str(),&info)==0?static_cast<std::int64_t>(info.st_mtim.tv_sec)*1000+info.st_mtim.tv_nsec/1000000:0;}

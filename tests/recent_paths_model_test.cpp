@@ -7,9 +7,9 @@
 
 namespace {
 
-pastit::PathLocation path(std::string ref, std::filesystem::path value, pastit::PathKind kind,
+pasteit::PathLocation path(std::string ref, std::filesystem::path value, pasteit::PathKind kind,
                           std::int64_t last_seen_ms, bool exists) {
-    pastit::PathLocation out;
+    pasteit::PathLocation out;
     out.ref = std::move(ref);
     out.path = std::move(value);
     out.kind = kind;
@@ -19,8 +19,8 @@ pastit::PathLocation path(std::string ref, std::filesystem::path value, pastit::
     return out;
 }
 
-pastit::ActionInstance action(std::string id, pastit::ActionKind kind, std::string target_ref, bool enabled = true) {
-    pastit::ActionInstance out;
+pasteit::ActionInstance action(std::string id, pasteit::ActionKind kind, std::string target_ref, bool enabled = true) {
+    pasteit::ActionInstance out;
     out.id = std::move(id);
     out.kind = kind;
     out.source_ref = "clip_source";
@@ -32,7 +32,7 @@ pastit::ActionInstance action(std::string id, pastit::ActionKind kind, std::stri
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const std::vector<PathLocation> paths = {
         path("dest", "/tmp/dest", PathKind::Directory, 10, true),

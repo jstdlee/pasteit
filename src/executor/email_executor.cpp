@@ -7,7 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::filesystem::path available_generated_path(std::filesystem::path path) {
@@ -134,7 +134,7 @@ std::optional<std::string> record_text_clipboard(ExecutionContext& context, std:
         .mime_types = {"text/plain"},
         .bytes = bytes_from_string(text),
         .kind = kind,
-        .source_app = "pastit",
+        .source_app = "pasteit",
         .captured_at_ms = context.now_ms,
     });
     return item.ref;
@@ -192,7 +192,7 @@ ExecutionResult execute_email_action(const ActionInstance& action, ExecutionCont
                 result.output_path = output;
                 result.output_paths.push_back(output);
                 result.output_clipboard_ref = record_text_clipboard(context, path_to_utf8_string(output), ContentKind::Path);
-                context.path_history.observe(path_to_utf8_string(output), "pastit", context.now_ms);
+                context.path_history.observe(path_to_utf8_string(output), "pasteit", context.now_ms);
                 return result;
             }
             default:
@@ -203,4 +203,4 @@ ExecutionResult execute_email_action(const ActionInstance& action, ExecutionCont
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

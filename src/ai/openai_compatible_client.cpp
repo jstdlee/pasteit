@@ -3,7 +3,7 @@
 #include <mutex>
 #include <set>
 #include <sstream>
-namespace pastit {
+namespace pasteit {
 std::string normalize_chat_completions_endpoint(std::string endpoint){
     while(!endpoint.empty()&&endpoint.back()=='/')endpoint.pop_back();
     constexpr std::string_view suffix="/v1/chat/completions";

@@ -75,7 +75,7 @@ The API key must never appear in logs, tests, process arguments, or review artif
 
 Add a platform-neutral `ClipboardHistoryStore` backed by:
 
-- `${XDG_DATA_HOME:-~/.local/share}/pastit/clipboard-history.json` for metadata;
+- `${XDG_DATA_HOME:-~/.local/share}/pasteit/clipboard-history.json` for metadata;
 - the existing `blobs/<content-hash>.bin` directory for bytes.
 
 Each record stores:

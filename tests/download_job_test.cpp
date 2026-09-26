@@ -34,7 +34,7 @@ public:
         std::random_device random;
         for (int attempt = 0; attempt < 16; ++attempt) {
             path_ = std::filesystem::temp_directory_path() /
-                ("pastit-download-job-" + std::to_string(random()) + "-" + std::to_string(attempt));
+                ("pasteit-download-job-" + std::to_string(random()) + "-" + std::to_string(attempt));
             if (std::filesystem::create_directory(path_)) {
                 return;
             }
@@ -53,11 +53,11 @@ private:
     std::filesystem::path path_;
 };
 
-class BlockingTransport final : public pastit::DownloadTransport {
+class BlockingTransport final : public pasteit::DownloadTransport {
 public:
-    explicit BlockingTransport(pastit::DownloadResponse response) : response_(std::move(response)) {}
+    explicit BlockingTransport(pasteit::DownloadResponse response) : response_(std::move(response)) {}
 
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest& request,
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest& request,
                                    const std::atomic_bool& cancelled) override {
         {
             std::lock_guard lock(mutex_);
@@ -84,7 +84,7 @@ public:
         assert(ready);
     }
 
-    void set_response(pastit::DownloadResponse response) {
+    void set_response(pasteit::DownloadResponse response) {
         std::lock_guard lock(mutex_);
         response_ = std::move(response);
         release_ = false;
@@ -99,7 +99,7 @@ public:
         changed_.notify_all();
     }
 
-    std::vector<pastit::DownloadRequest> requests() const {
+    std::vector<pasteit::DownloadRequest> requests() const {
         std::lock_guard lock(mutex_);
         return requests_;
     }
@@ -107,44 +107,44 @@ public:
 private:
     mutable std::mutex mutex_;
     std::condition_variable changed_;
-    pastit::DownloadResponse response_;
-    std::vector<pastit::DownloadRequest> requests_;
+    pasteit::DownloadResponse response_;
+    std::vector<pasteit::DownloadRequest> requests_;
     bool requested_ = false;
     bool release_ = false;
 };
 
-class ImmediateTransport final : public pastit::DownloadTransport {
+class ImmediateTransport final : public pasteit::DownloadTransport {
 public:
-    explicit ImmediateTransport(pastit::DownloadResponse response) : response_(std::move(response)) {}
+    explicit ImmediateTransport(pasteit::DownloadResponse response) : response_(std::move(response)) {}
 
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest& request,
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest& request,
                                    const std::atomic_bool&) override {
         requests.push_back(request);
         return response_;
     }
 
-    pastit::DownloadResponse response_;
-    std::vector<pastit::DownloadRequest> requests;
+    pasteit::DownloadResponse response_;
+    std::vector<pasteit::DownloadRequest> requests;
 };
 
-class ThrowingTransport final : public pastit::DownloadTransport {
+class ThrowingTransport final : public pasteit::DownloadTransport {
 public:
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest&, const std::atomic_bool&) override {
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest&, const std::atomic_bool&) override {
         throw std::runtime_error("transport exploded");
     }
 };
 
-class StagedStreamingTransport final : public pastit::DownloadTransport {
+class StagedStreamingTransport final : public pasteit::DownloadTransport {
 public:
     explicit StagedStreamingTransport(bool hold_after_stop = false) : hold_after_stop_(hold_after_stop) {}
 
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest&, const std::atomic_bool&) override {
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest&, const std::atomic_bool&) override {
         return {.status_code = 0, .error = "stream was not used"};
     }
 
-    pastit::DownloadResponse stream(
-        const pastit::DownloadRequest& request, const std::atomic_bool& cancelled,
-        const std::function<bool(const pastit::DownloadResponse&)>& on_headers,
+    pasteit::DownloadResponse stream(
+        const pasteit::DownloadRequest& request, const std::atomic_bool& cancelled,
+        const std::function<bool(const pasteit::DownloadResponse&)>& on_headers,
         const std::function<bool(std::string_view)>& on_chunk) override {
         {
             std::lock_guard lock(mutex_);
@@ -152,7 +152,7 @@ public:
         }
         changed_.notify_all();
         const bool first = request.range_start == 0;
-        pastit::DownloadResponse response{
+        pasteit::DownloadResponse response{
             .status_code = first ? 200 : 206,
             .total_size = 11,
             .range_supported = !first,
@@ -191,7 +191,7 @@ public:
         changed_.notify_all();
     }
 
-    std::vector<pastit::DownloadRequest> requests() const {
+    std::vector<pasteit::DownloadRequest> requests() const {
         std::lock_guard lock(mutex_);
         return requests_;
     }
@@ -200,22 +200,22 @@ private:
     bool hold_after_stop_;
     mutable std::mutex mutex_;
     std::condition_variable changed_;
-    std::vector<pastit::DownloadRequest> requests_;
+    std::vector<pasteit::DownloadRequest> requests_;
     bool chunk_delivered_ = false;
     bool released_ = false;
 };
 
-class StreamingReplyTransport final : public pastit::DownloadTransport {
+class StreamingReplyTransport final : public pasteit::DownloadTransport {
 public:
-    explicit StreamingReplyTransport(pastit::DownloadResponse response) : response_(std::move(response)) {}
+    explicit StreamingReplyTransport(pasteit::DownloadResponse response) : response_(std::move(response)) {}
 
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest&, const std::atomic_bool&) override {
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest&, const std::atomic_bool&) override {
         return {.status_code = 0, .error = "stream was not used"};
     }
 
-    pastit::DownloadResponse stream(
-        const pastit::DownloadRequest&, const std::atomic_bool&,
-        const std::function<bool(const pastit::DownloadResponse&)>& on_headers,
+    pasteit::DownloadResponse stream(
+        const pasteit::DownloadRequest&, const std::atomic_bool&,
+        const std::function<bool(const pasteit::DownloadResponse&)>& on_headers,
         const std::function<bool(std::string_view)>& on_chunk) override {
         if (!on_headers(response_) || !on_chunk("fresh body")) {
             return {.status_code = 0, .error = "sink rejected transfer"};
@@ -224,13 +224,13 @@ public:
     }
 
 private:
-    pastit::DownloadResponse response_;
+    pasteit::DownloadResponse response_;
 };
 
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const ScopedTempRoot temp_root;
     const auto& root = temp_root.path();

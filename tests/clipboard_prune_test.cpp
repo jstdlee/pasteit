@@ -5,8 +5,8 @@
 #include <filesystem>
 
 int main() {
-    using namespace pastit;
-    const auto root = std::filesystem::temp_directory_path() / "pastit-clipboard-prune-test";
+    using namespace pasteit;
+    const auto root = std::filesystem::temp_directory_path() / "pasteit-clipboard-prune-test";
     std::filesystem::remove_all(root);
     ClipboardStore store(root);
     for (int index = 0; index < 12; ++index) {

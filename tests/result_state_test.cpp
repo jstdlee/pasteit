@@ -9,7 +9,7 @@
 #include <string>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     ContactResultState contact;
     const auto contact_json =

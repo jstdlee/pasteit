@@ -6,11 +6,11 @@
 
 #include <sstream>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string hash_label(HashAlgorithm algorithm) {
@@ -43,7 +43,7 @@ FastActionPanelModel build_hash_result_panel_model(const HashResultState& state)
     return model;
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_hash_result_panel(const HashResultState& state, bool& open, bool& focus_pending) {
     auto model = build_hash_result_panel_model(state);
     if (begin_tool_window(model.viewport.title, &open,
@@ -62,4 +62,4 @@ void draw_hash_result_panel(const HashResultState& state, bool& open, bool& focu
 }
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

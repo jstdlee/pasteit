@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 
 std::string format_axis_number(double value) {
     std::ostringstream out;
@@ -126,4 +126,4 @@ std::string chart_problem(const ChartSpec& spec) {
     return {};
 }
 
-}  // namespace pastit
+}  // namespace pasteit

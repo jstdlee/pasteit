@@ -2,7 +2,7 @@
 
 #include "core/action.hpp"
 
-namespace pastit {
+namespace pasteit {
 
 // Visual and ranking grouping of action kinds.
 enum class ActionCategory { Paste, Open, Save, Convert, Extract, Network, Code, Ai, Media };
@@ -14,4 +14,4 @@ ActionCategory action_category(ActionKind kind);
 // ranking without Djev still leads with what the content is.
 double action_specificity_prior(ActionKind kind);
 
-}  // namespace pastit
+}  // namespace pasteit

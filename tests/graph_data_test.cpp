@@ -5,7 +5,7 @@
 #include <string>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
     const auto series = parse_graph_data("1, 2 3,4", false, false);
     assert(series && series->points.size() == 4);
     assert(series->points[2].value == 3);

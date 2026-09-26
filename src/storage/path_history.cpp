@@ -9,7 +9,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string next_path_ref(std::uint64_t value) {
@@ -183,7 +183,7 @@ void sort_paths_by_rank(std::vector<PathLocation>& paths, std::int64_t now_ms) {
 
 void PathHistory::record_use(const std::filesystem::path& directory, std::int64_t now_ms) {
     if (directory.empty()) return;
-    (void)observe_path(directory, PathKind::Directory, "pastit", now_ms);
+    (void)observe_path(directory, PathKind::Directory, "pasteit", now_ms);
     const auto normalized = normalize_path(directory);
     for (auto& location : locations_) {
         if (location.path != normalized) continue;
@@ -239,4 +239,4 @@ void PathHistory::clear() {
     locations_.clear();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct RankedAction {
     ActionInstance action;
@@ -20,4 +20,4 @@ std::vector<RankedAction> rank_top_actions(const DecisionResponse& response, con
                                            const ActionRankingContext& context = {});
 bool response_is_stale(const DecisionRequest& request, const DecisionSnapshot& current_snapshot);
 
-}  // namespace pastit
+}  // namespace pasteit

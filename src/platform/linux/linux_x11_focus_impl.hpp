@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct FocusContext {
     std::uint64_t window_id = 0;
@@ -47,4 +47,4 @@ bool register_ctrl_alt_f_shortcut();
 bool poll_ctrl_alt_f_shortcut();
 bool focus_x11_target_and_paste(const FocusContext& context);
 
-}  // namespace pastit
+}  // namespace pasteit

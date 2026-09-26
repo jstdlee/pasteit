@@ -5,7 +5,7 @@
 #include <iostream>
 #include <string>
 
-using namespace pastit;
+using namespace pasteit;
 
 namespace {
 

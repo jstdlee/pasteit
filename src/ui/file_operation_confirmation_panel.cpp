@@ -3,7 +3,7 @@
 
 #include <algorithm>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string shortcut_label(const PathLocation& destination) {
@@ -88,4 +88,4 @@ FileOperationConfirmationCommandResult cancel_file_operation(const FileOperation
     return result;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

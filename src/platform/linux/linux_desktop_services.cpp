@@ -14,14 +14,14 @@
 #include <thread>
 #include <unistd.h>
 
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #endif
 
 extern char** environ;
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 enum class DirectoryChooserStatus {
@@ -196,7 +196,7 @@ std::optional<std::filesystem::path> browser_open_path(const std::filesystem::pa
                                                       const std::filesystem::path& home_directory) {
     const auto filename = path.filename().string();
     std::error_code error;
-    if (path.extension() != ".html" || !filename.starts_with("pastit-render-") ||
+    if (path.extension() != ".html" || !filename.starts_with("pasteit-render-") ||
         !std::filesystem::equivalent(path.parent_path(), std::filesystem::temp_directory_path(), error)) {
         return path;
     }
@@ -217,7 +217,7 @@ std::optional<std::filesystem::path> browser_open_path(const std::filesystem::pa
     for (const auto& entry : std::filesystem::directory_iterator(directory, error)) {
         if (error) break;
         const auto name = entry.path().filename().string();
-        if (!name.starts_with("pastit-render-") || entry.path().extension() != ".html") continue;
+        if (!name.starts_with("pasteit-render-") || entry.path().extension() != ".html") continue;
         std::error_code entry_error;
         if (entry.symlink_status(entry_error).type() != std::filesystem::file_type::regular || entry_error) continue;
         if (entry.last_write_time(entry_error) < expired_before && !entry_error) {
@@ -290,7 +290,7 @@ std::optional<std::string> LinuxDesktopServices::owned_clipboard_text() const {
     return clipboard_.owned_text_if_current();
 }
 bool LinuxDesktopServices::move_popup_by(int delta_x, int delta_y) {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (popup_window_id_ == 0) return false;
     Display* display=XOpenDisplay(nullptr);if(!display)return false;XWindowAttributes attributes{};
     const bool ok=XGetWindowAttributes(display,static_cast<Window>(popup_window_id_),&attributes)!=0;
@@ -300,7 +300,7 @@ bool LinuxDesktopServices::move_popup_by(int delta_x, int delta_y) {
 #endif
 }
 void LinuxDesktopServices::keep_above_popup(std::uint64_t window_id) {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (popup_window_id_ == 0 || window_id == 0 || window_id == popup_window_id_) return;
     Display* display = XOpenDisplay(nullptr);
     if (display == nullptr) return;
@@ -323,7 +323,7 @@ unsigned long x11_opacity_cardinal(float opacity) {
 }
 
 bool LinuxDesktopServices::set_popup_opacity(float opacity) {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (popup_window_id_ == 0 || opacity < 0.0F || opacity > 1.0F) return false;
     Display* display=XOpenDisplay(nullptr);if(!display)return false;const Atom property=XInternAtom(display,"_NET_WM_WINDOW_OPACITY",False);
     const unsigned long value=x11_opacity_cardinal(opacity);XChangeProperty(display,static_cast<Window>(popup_window_id_),property,XA_CARDINAL,32,PropModeReplace,reinterpret_cast<const unsigned char*>(&value),1);XFlush(display);XCloseDisplay(display);return true;
@@ -366,4 +366,4 @@ std::optional<std::filesystem::path> LinuxDesktopServices::choose_directory(
 
 FastActionServices& LinuxDesktopServices::fast_actions() { return fast_actions_; }
 
-}  // namespace pastit
+}  // namespace pasteit

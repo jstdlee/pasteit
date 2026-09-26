@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 struct UsageLoadResult {
     UsageModel model;
@@ -24,4 +24,4 @@ private:
     std::filesystem::path path_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

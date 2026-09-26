@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class PiiCategory {
     Email,
@@ -83,4 +83,4 @@ bool iban_valid(std::string_view iban);
 bool singapore_nric_valid(std::string_view id);
 bool china_resident_id_valid(std::string_view id);
 
-}  // namespace pastit
+}  // namespace pasteit

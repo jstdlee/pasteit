@@ -1,7 +1,7 @@
 #pragma once
 #include "platform/platform_services.hpp"
 #include <cstdint>
-namespace pastit {
+namespace pasteit {
 class LinuxRecentPathCollector{
 public:
  std::vector<PlatformRecentPath> scan_process(std::uint32_t pid)const;

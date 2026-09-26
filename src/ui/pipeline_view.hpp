@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct PipelineViewState {
     bool open = false;
@@ -34,7 +34,7 @@ struct PipelineViewState {
 
 void open_pipeline_view(PipelineViewState& state, std::string input, std::string command);
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 struct PipelineViewHost {
     DataViewHost data;
     std::function<void(std::string_view)> replace_clipboard;
@@ -46,4 +46,4 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
                         UiLanguage language);
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -9,8 +9,8 @@ namespace {
 
 constexpr std::int64_t kDay = 24LL * 60 * 60 * 1000;
 
-pastit::ActionInstance action(pastit::ActionKind kind, std::string target = {}) {
-    pastit::ActionInstance value;
+pasteit::ActionInstance action(pasteit::ActionKind kind, std::string target = {}) {
+    pasteit::ActionInstance value;
     value.kind = kind;
     value.id = "a_" + std::to_string(static_cast<int>(kind)) + target;
     value.target_ref = std::move(target);
@@ -20,7 +20,7 @@ pastit::ActionInstance action(pastit::ActionKind kind, std::string target = {}) 
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
     const std::int64_t now = 1'790'000'000'000;
 
     DecisionSnapshot snapshot;
@@ -64,7 +64,7 @@ int main() {
     const auto summary = usage_summary(model, now, 5);
     assert(summary.contains("text"));
 
-    const auto root = std::filesystem::temp_directory_path() / "pastit-usage-test";
+    const auto root = std::filesystem::temp_directory_path() / "pasteit-usage-test";
     std::filesystem::remove_all(root);
     UsageStore store(root / "usage.json");
     std::string error;

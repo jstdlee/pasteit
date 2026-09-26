@@ -16,7 +16,7 @@ std::string read_text_file(const std::filesystem::path& path) {
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-std::vector<std::string> ids_for(const pastit::ActionCatalog& catalog) {
+std::vector<std::string> ids_for(const pasteit::ActionCatalog& catalog) {
     std::vector<std::string> ids;
     ids.reserve(catalog.actions.size());
     for (const auto& action : catalog.actions) {
@@ -25,50 +25,50 @@ std::vector<std::string> ids_for(const pastit::ActionCatalog& catalog) {
     return ids;
 }
 
-pastit::DecisionSnapshot fixture_snapshot() {
+pasteit::DecisionSnapshot fixture_snapshot() {
     const auto fixture_root = std::filesystem::path{__FILE__}.parent_path() / "fixtures";
     assert(std::filesystem::exists(fixture_root / "clipboard_text.txt"));
     assert(std::filesystem::exists(fixture_root / "sample_resume.txt"));
     assert(std::filesystem::exists(fixture_root / "sample.json"));
     assert(std::filesystem::exists(fixture_root / "sample.png"));
 
-    pastit::DecisionSnapshot snapshot;
+    pasteit::DecisionSnapshot snapshot;
     snapshot.clipboard_hash = "fixture_clipboard_hash";
     snapshot.focused_target_hash = "fixture_target_hash";
     snapshot.captured_at_ms = 1726800000123;
-    snapshot.recent_paths.push_back(pastit::PathLocation{
+    snapshot.recent_paths.push_back(pasteit::PathLocation{
         .ref = "path_01",
         .path = std::filesystem::temp_directory_path(),
-        .kind = pastit::PathKind::Directory,
+        .kind = pasteit::PathKind::Directory,
         .last_seen_ms = 10,
         .source = "fixture",
         .exists = true,
     });
-    snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = "clip_text",
         .mime_types = {"text/plain"},
-        .kind = pastit::ContentKind::Text,
+        .kind = pasteit::ContentKind::Text,
         .preview = read_text_file(fixture_root / "clipboard_text.txt"),
         .size_bytes = 0,
     });
-    snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = "clip_resume",
         .mime_types = {"text/plain"},
-        .kind = pastit::ContentKind::Text,
+        .kind = pasteit::ContentKind::Text,
         .preview = read_text_file(fixture_root / "sample_resume.txt"),
         .size_bytes = 0,
     });
-    snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = "clip_json",
         .mime_types = {"application/json"},
-        .kind = pastit::ContentKind::Json,
+        .kind = pasteit::ContentKind::Json,
         .preview = read_text_file(fixture_root / "sample.json"),
         .size_bytes = 0,
     });
-    snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = "clip_image",
         .mime_types = {"image/png"},
-        .kind = pastit::ContentKind::Image,
+        .kind = pasteit::ContentKind::Image,
         .preview = "sample.png thumbnail",
         .size_bytes = static_cast<std::uint64_t>(std::filesystem::file_size(fixture_root / "sample.png")),
     });
@@ -78,7 +78,7 @@ pastit::DecisionSnapshot fixture_snapshot() {
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const auto snapshot = fixture_snapshot();
     const auto first_catalog = build_catalog(snapshot);

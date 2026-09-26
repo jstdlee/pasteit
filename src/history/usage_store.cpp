@@ -6,7 +6,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 
 UsageLoadResult UsageStore::load() const {
     UsageLoadResult result;
@@ -85,4 +85,4 @@ bool UsageStore::save(const UsageModel& model, std::string& error) const {
     return true;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

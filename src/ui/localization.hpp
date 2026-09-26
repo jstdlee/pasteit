@@ -2,7 +2,7 @@
 #include "config/app_settings.hpp"
 #include <string>
 #include <string_view>
-namespace pastit {
+namespace pasteit {
 enum class UiTextKey{
     SmartActions,RecentPaths,Settings,General,Copy,Open,Move,Save,Cancel,PromptTemplates,GeneralLlm,Djev,
     Target,NoClipboard,WaitingDjev,NoRankedActions,Type,Name,Path,Source,Actions,Folder,File,CopyHere,MoveHere,

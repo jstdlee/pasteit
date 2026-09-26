@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ProcessRun {
     bool started = false;
@@ -26,4 +26,4 @@ ProcessRun run_process_with_input(const std::vector<std::string>& argv, std::str
 
 std::optional<std::string> find_executable(std::string_view name);
 
-}  // namespace pastit
+}  // namespace pasteit

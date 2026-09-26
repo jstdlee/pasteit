@@ -1,5 +1,5 @@
 #include "app/ai_result_state.hpp"
-namespace pastit {
+namespace pasteit {
 void AiResultState::start(std::string action_id,std::string source_text,const TextGenerationRequest& request){
     active_={.request_id=request.request_id,.action_id=std::move(action_id),.source_text=std::move(source_text),.status=AiResultStatus::Pending,.frozen_request=request};
 }

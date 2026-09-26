@@ -2,10 +2,10 @@
 
 #include <filesystem>
 
-namespace pastit {
+namespace pasteit {
 
 std::filesystem::path executable_directory();
 std::filesystem::path app_settings_path();
 std::filesystem::path app_data_dir();
 
-}  // namespace pastit
+}  // namespace pasteit

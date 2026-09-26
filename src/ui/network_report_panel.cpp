@@ -3,11 +3,11 @@
 
 #include "ui/imgui_widgets.hpp"
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 
 FastActionPanelModel build_network_report_panel_model(const NetworkReportState& state) {
     const auto& active = state.active();
@@ -24,7 +24,7 @@ FastActionPanelModel build_network_report_panel_model(const NetworkReportState& 
     return model;
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_network_report_panel(const NetworkReportState& state, bool& open, bool& focus_pending) {
     auto model = build_network_report_panel_model(state);
     if (begin_tool_window(model.viewport.title, &open,
@@ -42,4 +42,4 @@ void draw_network_report_panel(const NetworkReportState& state, bool& open, bool
 }
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -8,7 +8,7 @@
 #include <variant>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 bool is_valid_json(std::string_view input);
 std::optional<std::string> pretty_json(std::string_view input);
@@ -46,4 +46,4 @@ std::optional<OrderedJson> parse_ordered_json(std::string_view input);
 std::string ordered_json_compact(const OrderedJson& value);
 std::string json_quote(std::string_view input);
 
-}  // namespace pastit
+}  // namespace pasteit

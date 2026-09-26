@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class DestinationRole {
     Manual,
@@ -32,4 +32,4 @@ std::vector<DestinationCandidate> resolve_file_targets(
     std::optional<std::filesystem::path> configured_default,
     const std::vector<PathLocation>& recent);
 
-}  // namespace pastit
+}  // namespace pasteit

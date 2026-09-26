@@ -1,6 +1,6 @@
 #include "app/execution_feedback.hpp"
 #include "util/path_utf8.hpp"
-namespace pastit {
+namespace pasteit {
 namespace {std::string key(std::string_view request,std::string_view action){return std::string{request}+"\n"+std::string{action};}}
 void ExecutionFeedback::start(std::string request,std::string action){auto map_key=key(request,action);entries_[map_key]={.request_id=std::move(request),.action_id=std::move(action),.status=ExecutionStatus::Executing};}
 bool ExecutionFeedback::finish(const ExecutionResult& result){auto it=entries_.find(key(result.request_id,result.action_id));if(it==entries_.end())return false;it->second.status=result.status;it->second.result=result;return true;}

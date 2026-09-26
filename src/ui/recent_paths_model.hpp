@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class RecentPathCommandKind {
     None,
@@ -97,4 +97,4 @@ RecentPathCommand move_here_recent_path(const RecentPathsModel& model, std::stri
 RecentPathCommand use_recent_path_as_destination(const RecentPathsModel& model, std::string_view ref);
 RecentPathCommand close_recent_path_detail(RecentPathsState& state);
 
-}  // namespace pastit
+}  // namespace pasteit

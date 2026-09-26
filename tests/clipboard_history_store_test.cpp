@@ -41,11 +41,11 @@ std::vector<std::byte> payload_for(int index) {
     return bytes("clipboard text item " + std::to_string(index));
 }
 
-pastit::ContentKind kind_for(int index) {
-    return index % 5 == 0 ? pastit::ContentKind::Image : pastit::ContentKind::Text;
+pasteit::ContentKind kind_for(int index) {
+    return index % 5 == 0 ? pasteit::ContentKind::Image : pasteit::ContentKind::Text;
 }
 
-std::size_t count_hash(const std::vector<pastit::ClipboardItem>& items, const std::string& hash) {
+std::size_t count_hash(const std::vector<pasteit::ClipboardItem>& items, const std::string& hash) {
     return static_cast<std::size_t>(std::count_if(items.begin(), items.end(), [&](const auto& item) {
         return item.content_hash == hash;
     }));
@@ -72,9 +72,9 @@ std::string manifest_fixture(std::string_view schema_value,
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    const auto root = std::filesystem::temp_directory_path() / "pastit_clipboard_history_store_test";
+    const auto root = std::filesystem::temp_directory_path() / "pasteit_clipboard_history_store_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
 

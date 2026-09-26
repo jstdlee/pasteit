@@ -18,12 +18,12 @@ int skip(const char* reason) {
     return 77;
 }
 
-std::string text_from(const pastit::ClipboardData& data) {
+std::string text_from(const pasteit::ClipboardData& data) {
     return std::string(reinterpret_cast<const char*>(data.bytes.data()), data.bytes.size());
 }
 
-std::optional<pastit::ClipboardData> capture_from(pastit::X11ClipboardWatcher& owner,
-                                                  pastit::X11ClipboardWatcher& reader) {
+std::optional<pasteit::ClipboardData> capture_from(pasteit::X11ClipboardWatcher& owner,
+                                                  pasteit::X11ClipboardWatcher& reader) {
     std::atomic<bool> serving{true};
     std::thread owner_thread([&] {
         while (serving.load()) {
@@ -32,7 +32,7 @@ std::optional<pastit::ClipboardData> capture_from(pastit::X11ClipboardWatcher& o
         }
     });
 
-    std::optional<pastit::ClipboardData> captured;
+    std::optional<pasteit::ClipboardData> captured;
     for (int attempt = 0; attempt < 40 && !captured.has_value(); ++attempt) {
         captured = reader.poll();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -46,7 +46,7 @@ std::optional<pastit::ClipboardData> capture_from(pastit::X11ClipboardWatcher& o
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     const char* display_name = std::getenv("DISPLAY");
     if (display_name == nullptr || std::string{display_name}.empty()) {

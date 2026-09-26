@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 enum class HashResultStatus { Idle, Completed, Failed };
 
@@ -29,4 +29,4 @@ private:
     HashResult active_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

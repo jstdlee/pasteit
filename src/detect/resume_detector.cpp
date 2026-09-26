@@ -6,7 +6,7 @@
 #include <regex>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string trim_copy(std::string_view input) {
@@ -103,4 +103,4 @@ ResumeExtraction detect_resume_fields(const std::string& text) {
     return extraction;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

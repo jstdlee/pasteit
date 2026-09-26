@@ -11,7 +11,7 @@
 #include <map>
 #include <regex>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::size_t kMaxSampledLines = 64;
@@ -506,4 +506,4 @@ std::string data_shape_description(DataShape shape) {
     return "unknown data";
 }
 
-}  // namespace pastit
+}  // namespace pasteit

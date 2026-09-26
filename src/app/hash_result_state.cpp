@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 
 void HashResultState::complete(HashResult result) {
     result.status = HashResultStatus::Completed;
@@ -25,4 +25,4 @@ std::string HashResultState::copy_text() const {
     return active_.digest;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

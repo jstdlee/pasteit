@@ -39,9 +39,9 @@ private:
 }  // namespace
 
 int main() {
-    const auto root = std::filesystem::temp_directory_path() / "pastit-settings-test";
+    const auto root = std::filesystem::temp_directory_path() / "pasteit-settings-test";
     std::filesystem::remove_all(root);
-    pastit::SettingsStore store(root / "settings.json");
+    pasteit::SettingsStore store(root / "settings.json");
 
     const auto missing = store.load();
     assert(!missing.loaded_from_disk);
@@ -52,12 +52,12 @@ int main() {
         ScopedEnv xdg_config("XDG_CONFIG_HOME", root / "xdg-config");
         ScopedEnv xdg_data("XDG_DATA_HOME", root / "xdg-data");
         ScopedEnv home("HOME", root / "home");
-        assert(pastit::app_settings_path() == pastit::executable_directory() / "settings.json");
-        assert(pastit::app_data_dir() == pastit::executable_directory() / "data");
+        assert(pasteit::app_settings_path() == pasteit::executable_directory() / "settings.json");
+        assert(pasteit::app_data_dir() == pasteit::executable_directory() / "data");
     }
 
-    auto settings = pastit::default_settings();
-    settings.language = pastit::UiLanguage::SimplifiedChinese;
+    auto settings = pasteit::default_settings();
+    settings.language = pasteit::UiLanguage::SimplifiedChinese;
     settings.window_opacity = 0.72F;
     settings.default_image_directory = "/tmp/images";
     settings.default_text_directory = "/tmp/text";
@@ -92,7 +92,7 @@ int main() {
     assert(loaded.loaded_from_disk);
     assert(loaded.warning.empty());
     assert(std::fabs(loaded.settings.window_opacity - 0.72F) < 0.001F);
-    assert(loaded.settings.language == pastit::UiLanguage::SimplifiedChinese);
+    assert(loaded.settings.language == pasteit::UiLanguage::SimplifiedChinese);
     assert(loaded.settings.djev.api_key == "djev-key");
     assert(loaded.settings.general_llm.api_key == "llm-key");
     assert(loaded.settings.default_image_directory == "/tmp/images");
@@ -126,8 +126,8 @@ int main() {
     std::ofstream(root / "settings.json", std::ios::trunc) << "{broken";
     const auto malformed = store.load();
     assert(!malformed.warning.empty());
-    assert(malformed.settings.schema_version == pastit::default_settings().schema_version);
-    assert(pastit::DjevClient::normalize_endpoint("http://localhost:8011") == "http://localhost:8011/v1/systemone");
-    assert(pastit::DjevClient::normalize_endpoint("http://localhost:8011/v1/systemone") == "http://localhost:8011/v1/systemone");
+    assert(malformed.settings.schema_version == pasteit::default_settings().schema_version);
+    assert(pasteit::DjevClient::normalize_endpoint("http://localhost:8011") == "http://localhost:8011/v1/systemone");
+    assert(pasteit::DjevClient::normalize_endpoint("http://localhost:8011/v1/systemone") == "http://localhost:8011/v1/systemone");
     std::filesystem::remove_all(root);
 }

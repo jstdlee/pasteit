@@ -17,7 +17,7 @@
 #include <stdexcept>
 #include <system_error>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr int kSchemaVersion = 1;
@@ -592,4 +592,4 @@ bool ClipboardHistoryStore::cleanup_orphan_blobs(const ClipboardHistorySaveResul
     return true;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

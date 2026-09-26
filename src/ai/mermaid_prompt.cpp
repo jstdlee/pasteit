@@ -9,7 +9,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::array<std::string_view, 14> kSupportedHeaders{
@@ -184,4 +184,4 @@ MermaidNormalizationResult normalize_mermaid_response(std::string raw_source) {
     return result;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

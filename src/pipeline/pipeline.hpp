@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // One stage of a pipeline: a command name and its arguments, tokenized like a
 // POSIX shell (quotes and backslashes) but never executed by one.
@@ -53,4 +53,4 @@ const std::vector<std::string>& builtin_pipeline_commands();
 // One-line usage for the builder's help list.
 std::string pipeline_command_help(std::string_view name);
 
-}  // namespace pastit
+}  // namespace pasteit

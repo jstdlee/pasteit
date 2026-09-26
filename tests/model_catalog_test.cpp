@@ -4,10 +4,10 @@
 #include <memory>
 
 namespace {
-class FakeTransport final : public pastit::HttpTransport {
+class FakeTransport final : public pasteit::HttpTransport {
 public:
-    pastit::HttpResponse post_json(const pastit::HttpRequest&) override { return {}; }
-    pastit::HttpResponse get_json(const pastit::HttpRequest& request) override {
+    pasteit::HttpResponse post_json(const pasteit::HttpRequest&) override { return {}; }
+    pasteit::HttpResponse get_json(const pasteit::HttpRequest& request) override {
         seen_url = request.url;
         return {.status=200, .body=R"({"data":[{"id":"z-model"},{"id":"a-model"},{"id":"z-model"}]})"};
     }
@@ -17,7 +17,7 @@ public:
 
 int main() {
     auto transport = std::make_shared<FakeTransport>();
-    pastit::OpenAiCompatibleModelClient client(transport);
+    pasteit::OpenAiCompatibleModelClient client(transport);
     const auto result = client.list_models({.endpoint="http://provider.example/v1/chat/completions", .api_key="secret"});
     assert(result.ok);
     const std::vector<std::string> expected{"a-model", "z-model"};

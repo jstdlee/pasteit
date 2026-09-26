@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class ClipboardHistoryCommandKind {
     None,
@@ -84,4 +84,4 @@ ClipboardHistoryCommand use_clipboard_history_item(std::string_view ref);
 ClipboardHistoryCommand save_clipboard_history_item(std::string_view ref);
 ClipboardHistoryCommand close_clipboard_history_detail(ClipboardHistoryState& state);
 
-}  // namespace pastit
+}  // namespace pasteit

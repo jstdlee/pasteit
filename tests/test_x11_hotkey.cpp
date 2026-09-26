@@ -7,7 +7,7 @@
 #include <string_view>
 #include <thread>
 
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <dlfcn.h>
@@ -23,14 +23,14 @@ int skip(const char* reason) {
 }  // namespace
 
 int main(int argc, char** argv) {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     const bool send_only = argc == 2 && std::string_view{argv[1]} == "--send-only";
     const char* display_name = std::getenv("DISPLAY");
     if (display_name == nullptr || std::string{display_name}.empty()) {
         return skip("DISPLAY is unavailable");
     }
 
-    pastit::X11ContextService receiver;
+    pasteit::X11ContextService receiver;
     if (!receiver.available()) {
         return skip("X11 display could not be opened");
     }

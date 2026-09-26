@@ -5,7 +5,7 @@
 #include <cassert>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     ActionInstance annotate_image;
     annotate_image.id = "annotate-current-image";

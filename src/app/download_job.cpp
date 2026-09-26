@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTEIT_HAS_CURL)
 #include <curl/curl.h>
 #elif defined(_WIN32)
 #include "platform/windows/windows_strings.hpp"
@@ -29,7 +29,7 @@
 extern char** environ;
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::filesystem::path part_path_for(const std::filesystem::path& final_path) {
@@ -58,7 +58,7 @@ std::optional<std::uint64_t> parse_number(std::string_view value) {
         ? std::optional<std::uint64_t>{number} : std::nullopt;
 }
 
-#if defined(PASTIT_HAS_CURL) || !defined(_WIN32)
+#if defined(PASTEIT_HAS_CURL) || !defined(_WIN32)
 bool header_name_is(std::string_view line, std::string_view name) {
     if (line.size() <= name.size() || line[name.size()] != ':') return false;
     for (std::size_t i = 0; i < name.size(); ++i) {
@@ -91,7 +91,7 @@ void parse_content_range(std::string_view value, ParsedDownloadHeaders& headers)
     headers.valid_range = true;
 }
 
-#if defined(_WIN32) && !defined(PASTIT_HAS_CURL)
+#if defined(_WIN32) && !defined(PASTEIT_HAS_CURL)
 struct WinHttpDownloadHandle {
     HINTERNET value = nullptr;
     explicit WinHttpDownloadHandle(HINTERNET handle) : value(handle) {}
@@ -221,7 +221,7 @@ DownloadResponse stream_with_winhttp(
 }
 #endif
 
-#if !defined(PASTIT_HAS_CURL) && !defined(_WIN32)
+#if !defined(PASTEIT_HAS_CURL) && !defined(_WIN32)
 DownloadResponse stream_with_curl_process(
     const DownloadRequest& request, const std::atomic_bool& cancelled,
     const std::function<bool(const DownloadResponse&)>& on_headers,
@@ -418,7 +418,7 @@ public:
             return response;
         }
 
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTEIT_HAS_CURL)
         CURL* curl = curl_easy_init();
         if (curl == nullptr) {
             return {.status_code = 0, .body = {}, .error = "curl initialization failed"};
@@ -842,4 +842,4 @@ std::shared_ptr<DownloadManager::JobControl> DownloadManager::find_control(std::
     return found == jobs_.end() ? nullptr : found->second;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

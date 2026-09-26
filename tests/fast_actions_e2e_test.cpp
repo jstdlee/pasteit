@@ -35,36 +35,36 @@ std::vector<std::byte> bytes(std::string_view text) {
     return out;
 }
 
-pastit::ClipboardItem item(std::string ref,
-                           pastit::ContentKind kind,
+pasteit::ClipboardItem item(std::string ref,
+                           pasteit::ContentKind kind,
                            std::string preview,
                            std::int64_t captured_at_ms = 100) {
-    pastit::ClipboardItem out;
+    pasteit::ClipboardItem out;
     out.ref = std::move(ref);
     out.kind = kind;
     out.preview = std::move(preview);
     out.size_bytes = out.preview.size();
-    out.mime_types = kind == pastit::ContentKind::Image
+    out.mime_types = kind == pasteit::ContentKind::Image
         ? std::vector<std::string>{"image/png"}
         : std::vector<std::string>{"text/plain"};
     out.captured_at_ms = captured_at_ms;
     return out;
 }
 
-pastit::PathLocation directory(std::string ref, const std::filesystem::path& path, std::int64_t seen = 100) {
-    return pastit::PathLocation{
+pasteit::PathLocation directory(std::string ref, const std::filesystem::path& path, std::int64_t seen = 100) {
+    return pasteit::PathLocation{
         .ref = std::move(ref),
         .path = path,
-        .kind = pastit::PathKind::Directory,
+        .kind = pasteit::PathKind::Directory,
         .last_seen_ms = seen,
         .source = "test",
         .exists = true,
     };
 }
 
-pastit::DesktopDecisionInput base_input(const std::filesystem::path& root) {
-    auto settings = pastit::default_settings();
-    pastit::DesktopDecisionInput input;
+pasteit::DesktopDecisionInput base_input(const std::filesystem::path& root) {
+    auto settings = pasteit::default_settings();
+    pasteit::DesktopDecisionInput input;
     input.request_id = "req-e2e";
     input.captured_at_ms = 1000;
     input.recent_paths = {directory("recent", root / "recent")};
@@ -83,7 +83,7 @@ pastit::DesktopDecisionInput base_input(const std::filesystem::path& root) {
     return input;
 }
 
-std::optional<pastit::ActionInstance> find_kind(const pastit::ActionCatalog& catalog, pastit::ActionKind kind) {
+std::optional<pasteit::ActionInstance> find_kind(const pasteit::ActionCatalog& catalog, pasteit::ActionKind kind) {
     for (const auto& action : catalog.actions) {
         if (action.kind == kind) {
             return action;
@@ -92,8 +92,8 @@ std::optional<pastit::ActionInstance> find_kind(const pastit::ActionCatalog& cat
     return std::nullopt;
 }
 
-std::optional<pastit::ActionInstance> find_kind_with_target(const pastit::ActionCatalog& catalog,
-                                                            pastit::ActionKind kind,
+std::optional<pasteit::ActionInstance> find_kind_with_target(const pasteit::ActionCatalog& catalog,
+                                                            pasteit::ActionKind kind,
                                                             std::string_view target_ref) {
     for (const auto& action : catalog.actions) {
         if (action.kind == kind && action.target_ref == target_ref) {
@@ -103,7 +103,7 @@ std::optional<pastit::ActionInstance> find_kind_with_target(const pastit::Action
     return std::nullopt;
 }
 
-bool has_kind(const pastit::ActionCatalog& catalog, pastit::ActionKind kind) {
+bool has_kind(const pasteit::ActionCatalog& catalog, pasteit::ActionKind kind) {
     return find_kind(catalog, kind).has_value();
 }
 
@@ -143,18 +143,18 @@ private:
     std::filesystem::path path_;
 };
 
-class FakeServices final : public pastit::FastActionServices {
+class FakeServices final : public pasteit::FastActionServices {
 public:
     bool open_terminal(const std::filesystem::path& directory) override {
         terminal_directory = directory;
         return true;
     }
 
-    pastit::ProcessOutput run_network_probe(pastit::NetworkProbe, std::string_view) override {
+    pasteit::ProcessOutput run_network_probe(pasteit::NetworkProbe, std::string_view) override {
         return {.exit_code = 0, .stdout_text = "ok"};
     }
 
-    pastit::ProcessOutput clone_repository(std::string_view url,
+    pasteit::ProcessOutput clone_repository(std::string_view url,
                                            const std::filesystem::path& destination) override {
         clone_url = std::string{url};
         clone_destination = destination;
@@ -165,11 +165,11 @@ public:
     std::string format_datetime(std::int64_t, std::string_view zone) override {
         return std::string{"formatted:"} + std::string{zone};
     }
-    std::string hash_file(const std::filesystem::path&, pastit::HashAlgorithm algorithm) override {
-        return algorithm == pastit::HashAlgorithm::Sha512 ? "sha512" : "sha256";
+    std::string hash_file(const std::filesystem::path&, pasteit::HashAlgorithm algorithm) override {
+        return algorithm == pasteit::HashAlgorithm::Sha512 ? "sha512" : "sha256";
     }
 
-    pastit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
+    pasteit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
         argv_calls.push_back(argv);
         return {.exit_code = 127, .stderr_text = "execvp failed"};
     }
@@ -180,9 +180,9 @@ public:
     std::vector<std::vector<std::string>> argv_calls;
 };
 
-class BlockingDownloadTransport final : public pastit::DownloadTransport {
+class BlockingDownloadTransport final : public pasteit::DownloadTransport {
 public:
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest& request,
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest& request,
                                    const std::atomic_bool& cancelled) override {
         {
             std::lock_guard lock(mutex_);
@@ -215,7 +215,7 @@ public:
         changed_.notify_all();
     }
 
-    std::vector<pastit::DownloadRequest> requests;
+    std::vector<pasteit::DownloadRequest> requests;
 
 private:
     std::mutex mutex_;
@@ -223,10 +223,10 @@ private:
     bool released_ = false;
 };
 
-pastit::ClipboardItem put_text(pastit::ClipboardStore& store,
+pasteit::ClipboardItem put_text(pasteit::ClipboardStore& store,
                                std::string text,
-                               pastit::ContentKind kind = pastit::ContentKind::Text) {
-    return store.put(pastit::ClipboardData{
+                               pasteit::ContentKind kind = pasteit::ContentKind::Text) {
+    return store.put(pasteit::ClipboardData{
         .mime_types = {"text/plain"},
         .bytes = bytes(text),
         .kind = kind,
@@ -235,8 +235,8 @@ pastit::ClipboardItem put_text(pastit::ClipboardStore& store,
     });
 }
 
-std::vector<pastit::ExecutionResult> poll_until_done(pastit::FastActionExecutor& executor,
-                                                     pastit::ExecutionContext& context) {
+std::vector<pasteit::ExecutionResult> poll_until_done(pasteit::FastActionExecutor& executor,
+                                                     pasteit::ExecutionContext& context) {
     for (int attempt = 0; attempt < 100; ++attempt) {
         auto results = executor.poll(context);
         if (!results.empty()) {
@@ -251,9 +251,9 @@ std::vector<pastit::ExecutionResult> poll_until_done(pastit::FastActionExecutor&
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    ScopedTempDir temp("pastit-fast-actions-e2e-test");
+    ScopedTempDir temp("pasteit-fast-actions-e2e-test");
     const auto& root = temp.path();
     std::filesystem::create_directories(root / "recent");
     std::filesystem::create_directories(root / "text");

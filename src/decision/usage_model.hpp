@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // One decayed tally of how often an action was chosen in a context.
 struct UsageCell {
@@ -66,4 +66,4 @@ std::map<std::string, std::vector<UsageHabit>> usage_summary(const UsageModel& m
 // Drops faded entries and caps model size.
 void prune_usage(UsageModel& model, std::int64_t now_ms);
 
-}  // namespace pastit
+}  // namespace pasteit

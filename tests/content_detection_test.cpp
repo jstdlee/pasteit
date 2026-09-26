@@ -22,7 +22,7 @@ std::vector<std::byte> bytes(std::string_view text) {
     return out;
 }
 
-bool has_tag(const pastit::DetectionResult& result, pastit::SemanticTag tag) {
+bool has_tag(const pasteit::DetectionResult& result, pasteit::SemanticTag tag) {
     for (const auto value : result.tags) {
         if (value == tag) {
             return true;
@@ -34,9 +34,9 @@ bool has_tag(const pastit::DetectionResult& result, pastit::SemanticTag tag) {
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    auto temp_root = std::filesystem::temp_directory_path() / "pastit_content_detection_test";
+    auto temp_root = std::filesystem::temp_directory_path() / "pasteit_content_detection_test";
     std::filesystem::remove_all(temp_root);
     std::filesystem::create_directories(temp_root);
 

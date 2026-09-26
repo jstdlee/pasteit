@@ -10,7 +10,7 @@
 #include <windows.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 std::filesystem::path home_path(std::string_view suffix) {
 #if defined(_WIN32)
@@ -133,4 +133,4 @@ void normalize_settings(AppSettings& settings) {
         settings.annotation.export_format = "svg";
     }
 }
-}  // namespace pastit
+}  // namespace pasteit

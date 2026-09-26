@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 class ClipboardStore;
 
@@ -34,4 +34,4 @@ bool validate_file_operation_draft(FileOperationDraft& draft, const ClipboardSto
 
 std::optional<ActionInstance> confirmed_action(const FileOperationDraft& draft, const ClipboardStore& store);
 
-}  // namespace pastit
+}  // namespace pasteit

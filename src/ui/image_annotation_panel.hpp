@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ImageAnnotationPanelState {
     bool open = false;
@@ -36,11 +36,11 @@ struct ImageAnnotationPanelState {
 
 FastActionPanelModel build_image_annotation_panel_model(const ImageAnnotationPanelState& state);
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                                  unsigned int texture_id,
                                  int image_width,
                                  int image_height);
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ClipboardHistoryLoadResult {
     std::vector<ClipboardItem> items;
@@ -42,4 +42,4 @@ private:
     mutable bool cleanup_poisoned_ = false;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

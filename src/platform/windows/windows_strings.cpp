@@ -3,7 +3,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-namespace pastit {
+namespace pasteit {
 
 std::wstring utf8_to_wide(std::string_view text) {
     if (text.empty()) {
@@ -77,4 +77,4 @@ std::wstring windows_command_line(const std::vector<std::string>& argv) {
     return command;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

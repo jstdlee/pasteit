@@ -19,7 +19,7 @@
 #include <unistd.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 
 std::optional<std::string> find_executable(std::string_view name) {
     if (name.empty() || name.find('/') != std::string_view::npos || name.find('\\') != std::string_view::npos) {
@@ -275,4 +275,4 @@ ProcessRun run_process_with_input(const std::vector<std::string>& argv, std::str
 
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

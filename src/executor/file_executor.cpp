@@ -13,7 +13,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::vector<std::byte> bytes_from_string(std::string_view text) {
@@ -99,7 +99,7 @@ std::optional<std::string> record_text_clipboard(ExecutionContext& context, std:
         .mime_types = {"text/plain"},
         .bytes = bytes_from_string(text),
         .kind = kind,
-        .source_app = "pastit",
+        .source_app = "pasteit",
         .captured_at_ms = context.now_ms,
     });
     return item.ref;
@@ -109,7 +109,7 @@ void record_output_path(ExecutionContext& context, const std::filesystem::path& 
     result.output_path = path;
     result.output_paths.push_back(path);
     result.output_clipboard_ref = record_text_clipboard(context, path_to_utf8_string(path), ContentKind::Path);
-    context.path_history.observe(path_to_utf8_string(path), "pastit", context.now_ms);
+    context.path_history.observe(path_to_utf8_string(path), "pasteit", context.now_ms);
 }
 
 std::filesystem::path available_generated_path(std::filesystem::path path) {
@@ -209,7 +209,7 @@ ExecutionResult copy_or_move_path(const ActionInstance& action, ExecutionContext
             return result_for(action, context, ExecutionStatus::Failed, error.message());
         }
         outputs.push_back(target);
-        context.path_history.observe(path_to_utf8_string(target), "pastit", context.now_ms);
+        context.path_history.observe(path_to_utf8_string(target), "pasteit", context.now_ms);
     }
 
     std::ostringstream copied_paths;
@@ -262,7 +262,7 @@ ExecutionResult execute_file_action(const ActionInstance& action, ExecutionConte
                     .mime_types = mime_types,
                     .bytes = image,
                     .kind = ContentKind::Image,
-                    .source_app = "pastit",
+                    .source_app = "pasteit",
                     .captured_at_ms = context.now_ms,
                 });
                 result.output_clipboard_ref = item.ref;
@@ -332,4 +332,4 @@ ExecutionResult execute_file_action(const ActionInstance& action, ExecutionConte
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

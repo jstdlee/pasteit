@@ -6,7 +6,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 class JsonValidator {
@@ -653,4 +653,4 @@ std::string ordered_json_compact(const OrderedJson& value) {
     return "null";
 }
 
-}  // namespace pastit
+}  // namespace pasteit

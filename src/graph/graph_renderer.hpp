@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class GraphType { Line, Bar, Pie };
 
@@ -13,4 +13,4 @@ enum class GraphType { Line, Bar, Pie };
 // the returned PNG without a browser or external process.
 std::vector<std::byte> render_graph_png(const GraphData& data, GraphType type);
 
-}  // namespace pastit
+}  // namespace pasteit

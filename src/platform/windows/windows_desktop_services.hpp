@@ -6,7 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-namespace pastit {
+namespace pasteit {
 
 class WindowsDesktopServices final : public PlatformServices {
 public:
@@ -53,4 +53,4 @@ private:
     WindowsFastActionServices fast_actions_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

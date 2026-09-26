@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 struct AnnotationExportResult {
     bool success = false;
@@ -17,4 +17,4 @@ struct AnnotationExportResult {
 AnnotationExportResult export_annotation_svg(const AnnotationDocument& document,
                                              const std::filesystem::path& output_path);
 
-}  // namespace pastit
+}  // namespace pasteit

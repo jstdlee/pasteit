@@ -11,7 +11,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace pastit {
+namespace pasteit {
 
 enum class DownloadStatus { Queued, Running, Paused, Completed, Cancelled, Failed };
 
@@ -86,4 +86,4 @@ private:
     std::uint64_t next_id_ = 0;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

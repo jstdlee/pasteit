@@ -3,7 +3,7 @@
 
 #include <algorithm>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::vector<RankedAction> prioritize_direct_mermaid(std::vector<RankedAction> ranked,
@@ -96,4 +96,4 @@ PreparedDecision prepare_ranked_decision(const DecisionRequest& request, const D
     };
 }
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -5,7 +5,7 @@
 #include <cassert>
 #include <string>
 
-using namespace pastit;
+using namespace pasteit;
 
 namespace {
 

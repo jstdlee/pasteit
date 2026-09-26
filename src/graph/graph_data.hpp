@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct GraphPoint {
     std::string label;
@@ -24,4 +24,4 @@ struct GraphData {
 // or whitespace. The two switches let the preview reinterpret the same source.
 std::optional<GraphData> parse_graph_data(std::string_view text, bool has_header, bool convert_dates);
 
-}  // namespace pastit
+}  // namespace pasteit

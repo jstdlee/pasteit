@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct AnonymizeViewState {
     bool open = false;
@@ -25,7 +25,7 @@ struct AnonymizeViewState {
 
 void open_anonymize_view(AnonymizeViewState& state, std::string source, const AnonymizeOptions& options);
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 struct AnonymizeViewHost {
     DataViewHost data;
     std::function<void(std::string_view)> replace_clipboard;
@@ -40,4 +40,4 @@ struct AnonymizeViewHost {
 void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& host, UiLanguage language);
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

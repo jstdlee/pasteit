@@ -2,7 +2,7 @@
 #include "ui/theme.hpp"
 #include "ui/icons.hpp"
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include "ui/multi_viewport.hpp"
 #include "ui/imgui_widgets.hpp"
 #include <imgui.h>
@@ -10,10 +10,10 @@
 #include <algorithm>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 ImTextureID imgui_texture_id(std::uintptr_t handle) {
     return static_cast<ImTextureID>(handle);
 }
@@ -119,7 +119,7 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
                                                        const ClipboardHistoryModel& model,
                                                        UiLanguage language,
                                                        ClipboardTextureLookup texture_lookup) {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     ClipboardHistoryCommand command;
     constexpr auto flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable |
                            ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
@@ -232,4 +232,4 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
 #endif
 }
 
-}  // namespace pastit
+}  // namespace pasteit

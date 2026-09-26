@@ -11,11 +11,11 @@
 #include <filesystem>
 #include <sstream>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::filesystem::path svg_export_path(std::filesystem::path output) {
@@ -23,7 +23,7 @@ std::filesystem::path svg_export_path(std::filesystem::path output) {
     return output;
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 std::string tool_label(AnnotationTool tool) {
     switch (tool) {
         case AnnotationTool::Pen: return "Pen";
@@ -37,7 +37,7 @@ std::string tool_label(AnnotationTool tool) {
 std::filesystem::path default_export_path(const ImageAnnotationPanelState& state) {
     const auto& document = state.document;
     const auto base = document.original_image().empty()
-        ? std::filesystem::temp_directory_path() / "pastit-annotation"
+        ? std::filesystem::temp_directory_path() / "pasteit-annotation"
         : document.original_image();
     const auto directory = state.export_directory.empty() ? base.parent_path() : state.export_directory;
     return directory / path_from_utf8_string(path_to_utf8_string(base.stem()) + "-annotated.svg");
@@ -153,7 +153,7 @@ FastActionPanelModel build_image_annotation_panel_model(const ImageAnnotationPan
     return model;
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                                  unsigned int texture_id,
                                  int image_width,
@@ -231,4 +231,4 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
 }
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -25,11 +25,11 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <stb_image.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr int kShortcutId = 1;
@@ -223,7 +223,7 @@ HGLOBAL global_copy(const void* data, std::size_t size) {
 }
 
 std::vector<std::byte> dib_from_encoded_image(const std::vector<std::byte>& image) {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     if (image.size() > static_cast<std::size_t>(INT_MAX)) {
         return {};
     }
@@ -809,4 +809,4 @@ FastActionServices& WindowsDesktopServices::fast_actions() {
     return fast_actions_;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

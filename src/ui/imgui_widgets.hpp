@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 
 class PlatformServices;
 
@@ -18,4 +18,4 @@ std::size_t multiline_editor_row_count(std::string_view value);
 std::size_t multiline_editor_visible_rows(std::string_view value);
 bool copyable_text(std::string_view value, bool wrapped = false);
 
-}  // namespace pastit
+}  // namespace pasteit

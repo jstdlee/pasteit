@@ -12,7 +12,7 @@
 #include <set>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 using Lines = std::vector<std::string>;
@@ -735,4 +735,4 @@ PipelineResult run_pipeline(std::string_view input, std::string_view command, co
     return result;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

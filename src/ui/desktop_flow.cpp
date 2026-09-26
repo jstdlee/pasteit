@@ -12,7 +12,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 void hash_append(std::uint64_t& hash, std::string_view value) {
@@ -278,4 +278,4 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
     return batch;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -6,7 +6,7 @@
 #include <map>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 // Additive ranking nudges computed once per decision batch: local detector
 // matches plus the learned usage frequency (see decision/usage_model.hpp).
@@ -21,4 +21,4 @@ struct ActionRankingContext {
 
 double action_ranking_bonus(const ActionInstance& action, const ActionRankingContext& context);
 
-}  // namespace pastit
+}  // namespace pasteit

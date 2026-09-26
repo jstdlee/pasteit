@@ -8,13 +8,13 @@
 #include <vector>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     ClipboardItem text_item;
     text_item.ref = "clip_42";
     text_item.mime_types = {"text/plain"};
     text_item.kind = ContentKind::Text;
-    text_item.blob_path = std::filesystem::path{"/tmp/pastit/blob.txt"};
+    text_item.blob_path = std::filesystem::path{"/tmp/pasteit/blob.txt"};
     text_item.preview = "hello";
     text_item.size_bytes = 5;
     text_item.captured_at_ms = 1726800000123;

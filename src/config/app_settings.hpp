@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class UiLanguage { System, English, SimplifiedChinese };
 
@@ -145,4 +145,4 @@ std::vector<PipelineRecipe> default_pipeline_recipes();
 AppSettings default_settings();
 void normalize_settings(AppSettings& settings);
 
-}  // namespace pastit
+}  // namespace pasteit

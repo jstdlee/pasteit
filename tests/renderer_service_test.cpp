@@ -14,16 +14,16 @@
 
 namespace {
 
-class FakeServices final : public pastit::FastActionServices {
+class FakeServices final : public pasteit::FastActionServices {
 public:
     bool open_terminal(const std::filesystem::path&) override { return false; }
-    pastit::ProcessOutput run_network_probe(pastit::NetworkProbe, std::string_view) override { return {}; }
-    pastit::ProcessOutput clone_repository(std::string_view, const std::filesystem::path&) override { return {}; }
+    pasteit::ProcessOutput run_network_probe(pasteit::NetworkProbe, std::string_view) override { return {}; }
+    pasteit::ProcessOutput clone_repository(std::string_view, const std::filesystem::path&) override { return {}; }
     std::optional<std::int64_t> parse_datetime(std::string_view, std::string_view) override { return std::nullopt; }
     std::string format_datetime(std::int64_t, std::string_view) override { return {}; }
-    std::string hash_file(const std::filesystem::path&, pastit::HashAlgorithm) override { return {}; }
+    std::string hash_file(const std::filesystem::path&, pasteit::HashAlgorithm) override { return {}; }
 
-    pastit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
+    pasteit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
         argv_calls.push_back(argv);
         for (std::size_t i = 0; i + 1 < argv.size(); ++i) {
             if (argv[i] == "-i") {
@@ -39,7 +39,7 @@ public:
         return next_output;
     }
 
-    pastit::ProcessOutput next_output{.exit_code = 127, .stderr_text = "execvp failed"};
+    pasteit::ProcessOutput next_output{.exit_code = 127, .stderr_text = "execvp failed"};
     std::vector<std::vector<std::string>> argv_calls;
     std::vector<std::string> mermaid_inputs;
     std::filesystem::path mermaid_fixture;
@@ -70,12 +70,12 @@ bool contains_arg(const std::vector<std::string>& argv, std::string_view value) 
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     {
         FakeServices services;
         ExternalRendererService renderer(services, RendererSettings{});
-        const auto root = make_unique_temp_dir("pastit-offline-renderer-test");
+        const auto root = make_unique_temp_dir("pasteit-offline-renderer-test");
         const auto html_path = root / "diagram.html";
         const auto mermaid = renderer.render_mermaid("```mermaid\nflowchart LR\nA-->B\n```", html_path);
         assert(mermaid.available && mermaid.success);
@@ -104,7 +104,7 @@ int main() {
         settings.qr_margin = 4;
         settings.qr_scale = 8;
         ExternalRendererService renderer(services, settings);
-        const auto root = make_unique_temp_dir("pastit-qr-configuration-test");
+        const auto root = make_unique_temp_dir("pasteit-qr-configuration-test");
         const auto result = renderer.render_qr("A", root / "qr.png");
         assert(result.success);
         std::ifstream png(result.output, std::ios::binary);
@@ -124,7 +124,7 @@ int main() {
     {
         FakeServices services;
         services.next_output = {.exit_code = 0};
-        const auto root = make_unique_temp_dir("pastit-mermaid-png-test");
+        const auto root = make_unique_temp_dir("pasteit-mermaid-png-test");
         ExternalRendererService renderer(services);
         services.mermaid_fixture = root / "valid.png";
         assert(renderer.render_qr("fixture", services.mermaid_fixture).success);
@@ -139,17 +139,17 @@ int main() {
     {
         FakeServices services;
         RendererSettings settings;
-        settings.mermaid_cli_path = "/opt/pastit/mmdc";
+        settings.mermaid_cli_path = "/opt/pasteit/mmdc";
         settings.mermaid_arguments = {"--theme", "neutral"};
         ExternalRendererService renderer(services, settings);
-        const auto root = make_unique_temp_dir("pastit-mermaid-source-test");
+        const auto root = make_unique_temp_dir("pasteit-mermaid-source-test");
         const auto result = renderer.render_mermaid(
             "A generated diagram follows:\n```mermaid\nflowchart LR\nA-->B\n```\nextra prose",
             root / "diagram.html");
         assert(result.available);
         assert(result.success);
         assert(services.argv_calls.size() == 1);
-        assert(services.argv_calls.front().front() == "/opt/pastit/mmdc");
+        assert(services.argv_calls.front().front() == "/opt/pasteit/mmdc");
         assert(contains_arg(services.argv_calls.front(), "--theme"));
         std::ifstream input(result.output);
         const std::string html((std::istreambuf_iterator<char>(input)), {});
@@ -178,7 +178,7 @@ int main() {
                 "%% A comment about the diagram\nflowchart LR\nA-->B\n",
             },
         };
-        const auto root = make_unique_temp_dir("pastit-mermaid-fences-test");
+        const auto root = make_unique_temp_dir("pasteit-mermaid-fences-test");
         for (const auto& entry : cases) {
             const auto result = renderer.render_mermaid(entry.source, root / "fenced-diagram.html");
             assert(result.success);
@@ -191,7 +191,7 @@ int main() {
     }
 
     {
-        const auto root = make_unique_temp_dir("pastit-renderer-settings-test");
+        const auto root = make_unique_temp_dir("pasteit-renderer-settings-test");
         SettingsStore store(root / "settings.json");
         auto settings = default_settings();
         settings.renderers.mermaid_cli_path = "/tools/mmdc";

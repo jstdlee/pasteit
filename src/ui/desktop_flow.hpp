@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct DesktopDecisionInput {
     std::string request_id;
@@ -47,4 +47,4 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input);
 // Records a root-list choice in the usage model for the batch context.
 void record_batch_usage(UsageModel& usage, const DesktopDecisionBatch& batch, const ActionInstance& action);
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -4,7 +4,7 @@
 #include <string>
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
     const std::string html = R"(<!DOCTYPE html><html><head><title>Release &amp; Notes</title>
 <style>body{color:red}</style><script>alert("x")</script></head>
 <body><nav>Home | About</nav><article><h1>PasteIt 0.4</h1><p>Adds <b>tables</b> &mdash; and charts.</p>

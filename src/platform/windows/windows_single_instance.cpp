@@ -1,6 +1,6 @@
 #include "platform/windows/windows_single_instance.hpp"
 
-namespace pastit {
+namespace pasteit {
 
 WindowsSingleInstance::WindowsSingleInstance() {
     mutex_ = CreateMutexW(nullptr, TRUE, L"Local\\PasteItSingleInstance");
@@ -16,4 +16,4 @@ WindowsSingleInstance::~WindowsSingleInstance() {
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

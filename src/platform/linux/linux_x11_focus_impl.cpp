@@ -8,7 +8,7 @@
 #include <sstream>
 #include <system_error>
 
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
 #include <X11/Xatom.h>
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
@@ -16,7 +16,7 @@
 #include <dlfcn.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string hash_text(const std::string& value) {
@@ -25,7 +25,7 @@ std::string hash_text(const std::string& value) {
     return out.str();
 }
 
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
 
 int x11_error_seen = 0;
 
@@ -187,7 +187,7 @@ std::vector<unsigned int> x11_lock_modifier_variants() {
 }
 
 X11ContextService::X11ContextService() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     display_ = XOpenDisplay(nullptr);
     if (display_ != nullptr) {
         root_ = DefaultRootWindow(static_cast<Display*>(display_));
@@ -196,7 +196,7 @@ X11ContextService::X11ContextService() {
 }
 
 X11ContextService::~X11ContextService() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ != nullptr) {
         auto* display = static_cast<Display*>(display_);
         if (shortcut_registered_ && shortcut_keycode_ != 0) {
@@ -215,7 +215,7 @@ bool X11ContextService::available() const {
 }
 
 bool X11ContextService::register_ctrl_alt_f_shortcut() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr) {
         return false;
     }
@@ -251,7 +251,7 @@ bool X11ContextService::register_ctrl_alt_f_shortcut() {
 }
 
 bool X11ContextService::poll_ctrl_alt_f_shortcut() {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr || !shortcut_registered_) {
         return false;
     }
@@ -275,7 +275,7 @@ bool X11ContextService::poll_ctrl_alt_f_shortcut() {
 
 FocusContext X11ContextService::collect_focus_context() const {
     FocusContext context;
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr) {
         context.focused_target_hash = hash_text("x11-unavailable");
         return context;
@@ -308,7 +308,7 @@ FocusContext X11ContextService::collect_focus_context() const {
 }
 
 bool X11ContextService::focus_and_paste(const FocusContext& context) const {
-#if defined(PASTIT_HAS_X11)
+#if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr || context.window_id == 0) {
         return false;
     }
@@ -361,4 +361,4 @@ bool focus_x11_target_and_paste(const FocusContext& context) {
     return global_context_service().focus_and_paste(context);
 }
 
-}  // namespace pastit
+}  // namespace pasteit

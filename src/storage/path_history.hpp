@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 class PathHistory {
 public:
@@ -37,4 +37,4 @@ void sort_paths_by_rank(std::vector<PathLocation>& paths, std::int64_t now_ms);
 std::optional<std::filesystem::path> path_from_file_uri(const std::string& value);
 std::vector<std::filesystem::path> paths_from_uri_list(std::string_view value);
 
-}  // namespace pastit
+}  // namespace pasteit

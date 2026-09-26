@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 AnnotationStroke stroke_from(AnnotationTool tool,
@@ -118,4 +118,4 @@ AnnotationExportRequest AnnotationDocument::export_request(std::filesystem::path
     };
 }
 
-}  // namespace pastit
+}  // namespace pasteit

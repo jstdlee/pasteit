@@ -7,11 +7,11 @@
 
 #include <sstream>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string download_status_label(DownloadStatus status) {
@@ -70,7 +70,7 @@ FastActionPanelModel build_download_progress_panel_model(const DownloadManager& 
 void close_download_progress_panel(const FastActionPanelModel&) {
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_download_progress_panel(DownloadManager& manager,
                                   std::string_view job_id,
                                   bool& open,
@@ -99,4 +99,4 @@ void draw_download_progress_panel(DownloadManager& manager,
 }
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

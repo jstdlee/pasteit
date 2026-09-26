@@ -1,7 +1,7 @@
 #pragma once
 
-namespace pastit {
+namespace pasteit {
 
 int run_desktop_runtime();
 
-}  // namespace pastit
+}  // namespace pasteit

@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
-namespace pastit {
+namespace pasteit {
 struct PromptVariables {
     std::string source_language="auto";
     std::string target_language="Simplified Chinese";

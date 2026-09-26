@@ -1,6 +1,6 @@
 #include "net/http_client.hpp"
 
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTEIT_HAS_CURL)
 #include <curl/curl.h>
 #elif defined(_WIN32)
 #include "platform/windows/windows_strings.hpp"
@@ -31,9 +31,9 @@
 extern char** environ;
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTEIT_HAS_CURL)
 std::size_t append_body(void* ptr,std::size_t size,std::size_t count,void* target){
     const auto bytes=size*count;static_cast<std::string*>(target)->append(static_cast<const char*>(ptr),bytes);return bytes;
 }
@@ -257,7 +257,7 @@ bool write_pipe(int fd, std::string_view value) {
 
 HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_view method = "POST") {
     HttpResponse response;
-    char body_template[] = "/tmp/pastit-http-body-XXXXXX";
+    char body_template[] = "/tmp/pasteit-http-body-XXXXXX";
     const int body_fd = ::mkstemp(body_template);
     if (body_fd < 0) {
         response.transport_error = "could not create temporary HTTP request body";
@@ -367,7 +367,7 @@ class SocketTransport final:public HttpTransport{public:HttpResponse post_json(c
 #endif
 }
 std::shared_ptr<HttpTransport> make_default_http_transport(){
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTEIT_HAS_CURL)
  return std::make_shared<CurlTransport>();
 #elif defined(_WIN32)
  return std::make_shared<WinHttpTransport>();

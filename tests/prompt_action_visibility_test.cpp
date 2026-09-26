@@ -8,21 +8,21 @@
 
 namespace {
 
-pastit::DecisionSnapshot snapshot_for(pastit::ContentKind kind) {
-    pastit::DecisionSnapshot snapshot;
+pasteit::DecisionSnapshot snapshot_for(pasteit::ContentKind kind) {
+    pasteit::DecisionSnapshot snapshot;
     snapshot.clipboard_items.push_back({
         .ref = "current",
         .mime_types = {"text/plain"},
         .kind = kind,
-        .preview = kind == pastit::ContentKind::Url ? "https://example.com" : "hello",
+        .preview = kind == pasteit::ContentKind::Url ? "https://example.com" : "hello",
         .size_bytes = 5,
         .captured_at_ms = 100,
     });
     return snapshot;
 }
 
-std::vector<pastit::PromptTemplate> templates() {
-    std::vector<pastit::PromptTemplate> out;
+std::vector<pasteit::PromptTemplate> templates() {
+    std::vector<pasteit::PromptTemplate> out;
     for (int index = 0; index < 7; ++index) {
         out.push_back({
             .id = "prompt-" + std::to_string(index),
@@ -45,7 +45,7 @@ std::vector<pastit::PromptTemplate> templates() {
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     ProviderSettings provider{.endpoint = "http://localhost/v1/chat/completions", .model_id = "model"};
     const auto catalog = build_catalog(snapshot_for(ContentKind::Text), templates(), provider);

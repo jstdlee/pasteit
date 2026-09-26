@@ -13,7 +13,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::vector<std::byte> bytes_from_string(std::string_view text) {
@@ -44,7 +44,7 @@ std::optional<std::string> record_text_clipboard(ExecutionContext& context,
         .mime_types = {"text/plain"},
         .bytes = bytes_from_string(text),
         .kind = kind,
-        .source_app = "pastit",
+        .source_app = "pasteit",
         .captured_at_ms = context.now_ms,
     });
     return item.ref;
@@ -106,7 +106,7 @@ void record_output_path(ExecutionContext& context, const std::filesystem::path& 
     result.output_path = path;
     result.output_paths.push_back(path);
     result.output_clipboard_ref = record_text_clipboard(context, path_to_utf8_string(path), ContentKind::Path);
-    context.path_history.observe(path_to_utf8_string(path), "pastit", context.now_ms);
+    context.path_history.observe(path_to_utf8_string(path), "pasteit", context.now_ms);
 }
 
 std::optional<NetworkProbe> probe_for(ActionKind kind) {
@@ -335,7 +335,7 @@ ExecutionResult FastActionExecutor::start_renderer_async(ActionInstance action, 
     const bool mermaid = kind == RendererResultKind::Mermaid;
     const auto unique = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto output = std::filesystem::temp_directory_path() /
-        ("pastit-render-" + unique + "-" + job_id + (mermaid ? ".html" : ".png"));
+        ("pasteit-render-" + unique + "-" + job_id + (mermaid ? ".html" : ".png"));
     jobs_.emplace(job_id, AsyncJob{std::async(std::launch::async,
         [this, job_id, request_id = context.request_id, action, source = std::move(source),
          payload = std::move(payload), generated_mermaid = std::move(generated_mermaid),
@@ -461,7 +461,7 @@ ExecutionResult FastActionExecutor::finish_async(AsyncResult async, ExecutionCon
         case ActionKind::CloneGithubSsh:
             if (result.status == ExecutionStatus::Completed && async.output_path.has_value()) {
                 result.output_clipboard_ref = record_text_clipboard(context, async.output_path->string(), ContentKind::Path);
-                context.path_history.observe(async.output_path->string(), "pastit", context.now_ms);
+                context.path_history.observe(async.output_path->string(), "pasteit", context.now_ms);
             }
             break;
         case ActionKind::HashSha256:
@@ -735,4 +735,4 @@ ExecutionResult FastActionExecutor::execute(const ActionInstance& action, Execut
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

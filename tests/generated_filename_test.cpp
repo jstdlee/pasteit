@@ -47,11 +47,11 @@ private:
     std::filesystem::path path_;
 };
 
-pastit::ClipboardItem clipboard_item(
-    pastit::ContentKind kind,
+pasteit::ClipboardItem clipboard_item(
+    pasteit::ContentKind kind,
     std::vector<std::string> mime_types,
     std::string preview = {}) {
-    pastit::ClipboardItem item;
+    pasteit::ClipboardItem item;
     item.ref = "clip_test";
     item.kind = kind;
     item.mime_types = std::move(mime_types);
@@ -79,9 +79,9 @@ void touch(const std::filesystem::path& path) {
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    const TempDirectory temporary_directory{"pastit-generated-filename-test"};
+    const TempDirectory temporary_directory{"pasteit-generated-filename-test"};
     const auto& root = temporary_directory.path();
 
     const auto now = fixed_time();

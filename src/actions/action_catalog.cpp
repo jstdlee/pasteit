@@ -19,7 +19,7 @@
 #include <set>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::size_t kMaxPathTargets = 3;
@@ -1116,4 +1116,4 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
     return catalog;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

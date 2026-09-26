@@ -14,20 +14,20 @@
 
 namespace {
 
-class FakeFastActionServices final : public pastit::FastActionServices {
+class FakeFastActionServices final : public pasteit::FastActionServices {
 public:
     bool open_terminal(const std::filesystem::path& directory) override {
         last_terminal_directory = directory;
         return true;
     }
 
-    pastit::ProcessOutput run_network_probe(pastit::NetworkProbe probe, std::string_view host) override {
+    pasteit::ProcessOutput run_network_probe(pasteit::NetworkProbe probe, std::string_view host) override {
         last_probe = probe;
         last_probe_host = std::string{host};
         return {.exit_code = 0, .stdout_text = last_probe_host, .stderr_text = {}};
     }
 
-    pastit::ProcessOutput clone_repository(std::string_view url,
+    pasteit::ProcessOutput clone_repository(std::string_view url,
                                            const std::filesystem::path& destination) override {
         last_clone_url = std::string{url};
         last_clone_destination = destination;
@@ -36,15 +36,15 @@ public:
 
     std::optional<std::int64_t> parse_datetime(std::string_view, std::string_view) override { return 42; }
     std::string format_datetime(std::int64_t, std::string_view) override { return "formatted"; }
-    std::string hash_file(const std::filesystem::path&, pastit::HashAlgorithm) override { return "digest"; }
+    std::string hash_file(const std::filesystem::path&, pasteit::HashAlgorithm) override { return "digest"; }
 
-    pastit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
+    pasteit::ProcessOutput run_argv(const std::vector<std::string>& argv) override {
         last_argv = argv;
         return {.exit_code = 0, .stdout_text = argv.empty() ? "" : argv.front(), .stderr_text = {}};
     }
 
     std::filesystem::path last_terminal_directory;
-    pastit::NetworkProbe last_probe = pastit::NetworkProbe::Ping;
+    pasteit::NetworkProbe last_probe = pasteit::NetworkProbe::Ping;
     std::string last_probe_host;
     std::string last_clone_url;
     std::filesystem::path last_clone_destination;
@@ -59,7 +59,7 @@ std::filesystem::path make_unique_temp_dir() {
     const auto base = std::filesystem::temp_directory_path();
     const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     for (int attempt = 0; attempt < 100; ++attempt) {
-        auto path = base / ("pastit-fast-action-services-" + std::to_string(getpid()) + "-" +
+        auto path = base / ("pasteit-fast-action-services-" + std::to_string(getpid()) + "-" +
                             std::to_string(ticks) + "-" + std::to_string(attempt));
         std::error_code error;
         if (std::filesystem::create_directory(path, error)) {
@@ -77,15 +77,15 @@ void assert_digest_or_unavailable(std::string_view actual, std::string_view expe
 }  // namespace
 
 int main() {
-    static_assert(std::is_abstract_v<pastit::FastActionServices>);
+    static_assert(std::is_abstract_v<pasteit::FastActionServices>);
 
     FakeFastActionServices fake;
     const std::filesystem::path clone_destination = "/tmp/clone target with spaces";
-    fake.run_network_probe(pastit::NetworkProbe::ReverseDns, "192.0.2.10");
+    fake.run_network_probe(pasteit::NetworkProbe::ReverseDns, "192.0.2.10");
     fake.clone_repository("https://github.com/acme/widget", clone_destination);
     fake.open_terminal("/tmp/project path/source file.cpp");
     fake.run_argv({"git", "clone", "https://github.com/acme/widget", clone_destination.string()});
-    assert(fake.last_probe == pastit::NetworkProbe::ReverseDns);
+    assert(fake.last_probe == pasteit::NetworkProbe::ReverseDns);
     assert(fake.last_probe_host == "192.0.2.10");
     assert(fake.last_clone_url == "https://github.com/acme/widget");
     assert(fake.last_clone_destination == clone_destination);
@@ -95,11 +95,11 @@ int main() {
     std::vector<std::vector<std::string>> commands;
     std::vector<std::string> terminal_argv;
     std::filesystem::path terminal_cwd;
-    pastit::LinuxFastActionServices linux_services(
+    pasteit::LinuxFastActionServices linux_services(
         {.terminal_command = {"test-terminal", "--working-directory"}, .max_output_bytes = 16},
         [&](const std::vector<std::string>& argv) {
             commands.push_back(argv);
-            return pastit::ProcessOutput{.exit_code = 0, .stdout_text = argv.back(), .stderr_text = {}};
+            return pasteit::ProcessOutput{.exit_code = 0, .stdout_text = argv.back(), .stderr_text = {}};
         },
         [&](const std::vector<std::string>& argv, const std::filesystem::path& working_directory) {
             terminal_argv = argv;
@@ -107,13 +107,13 @@ int main() {
             return true;
         });
 
-    linux_services.run_network_probe(pastit::NetworkProbe::Ping, "192.0.2.10");
+    linux_services.run_network_probe(pasteit::NetworkProbe::Ping, "192.0.2.10");
     assert((commands.back() == std::vector<std::string>{"ping", "-c", "4", "192.0.2.10"}));
-    linux_services.run_network_probe(pastit::NetworkProbe::TraceRoute, "2001:db8::1");
+    linux_services.run_network_probe(pasteit::NetworkProbe::TraceRoute, "2001:db8::1");
     assert((commands.back() == std::vector<std::string>{"traceroute", "2001:db8::1"}));
-    linux_services.run_network_probe(pastit::NetworkProbe::ReverseDns, "192.0.2.10");
+    linux_services.run_network_probe(pasteit::NetworkProbe::ReverseDns, "192.0.2.10");
     assert((commands.back() == std::vector<std::string>{"getent", "hosts", "192.0.2.10"}));
-    linux_services.run_network_probe(pastit::NetworkProbe::Dig, "example.com");
+    linux_services.run_network_probe(pasteit::NetworkProbe::Dig, "example.com");
     assert((commands.back() == std::vector<std::string>{"dig", "example.com"}));
     linux_services.clone_repository("git@github.com:acme/widget.git", clone_destination);
     assert((commands.back() == std::vector<std::string>{"git", "clone", "git@github.com:acme/widget.git",
@@ -132,11 +132,11 @@ int main() {
     assert((terminal_argv == std::vector<std::string>{"test-terminal", "--working-directory"}));
     assert(terminal_cwd == std::filesystem::weakly_canonical(nested).lexically_normal());
 
-    pastit::LinuxFastActionServices real_services({.max_output_bytes = 16});
-    pastit::LinuxFastActionServices missing_terminal(
+    pasteit::LinuxFastActionServices real_services({.max_output_bytes = 16});
+    pasteit::LinuxFastActionServices missing_terminal(
         {.terminal_command = {(root / "definitely-missing-terminal").string()}, .max_output_bytes = 16});
     assert(!missing_terminal.open_terminal(nested));
-    pastit::LinuxFastActionServices missing_working_directory(
+    pasteit::LinuxFastActionServices missing_working_directory(
         {.terminal_command = {"/bin/true"}, .max_output_bytes = 16});
     assert(!missing_working_directory.open_terminal(root / "missing directory" / "source.txt"));
 
@@ -145,9 +145,9 @@ int main() {
     assert(*parsed == 5);
     assert(starts_with(real_services.format_datetime(0, "UTC"), "1970-01-01T00:00:00"));
 
-    assert_digest_or_unavailable(real_services.hash_file(file_path, pastit::HashAlgorithm::Sha256),
+    assert_digest_or_unavailable(real_services.hash_file(file_path, pasteit::HashAlgorithm::Sha256),
                                  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-    assert_digest_or_unavailable(real_services.hash_file(file_path, pastit::HashAlgorithm::Sha512),
+    assert_digest_or_unavailable(real_services.hash_file(file_path, pasteit::HashAlgorithm::Sha512),
                                  "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a"
                                  "2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f");
 

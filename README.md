@@ -16,14 +16,14 @@ GLFW 3.4, Dear ImGui 1.92.9b-docking, and `stb_image.h` are fetched automaticall
 ./scripts/bootstrap-local-deps.sh
 ```
 
-This downloads and extracts headers only under `.deps/`. The resulting `pastit` binary uses the desktop's existing versioned X11/OpenGL runtime libraries and has no `.deps` RPATH.
+This downloads and extracts headers only under `.deps/`. The resulting `pasteit` binary uses the desktop's existing versioned X11/OpenGL runtime libraries and has no `.deps` RPATH.
 
 ## Djev Configuration
 
 - `DJEV_URL` defaults to `http://127.0.0.1:8011`
 - `DJEV_MODEL` defaults to `typed-decisions`, a model supported by the local Laya API on port 8011
 - `DJEV_API_KEY` is optional for local deployments that require bearer authentication; `API_KEY` is accepted as the local demo fallback
-- The desktop app reads these values from `.env` (or `PASTIT_ENV_FILE`) without printing the token
+- The desktop app reads these values from `.env` (or `PASTEIT_ENV_FILE`) without printing the token
 
 The app posts to `{DJEV_URL}/v1/systemone`. AutoJev settings also accept `http://127.0.0.1:8000/v1/autojev` as a shortcut; PasteIt maps it to AutoJev's `/v1/systemone` route and sends the TypeSafe `model/state/questions` request shape. Set its model field to `autojev`. Other Djev endpoints keep the request ID and protocol metadata. Djev receives only the current clipboard item, the relevant target context, represented destination paths, and at most 26 compact action alternatives. Clipboard history and the duplicate full action catalog are never sent. IP and date/time alternatives are offered only for short text with a locally validated match, reducing irrelevant choices. The serialized request is capped at 10 KiB; a deterministic local fallback remains available if Djev fails. Djev returns action IDs and probabilities only, and PasteIt executes the matching fixed native action rather than model-generated shell commands.
 
@@ -48,7 +48,7 @@ The general LLM can be any OpenAI-compatible server. Servers that reject samplin
 ## Build And Test
 
 ```bash
-cmake -S . -B build -DPASTIT_BUILD_TESTS=ON -DPASTIT_BUILD_DESKTOP=ON
+cmake -S . -B build -DPASTEIT_BUILD_TESTS=ON -DPASTEIT_BUILD_DESKTOP=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
@@ -90,7 +90,7 @@ Mermaid PNGs from optional `mmdc` appear in the independent result window. The f
 
 Annotation export keeps the overlay non-destructive while editing. The current exporter writes a self-contained SVG that embeds the original image and overlays; raster PNG/JPG export is intentionally not advertised until a real encoder path exists.
 
-Compose opens the local `mailto:` handler. Direct email sending is enabled only when `PASTIT_SENDMAIL` names a local executable; PasteIt invokes it with the destination address as its first argument.
+Compose opens the local `mailto:` handler. Direct email sending is enabled only when `PASTEIT_SENDMAIL` names a local executable; PasteIt invokes it with the destination address as its first argument.
 
 ## Data Views
 
@@ -116,7 +116,7 @@ The Anonymize window lists every finding; untick one or a whole category to keep
 
 ## Desktop Popup
 
-`pastit` is the desktop entry point. A per-user lock prevents duplicate V2 processes. Start it once, then press `Ctrl+Alt+F` to capture the focused target and open the popup. The movable, opacity-configurable popup shows the top eight Djev/fallback actions as cards: a category icon, the label, the shortened destination (`~/…`) or a one-line description, and a confidence bar when Jev ranked the list (the local fallback is an ordering, so it shows no bar). Click a card, press its number key 1–8, or use Up/Down and Enter. The header shows the content kind, detected signals (color, code, JSON, …), the size, and whether Jev or the local fallback ranked the list; colors show a swatch. The window height fits its content after each ranking. The root window has no title bar or window buttons: drag the tab row to move it, and press Escape (or the global shortcut) to hide it without executing.
+`pasteit` is the desktop entry point. A per-user lock prevents duplicate V2 processes. Start it once, then press `Ctrl+Alt+F` to capture the focused target and open the popup. The movable, opacity-configurable popup shows the top eight Djev/fallback actions as cards: a category icon, the label, the shortened destination (`~/…`) or a one-line description, and a confidence bar when Jev ranked the list (the local fallback is an ordering, so it shows no bar). Click a card, press its number key 1–8, or use Up/Down and Enter. The header shows the content kind, detected signals (color, code, JSON, …), the size, and whether Jev or the local fallback ranked the list; colors show a swatch. The window height fits its content after each ranking. The root window has no title bar or window buttons: drag the tab row to move it, and press Escape (or the global shortcut) to hide it without executing.
 
 The Smart Actions tab abbreviates large text and uses image thumbnails. Enabled text prompt templates are ranked directly in the same action list as paste/save actions. The persistent Clipboard History tab retains the newest 50 text or image records; rows use content-type icons and open a detail view with the complete selectable/copyable text, while image details use the original stored bytes. Text metadata is sanitized and truncated only at UTF-8 character boundaries, and legacy malformed previews are normalized when history loads. The Recent Paths tab uses a resizable wide path column; long row paths preserve their prefix and filename suffix while abbreviating the middle with `...`. Row details put path operations in a top toolbar and use a scrollable body so long paths and actions remain reachable. Runtime recent-path sources are named file managers (such as Nautilus) and existing bash/zsh history paths; `proc-fd` records are filtered from both loaded and displayed history.
 
@@ -131,7 +131,7 @@ The UI uses a custom dark or light theme (Settings → General → Theme) with r
 For a launch-time visual smoke test:
 
 ```bash
-PASTIT_SHOW_ON_START=1 ./build/pastit
+PASTEIT_SHOW_ON_START=1 ./build/pasteit
 ```
 
 XTest is loaded from the ordinary desktop runtime only when PasteIt needs to restore the captured target and inject `Ctrl+V`. If desktop headers are unavailable, CMake keeps the headless core and tests buildable and reports the missing components.

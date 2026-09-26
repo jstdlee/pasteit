@@ -4,7 +4,7 @@
 #include <string>
 #include <utility>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 
 int main() {
@@ -15,21 +15,21 @@ int main() {
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
 
-    pastit::RecentPathsModel model;
+    pasteit::RecentPathsModel model;
     for (const auto* type : {"file", "folder"}) {
-        pastit::RecentPathRow row;
+        pasteit::RecentPathRow row;
         row.ref = type;
         row.type = type;
         row.type_label = type;
         row.display_path = std::string{"/tmp/"} + type;
         model.rows.push_back(std::move(row));
     }
-    pastit::RecentPathsState state;
+    pasteit::RecentPathsState state;
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
     ImGui::SetNextWindowSize(io.DisplaySize);
     ImGui::Begin("Path History", nullptr, ImGuiWindowFlags_NoDecoration);
-    pastit::render_recent_paths_panel(state, model, pastit::UiLanguage::English);
+    pasteit::render_recent_paths_panel(state, model, pasteit::UiLanguage::English);
     ImGui::End();
     ImGui::Render();
 

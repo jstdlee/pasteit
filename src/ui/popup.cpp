@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string target_path_for(const DecisionSnapshot& snapshot, const std::string& ref) {
@@ -65,4 +65,4 @@ PreparedDecision prepare_popup_decision(const DecisionRequest& request, const De
     return prepare_ranked_decision(request, response, catalog, current_snapshot, context);
 }
 
-}  // namespace pastit
+}  // namespace pasteit

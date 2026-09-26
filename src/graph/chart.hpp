@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class ChartKind { Line, Bar, Pie, Scatter, Histogram };
 
@@ -39,4 +39,4 @@ std::string chart_problem(const ChartSpec& spec);
 std::vector<std::byte> render_chart_png(const ChartSpec& spec);
 std::string format_axis_number(double value);
 
-}  // namespace pastit
+}  // namespace pasteit

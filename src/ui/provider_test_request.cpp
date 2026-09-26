@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace pastit {
+namespace pasteit {
 
 DecisionRequest provider_test_request() {
     DecisionRequest request;
@@ -35,4 +35,4 @@ DecisionRequest provider_test_request() {
     return request;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

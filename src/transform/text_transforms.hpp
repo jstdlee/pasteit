@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // Pure, local text transforms behind the utility actions. Each returns
 // std::nullopt when the input is not applicable, so the catalog can use the
@@ -101,4 +101,4 @@ std::string guess_code_extension(std::string_view text);
 // Contact fields as (kind, value) pairs, e.g. {"email", "a@b.c"}.
 std::string contact_vcard(const std::vector<std::pair<std::string, std::string>>& fields);
 
-}  // namespace pastit
+}  // namespace pasteit

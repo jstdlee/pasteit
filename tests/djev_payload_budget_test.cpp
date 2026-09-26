@@ -38,18 +38,18 @@ std::string two_digit(int value) {
     return out.str();
 }
 
-pastit::DecisionRequest base_request(std::string request_id, std::string clipboard_ref) {
-    pastit::DecisionRequest request;
+pasteit::DecisionRequest base_request(std::string request_id, std::string clipboard_ref) {
+    pasteit::DecisionRequest request;
     request.protocol_version = 1;
     request.request_id = std::move(request_id);
     request.snapshot.clipboard_hash = "clip_hash_budget";
     request.snapshot.focused_target_hash = "focus_hash_budget";
     request.snapshot.focused_app = "Code";
     request.snapshot.captured_at_ms = 900;
-    request.snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    request.snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = std::move(clipboard_ref),
         .mime_types = {"text/plain"},
-        .kind = pastit::ContentKind::Text,
+        .kind = pasteit::ContentKind::Text,
         .preview = "current text",
         .size_bytes = 12,
         .captured_at_ms = 900,
@@ -63,7 +63,7 @@ bool contains_choice(std::string_view payload, std::string_view id) {
 }
 
 bool retained_targets_are_represented(
-    std::string_view payload, const std::vector<pastit::ActionInstance>& actions) {
+    std::string_view payload, const std::vector<pasteit::ActionInstance>& actions) {
     for (const auto& action : actions) {
         if (!contains_choice(payload, action.id) || action.target_ref.empty()) {
             continue;
@@ -79,16 +79,16 @@ bool retained_targets_are_represented(
 
 int main() {
     auto datetime_request = base_request("req_datetime_kind", "clip_datetime_kind");
-    datetime_request.snapshot.clipboard_items.front().kind = pastit::ContentKind::DateTime;
-    datetime_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+    datetime_request.snapshot.clipboard_items.front().kind = pasteit::ContentKind::DateTime;
+    datetime_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
         .id = "datetime-kind-action",
-        .kind = pastit::ActionKind::ConvertTimezone,
+        .kind = pasteit::ActionKind::ConvertTimezone,
         .source_ref = "clip_datetime_kind",
         .label = "Convert timezone",
         .description = "Convert this date/time",
         .enabled = true,
     });
-    const auto datetime_payload = pastit::DjevClient::build_payload(datetime_request, "jev-test");
+    const auto datetime_payload = pasteit::DjevClient::build_payload(datetime_request, "jev-test");
     assert(datetime_payload.find(R"("kind":"datetime")") != std::string::npos);
     assert(datetime_payload.find("habits") == std::string::npos);
 
@@ -96,8 +96,8 @@ int main() {
     auto habit_request = datetime_request;
     habit_request.snapshot.usage_hints.push_back({"datetime-kind-action", 0.734, 9});
     habit_request.snapshot.usage_hints.push_back({"not-offered", 0.5, 3});
-    const auto habit_payload = pastit::DjevClient::build_payload(habit_request, "jev-test");
-    const auto habit_root = pastit::parse_json(habit_payload);
+    const auto habit_payload = pasteit::DjevClient::build_payload(habit_request, "jev-test");
+    const auto habit_root = pasteit::parse_json(habit_payload);
     assert(habit_root.has_value());
     const auto* habits = habit_root->get("state")->get("habits");
     assert(habits != nullptr && habits->array() && habits->array()->size() == 1);
@@ -107,10 +107,10 @@ int main() {
 
     // Uncertain local shape: the profile and a content_type question are sent.
     auto profiled = datetime_request;
-    profiled.snapshot.profile = pastit::ClipboardProfileHint{
+    profiled.snapshot.profile = pasteit::ClipboardProfileHint{
         .shape = "csv", .confidence = 0.52, .lines = 3, .columns = 2, .header = true, .tags = {"sampled"},
         .alternatives = {{"csv", "comma separated rows"}, {"prose", "natural-language text"}}};
-    const auto profiled_root = pastit::parse_json(pastit::DjevClient::build_payload(profiled, "jev-test"));
+    const auto profiled_root = pasteit::parse_json(pasteit::DjevClient::build_payload(profiled, "jev-test"));
     assert(profiled_root.has_value());
     const auto* profile = profiled_root->get("state")->get("clipboard")->get("profile");
     assert(profile && *profile->get("shape")->string() == "csv" && *profile->get("columns")->number() == 2);
@@ -118,26 +118,26 @@ int main() {
     assert(question && question->get("criteria")->get("prose"));
 
     // Answers are read by question name even when content_type comes first.
-    const auto parsed = pastit::DjevClient::parse_response(
+    const auto parsed = pasteit::DjevClient::parse_response(
         R"({"answers":{"content_type":{"type":"choice","choice":"csv","probabilities":{"csv":0.9,"prose":0.1},"confidence":0.9},)"
         R"("best_action":{"type":"choice","choice":"datetime-kind-action","probabilities":{"datetime-kind-action":0.8},"confidence":0.8}}})",
         profiled);
     assert(parsed.valid && parsed.choice == "datetime-kind-action" && parsed.content_type == "csv");
     assert(parsed.content_type_confidence == 0.9);
 
-    pastit::DecisionRequest request;
+    pasteit::DecisionRequest request;
     request.protocol_version = 1;
     request.request_id = "req_budget";
     request.snapshot.clipboard_hash = "clip_hash_budget";
     request.snapshot.focused_target_hash = "focus_hash_budget";
     request.snapshot.focused_app = "Code";
     request.snapshot.focused_window_title = repeat("window-title-", 40) + "tail-window-marker";
-    request.snapshot.focused_current_directory = "/tmp/pastit-budget";
+    request.snapshot.focused_current_directory = "/tmp/pasteit-budget";
     request.snapshot.captured_at_ms = 900;
-    request.snapshot.clipboard_items.push_back(pastit::ClipboardItem{
+    request.snapshot.clipboard_items.push_back(pasteit::ClipboardItem{
         .ref = "clip_cjk_current",
         .mime_types = {"text/plain", "text/html"},
-        .kind = pastit::ContentKind::Text,
+        .kind = pasteit::ContentKind::Text,
         .preview = repeat("界", 700) + "tail-preview-marker",
         .size_bytes = 4096,
         .captured_at_ms = 900,
@@ -145,10 +145,10 @@ int main() {
     });
 
     for (int index = 0; index < 6; ++index) {
-        request.snapshot.recent_paths.push_back(pastit::PathLocation{
+        request.snapshot.recent_paths.push_back(pasteit::PathLocation{
             .ref = "path_" + two_digit(index),
             .path = std::filesystem::path{"/tmp"} / repeat("destination-segment-", 20) / ("leaf_" + two_digit(index)),
-            .kind = pastit::PathKind::Directory,
+            .kind = pasteit::PathKind::Directory,
             .last_seen_ms = 800 - index,
             .source = "budget-test",
             .exists = true,
@@ -156,9 +156,9 @@ int main() {
     }
 
     for (int index = 0; index < 26; ++index) {
-        request.snapshot.available_actions.push_back(pastit::ActionInstance{
+        request.snapshot.available_actions.push_back(pasteit::ActionInstance{
             .id = "a_budget_" + two_digit(index),
-            .kind = index % 2 == 0 ? pastit::ActionKind::SaveTextFile : pastit::ActionKind::TransformText,
+            .kind = index % 2 == 0 ? pasteit::ActionKind::SaveTextFile : pasteit::ActionKind::TransformText,
             .source_ref = "clip_cjk_current",
             .target_ref = "path_" + two_digit(index % 6),
             .filename = repeat("long-filename-", 12) + ".txt",
@@ -169,8 +169,8 @@ int main() {
         });
     }
 
-    const auto payload = pastit::DjevClient::build_payload(request, "jev-budget");
-    assert(pastit::is_valid_json(payload));
+    const auto payload = pasteit::DjevClient::build_payload(request, "jev-budget");
+    assert(pasteit::is_valid_json(payload));
     assert(payload.size() <= 10 * 1024);
     assert(payload.find(R"("history")") == std::string::npos);
     assert(payload.find(R"("available_actions")") == std::string::npos);
@@ -183,35 +183,35 @@ int main() {
 
     auto path_cap_request = base_request("req_path_cap", "clip_path_cap");
     for (int index = 0; index < 6; ++index) {
-        path_cap_request.snapshot.recent_paths.push_back(pastit::PathLocation{
+        path_cap_request.snapshot.recent_paths.push_back(pasteit::PathLocation{
             .ref = "recent_" + two_digit(index),
             .path = std::filesystem::path{"/tmp"} / ("recent_" + two_digit(index)),
-            .kind = pastit::PathKind::Directory,
+            .kind = pasteit::PathKind::Directory,
             .last_seen_ms = 800 - index,
             .source = "recent",
             .exists = true,
         });
     }
-    path_cap_request.snapshot.recent_paths.push_back(pastit::PathLocation{
+    path_cap_request.snapshot.recent_paths.push_back(pasteit::PathLocation{
         .ref = "configured_default",
         .path = "/tmp/configured-default",
-        .kind = pastit::PathKind::Directory,
+        .kind = pasteit::PathKind::Directory,
         .last_seen_ms = 900,
         .source = "configured-text",
         .exists = true,
     });
-    path_cap_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+    path_cap_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
         .id = "a_configured_default",
-        .kind = pastit::ActionKind::SaveTextFile,
+        .kind = pasteit::ActionKind::SaveTextFile,
         .source_ref = "clip_path_cap",
         .target_ref = "configured_default",
         .description = "Save to the configured default",
         .enabled = true,
     });
     for (int index = 0; index < 6; ++index) {
-        path_cap_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+        path_cap_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
             .id = "a_recent_" + two_digit(index),
-            .kind = pastit::ActionKind::SaveTextFile,
+            .kind = pasteit::ActionKind::SaveTextFile,
             .source_ref = "clip_path_cap",
             .target_ref = "recent_" + two_digit(index),
             .description = "Save to a recent path",
@@ -219,8 +219,8 @@ int main() {
         });
     }
 
-    const auto path_cap_payload = pastit::DjevClient::build_payload(path_cap_request, "jev-path-cap");
-    assert(pastit::is_valid_json(path_cap_payload));
+    const auto path_cap_payload = pasteit::DjevClient::build_payload(path_cap_request, "jev-path-cap");
+    assert(pasteit::is_valid_json(path_cap_payload));
     const bool path_count_is_bounded = count_occurrences(path_cap_payload, R"("path":)") <= 6;
     const bool configured_action_is_retained = contains_choice(path_cap_payload, "a_configured_default");
     const bool configured_path_is_represented =
@@ -233,42 +233,42 @@ int main() {
     degradation_request.snapshot.focused_current_directory = "/" + repeat("目录", 180) + "tail-directory-marker";
     degradation_request.snapshot.clipboard_items.front().preview = repeat("界", 700) + "tail-preview-marker";
     degradation_request.snapshot.recent_paths = {
-        pastit::PathLocation{
+        pasteit::PathLocation{
             .ref = "configured_unique",
             .path = std::filesystem::path{"/tmp"} / (repeat("唯", 300) + "tail-unique-path-marker"),
-            .kind = pastit::PathKind::Directory,
+            .kind = pasteit::PathKind::Directory,
             .last_seen_ms = 900,
             .source = "configured-text",
             .exists = true,
         },
-        pastit::PathLocation{
+        pasteit::PathLocation{
             .ref = "duplicate_target",
             .path = std::filesystem::path{"/tmp"} / (repeat("复", 300) + "tail-duplicate-path-marker"),
-            .kind = pastit::PathKind::Directory,
+            .kind = pasteit::PathKind::Directory,
             .last_seen_ms = 800,
             .source = "recent",
             .exists = true,
         },
     };
-    degradation_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+    degradation_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
         .id = "a_unique_paste",
-        .kind = pastit::ActionKind::PasteText,
+        .kind = pasteit::ActionKind::PasteText,
         .source_ref = "clip_degradation",
         .description = repeat("粘", 200),
         .enabled = true,
     });
-    degradation_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+    degradation_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
         .id = "a_unique_file",
-        .kind = pastit::ActionKind::SaveTextFile,
+        .kind = pasteit::ActionKind::SaveTextFile,
         .source_ref = "clip_degradation",
         .target_ref = "configured_unique",
         .description = repeat("存", 200),
         .enabled = true,
     });
     for (int index = 0; index < 8; ++index) {
-        degradation_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+        degradation_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
             .id = "a_destination_duplicate_" + two_digit(index),
-            .kind = pastit::ActionKind::SaveJsonFile,
+            .kind = pasteit::ActionKind::SaveJsonFile,
             .source_ref = "clip_degradation",
             .target_ref = "duplicate_target",
             .description = repeat("径", 200),
@@ -276,17 +276,17 @@ int main() {
         });
     }
     for (int index = 0; index < 16; ++index) {
-        degradation_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+        degradation_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
             .id = "a_prompt_duplicate_" + two_digit(index),
-            .kind = pastit::ActionKind::TransformText,
+            .kind = pasteit::ActionKind::TransformText,
             .source_ref = "clip_degradation",
             .description = repeat("问", 200),
             .enabled = true,
         });
     }
 
-    const auto degradation_payload = pastit::DjevClient::build_payload(degradation_request, repeat("模", 400));
-    assert(pastit::is_valid_json(degradation_payload));
+    const auto degradation_payload = pasteit::DjevClient::build_payload(degradation_request, repeat("模", 400));
+    assert(pasteit::is_valid_json(degradation_payload));
     assert(degradation_payload.size() <= 10 * 1024);
     assert(contains_choice(degradation_payload, "a_unique_paste"));
     assert(contains_choice(degradation_payload, "a_unique_file"));
@@ -306,14 +306,14 @@ int main() {
     malformed_utf8_request.snapshot.focused_window_title.push_back(static_cast<char>(0xE9));
     malformed_utf8_request.snapshot.focused_window_title.push_back(static_cast<char>(0xAA));
     malformed_utf8_request.snapshot.focused_window_title.push_back('.');
-    malformed_utf8_request.snapshot.available_actions.push_back(pastit::ActionInstance{
+    malformed_utf8_request.snapshot.available_actions.push_back(pasteit::ActionInstance{
         .id = "a_malformed_utf8",
-        .kind = pastit::ActionKind::PasteText,
+        .kind = pasteit::ActionKind::PasteText,
         .source_ref = "clip_malformed_utf8",
         .description = "Paste malformed-boundary fixture",
         .enabled = true,
     });
-    const auto malformed_utf8_payload = pastit::DjevClient::build_payload(malformed_utf8_request, "jev-utf8");
+    const auto malformed_utf8_payload = pasteit::DjevClient::build_payload(malformed_utf8_request, "jev-utf8");
     const std::string malformed_sequence{static_cast<char>(0xE9), static_cast<char>(0xAA), '.'};
     assert(malformed_utf8_payload.find(malformed_sequence) == std::string::npos);
     assert(malformed_utf8_payload.find("\xEF\xBF\xBD") != std::string::npos);

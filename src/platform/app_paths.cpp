@@ -11,7 +11,7 @@
 #include <unistd.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::filesystem::path fallback_directory() {
@@ -67,4 +67,4 @@ std::filesystem::path app_data_dir() {
     return executable_directory() / "data";
 }
 
-}  // namespace pastit
+}  // namespace pasteit

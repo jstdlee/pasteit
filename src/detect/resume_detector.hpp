@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct ResumeField {
     std::string kind;
@@ -22,4 +22,4 @@ struct ResumeExtraction {
 
 ResumeExtraction detect_resume_fields(const std::string& text);
 
-}  // namespace pastit
+}  // namespace pasteit

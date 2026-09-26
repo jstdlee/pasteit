@@ -24,18 +24,18 @@
 
 namespace {
 
-class HoldingTransport final : public pastit::DownloadTransport {
+class HoldingTransport final : public pasteit::DownloadTransport {
 public:
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest& request,
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest& request,
                                    const std::atomic_bool&) override {
         last_request = request;
         return {.status_code = 206, .total_size = 8192, .range_supported = true, .body = "partial"};
     }
 
-    pastit::DownloadRequest last_request;
+    pasteit::DownloadRequest last_request;
 };
 
-bool has_command(const pastit::FastActionPanelModel& model, std::string_view label) {
+bool has_command(const pasteit::FastActionPanelModel& model, std::string_view label) {
     for (const auto& command : model.toolbar) {
         if (command.label == label) {
             return true;
@@ -51,7 +51,7 @@ std::filesystem::path sample_png_fixture() {
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     {
         RendererResultState state;
@@ -157,7 +157,7 @@ int main() {
             .payload = "flowchart LR\nA-->B\n",
             .available = true,
             .status = RendererResultStatus::Ready,
-            .output_path = std::filesystem::temp_directory_path() / "pastit-definitely-missing-mermaid.html",
+            .output_path = std::filesystem::temp_directory_path() / "pasteit-definitely-missing-mermaid.html",
             .error = {},
         });
         const auto model = build_mermaid_preview_panel_model(state);
@@ -167,7 +167,7 @@ int main() {
 
     {
         const auto root = std::filesystem::temp_directory_path() /
-            ("pastit-panel-command-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            ("pasteit-panel-command-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(root);
         const auto source = root / "diagram.mmd";
         const FastActionPanelCommand save_source{.id = "save_source", .label = "Save source",
@@ -265,7 +265,7 @@ int main() {
             .payload = "mailto:ada@example.com",
             .available = true,
             .status = RendererResultStatus::Ready,
-            .output_path = std::filesystem::temp_directory_path() / "pastit-definitely-missing-qr.png",
+            .output_path = std::filesystem::temp_directory_path() / "pasteit-definitely-missing-qr.png",
             .error = {},
         });
         const auto model = build_qr_preview_panel_model(state);
@@ -319,7 +319,7 @@ int main() {
     {
         auto transport = std::make_shared<HoldingTransport>();
         DownloadManager downloads(transport);
-        const auto job_id = downloads.start("https://example.test/file.bin", "/tmp/pastit-panel.bin");
+        const auto job_id = downloads.start("https://example.test/file.bin", "/tmp/pasteit-panel.bin");
         downloads.pause(job_id);
         auto before_close = downloads.get(job_id);
         assert(before_close.has_value());
@@ -354,7 +354,7 @@ int main() {
         assert(has_command(model, "Save annotated SVG"));
         assert(model.primary_text.find("/tmp/original.png") != std::string::npos);
         assert(!panel.export_running());
-        const auto output = std::filesystem::temp_directory_path() / "pastit-async-annotation-panel-test.svg";
+        const auto output = std::filesystem::temp_directory_path() / "pasteit-async-annotation-panel-test.svg";
         panel.document.set_original_image(sample_png_fixture());
         assert(panel.start_export(output));
         assert(panel.export_running());
@@ -370,7 +370,7 @@ int main() {
     {
         ImageAnnotationPanelState panel;
         panel.document.set_original_image(sample_png_fixture());
-        const auto output = std::filesystem::temp_directory_path() / "pastit-annotation-gated-export.svg";
+        const auto output = std::filesystem::temp_directory_path() / "pasteit-annotation-gated-export.svg";
         std::promise<void> started;
         std::promise<void> release;
         const auto released = release.get_future().share();
@@ -394,7 +394,7 @@ int main() {
     }
 
     {
-        const auto output = std::filesystem::temp_directory_path() / "pastit-annotation-export-test.svg";
+        const auto output = std::filesystem::temp_directory_path() / "pasteit-annotation-export-test.svg";
         AnnotationDocument doc(sample_png_fixture());
         doc.add_line({1.0F, 2.0F}, {12.0F, 8.0F});
         doc.add_comment("note", {4.0F, 5.0F});

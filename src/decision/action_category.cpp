@@ -1,6 +1,6 @@
 #include "decision/action_category.hpp"
 
-namespace pastit {
+namespace pasteit {
 
 ActionCategory action_category(ActionKind kind) {
     switch (kind) {
@@ -163,4 +163,4 @@ double action_specificity_prior(ActionKind kind) {
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

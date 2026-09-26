@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 struct DetectionResult {
     ContentKind kind = ContentKind::Text;
@@ -19,4 +19,4 @@ struct DetectionResult {
 
 DetectionResult detect_content(const std::vector<std::string>& mime_types, std::string_view text);
 
-}  // namespace pastit
+}  // namespace pasteit

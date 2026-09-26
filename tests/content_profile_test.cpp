@@ -7,7 +7,7 @@
 
 namespace {
 
-using namespace pastit;
+using namespace pasteit;
 
 struct Case {
     const char* name;

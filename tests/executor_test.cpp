@@ -40,8 +40,8 @@ std::string read_text(const std::filesystem::path& path) {
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-pastit::ClipboardItem put_text(pastit::ClipboardStore& store, std::string text, pastit::ContentKind kind) {
-    return store.put(pastit::ClipboardData{
+pasteit::ClipboardItem put_text(pasteit::ClipboardStore& store, std::string text, pasteit::ContentKind kind) {
+    return store.put(pasteit::ClipboardData{
         .mime_types = {"text/plain"},
         .bytes = bytes(text),
         .kind = kind,
@@ -50,8 +50,8 @@ pastit::ClipboardItem put_text(pastit::ClipboardStore& store, std::string text, 
     });
 }
 
-pastit::ActionInstance action(pastit::ActionKind kind, const std::string& source_ref, const std::string& target_ref = {}) {
-    pastit::ActionInstance out;
+pasteit::ActionInstance action(pasteit::ActionKind kind, const std::string& source_ref, const std::string& target_ref = {}) {
+    pasteit::ActionInstance out;
     out.id = "test_action";
     out.kind = kind;
     out.source_ref = source_ref;
@@ -63,9 +63,9 @@ pastit::ActionInstance action(pastit::ActionKind kind, const std::string& source
     return out;
 }
 
-class BlockingDownloadTransport final : public pastit::DownloadTransport {
+class BlockingDownloadTransport final : public pasteit::DownloadTransport {
 public:
-    pastit::DownloadResponse fetch(const pastit::DownloadRequest& request,
+    pasteit::DownloadResponse fetch(const pasteit::DownloadRequest& request,
                                    const std::atomic_bool& cancelled) override {
         {
             std::lock_guard lock(mutex_);
@@ -98,16 +98,16 @@ public:
 
     std::mutex mutex_;
     std::condition_variable changed;
-    std::vector<pastit::DownloadRequest> requests;
+    std::vector<pasteit::DownloadRequest> requests;
     bool released = false;
 };
 
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
-    const auto root = std::filesystem::temp_directory_path() / "pastit_executor_test";
+    const auto root = std::filesystem::temp_directory_path() / "pasteit_executor_test";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "target");
     std::filesystem::create_directories(root / "other_target");

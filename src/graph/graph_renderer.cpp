@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr int width = 800;
@@ -259,4 +259,4 @@ std::vector<std::byte> render_chart_png(const ChartSpec& spec) {
     return output;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

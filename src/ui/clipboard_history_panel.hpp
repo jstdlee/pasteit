@@ -8,7 +8,7 @@
 #include <optional>
 #include <string_view>
 
-namespace pastit {
+namespace pasteit {
 
 struct ClipboardTexture {
     std::uintptr_t handle = 0;
@@ -23,4 +23,4 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
                                                        UiLanguage language,
                                                        ClipboardTextureLookup texture_lookup = {});
 
-}  // namespace pastit
+}  // namespace pasteit

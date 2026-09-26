@@ -5,7 +5,7 @@
 #include <cassert>
 
 int main() {
-    const auto request = pastit::provider_test_request();
+    const auto request = pasteit::provider_test_request();
     assert(request.snapshot.available_actions.size() >= 2);
     assert(request.snapshot.available_actions[0].id != request.snapshot.available_actions[1].id);
     for (const auto& action : request.snapshot.available_actions) {
@@ -13,7 +13,7 @@ int main() {
         assert(!action.description.empty());
     }
 
-    const auto payload = pastit::parse_json(pastit::DjevClient::build_payload(request, "test-model"));
+    const auto payload = pasteit::parse_json(pasteit::DjevClient::build_payload(request, "test-model"));
     assert(payload.has_value());
     const auto* questions = payload->get("questions");
     assert(questions != nullptr);

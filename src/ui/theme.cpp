@@ -9,7 +9,7 @@
 #include <cfloat>
 #include <cstdlib>
 
-namespace pastit {
+namespace pasteit {
 
 std::string display_path(std::string_view path, std::size_t max_chars) {
     std::string out{path};
@@ -35,7 +35,7 @@ std::string display_path(std::string_view path, std::size_t max_chars) {
     return out.substr(0, head) + "\xE2\x80\xA6" + out.substr(tail);
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 
 namespace {
 
@@ -627,4 +627,4 @@ void end_form() {
 
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

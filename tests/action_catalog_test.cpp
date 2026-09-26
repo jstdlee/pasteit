@@ -10,8 +10,8 @@
 
 namespace {
 
-pastit::ClipboardItem item(std::string ref, pastit::ContentKind kind, std::string preview) {
-    pastit::ClipboardItem out;
+pasteit::ClipboardItem item(std::string ref, pasteit::ContentKind kind, std::string preview) {
+    pasteit::ClipboardItem out;
     out.ref = std::move(ref);
     out.kind = kind;
     out.preview = std::move(preview);
@@ -20,18 +20,18 @@ pastit::ClipboardItem item(std::string ref, pastit::ContentKind kind, std::strin
     return out;
 }
 
-pastit::PathLocation path(std::string ref, std::filesystem::path value, std::int64_t seen) {
-    pastit::PathLocation out;
+pasteit::PathLocation path(std::string ref, std::filesystem::path value, std::int64_t seen) {
+    pasteit::PathLocation out;
     out.ref = std::move(ref);
     out.path = std::move(value);
-    out.kind = pastit::PathKind::Directory;
+    out.kind = pasteit::PathKind::Directory;
     out.last_seen_ms = seen;
     out.source = "test";
     out.exists = true;
     return out;
 }
 
-std::size_t count_kind(const pastit::ActionCatalog& catalog, pastit::ActionKind kind, std::string source_ref = {}) {
+std::size_t count_kind(const pasteit::ActionCatalog& catalog, pasteit::ActionKind kind, std::string source_ref = {}) {
     std::size_t count = 0;
     for (const auto& action : catalog.actions) {
         if (action.kind == kind && (source_ref.empty() || action.source_ref == source_ref)) {
@@ -41,7 +41,7 @@ std::size_t count_kind(const pastit::ActionCatalog& catalog, pastit::ActionKind 
     return count;
 }
 
-bool has_target(const pastit::ActionCatalog& catalog, pastit::ActionKind kind, const std::string& target_ref) {
+bool has_target(const pasteit::ActionCatalog& catalog, pasteit::ActionKind kind, const std::string& target_ref) {
     for (const auto& action : catalog.actions) {
         if (action.kind == kind && action.target_ref == target_ref) {
             return true;
@@ -59,7 +59,7 @@ std::vector<std::byte> bytes(std::string_view text) {
     return out;
 }
 
-pastit::DecisionSnapshot with_current_item(const pastit::DecisionSnapshot& snapshot, std::size_t index) {
+pasteit::DecisionSnapshot with_current_item(const pasteit::DecisionSnapshot& snapshot, std::size_t index) {
     auto out = snapshot;
     out.clipboard_items = {snapshot.clipboard_items.at(index)};
     return out;
@@ -68,7 +68,7 @@ pastit::DecisionSnapshot with_current_item(const pastit::DecisionSnapshot& snaps
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     DecisionSnapshot snapshot;
     snapshot.clipboard_hash = "clip_hash";
@@ -150,7 +150,7 @@ int main() {
         assert(text_catalog.find(action.id).has_value());
     }
 
-    const auto store_root = std::filesystem::temp_directory_path() / "pastit_long_catalog_test";
+    const auto store_root = std::filesystem::temp_directory_path() / "pasteit_long_catalog_test";
     std::filesystem::remove_all(store_root);
     ClipboardStore store(store_root);
     const std::string long_json = "{\"padding\":\"" + std::string(300, 'x') + "\",\"answer\":42}";

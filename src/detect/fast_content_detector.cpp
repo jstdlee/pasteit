@@ -11,7 +11,7 @@
 #include <set>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 // Fast detectors inspect a bounded prefix so large clipboard text cannot make
@@ -595,4 +595,4 @@ std::vector<std::string> fast_signal_tags(const FastContentSignals& signals) {
     return tags;
 }
 
-}  // namespace pastit
+}  // namespace pasteit

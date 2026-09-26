@@ -6,13 +6,13 @@
 
 namespace {
 
-auto find_prompt(std::vector<pastit::PromptTemplate>& templates, const std::string& id) {
+auto find_prompt(std::vector<pasteit::PromptTemplate>& templates, const std::string& id) {
     return std::find_if(templates.begin(), templates.end(), [&](const auto& value) {
         return value.id == id;
     });
 }
 
-auto find_prompt_by_name(std::vector<pastit::PromptTemplate>& templates, const std::string& name) {
+auto find_prompt_by_name(std::vector<pasteit::PromptTemplate>& templates, const std::string& name) {
     return std::find_if(templates.begin(), templates.end(), [&](const auto& value) {
         return value.name == name;
     });
@@ -21,7 +21,7 @@ auto find_prompt_by_name(std::vector<pastit::PromptTemplate>& templates, const s
 }
 
 int main() {
-    auto settings = pastit::default_settings();
+    auto settings = pasteit::default_settings();
 
     const auto explain_text = find_prompt_by_name(settings.prompt_templates, "Explain text");
     const auto explain_code = find_prompt_by_name(settings.prompt_templates, "Explain code");
@@ -35,7 +35,7 @@ int main() {
     assert(explain_code->system_prompt.find("{text}") != std::string::npos);
 
     int next = 0;
-    pastit::PromptTemplateService service(settings.prompt_templates, [&] { return "id-" + std::to_string(++next); });
+    pasteit::PromptTemplateService service(settings.prompt_templates, [&] { return "id-" + std::to_string(++next); });
 
     const auto seeded_count = settings.prompt_templates.size();
     service.restore_defaults();
@@ -55,7 +55,7 @@ int main() {
 
     assert(service.erase("builtin-explain-text", error));
     assert(!service.find("builtin-explain-text").has_value());
-    pastit::PromptTemplateService second_service(settings.prompt_templates, [&] { return "id-" + std::to_string(++next); });
+    pasteit::PromptTemplateService second_service(settings.prompt_templates, [&] { return "id-" + std::to_string(++next); });
     assert(!second_service.find("builtin-explain-text").has_value());
     const auto before_restore = settings.prompt_templates.size();
     second_service.restore_defaults();

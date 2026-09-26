@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // A learned habit shared with Djev: how often the user picked this action
 // for similar clipboard content. Contains no clipboard text.
@@ -91,4 +91,4 @@ struct ExecutionResult {
     std::optional<std::string> download_job_id;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

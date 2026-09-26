@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class NetworkReportStatus { Idle, Running, Completed, Failed };
 
@@ -39,4 +39,4 @@ private:
 
 std::string_view network_probe_label(NetworkProbe probe);
 
-}  // namespace pastit
+}  // namespace pasteit

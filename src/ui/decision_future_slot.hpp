@@ -8,7 +8,7 @@
 #include <optional>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 // Keeps superseded async requests alive until they finish, so replacing one
 // never joins its worker on the UI thread.
@@ -57,4 +57,4 @@ private:
     std::vector<std::future<DecisionResponse>> retired_;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

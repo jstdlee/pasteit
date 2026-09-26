@@ -8,11 +8,11 @@
 #include <cstdint>
 #include <filesystem>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 FastActionPanelModel build_mermaid_preview_panel_model(const RendererResultState& state) {
     const auto& active = state.active();
     const auto source = state.copy_text();
@@ -48,7 +48,7 @@ FastActionPanelModel build_mermaid_preview_panel_model(const RendererResultState
     return model;
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 void draw_mermaid_preview_panel(const RendererResultState& state, RendererPreviewPanelState& panel,
                                 bool& open, bool& focus_pending,
                                 unsigned int texture_id, int texture_width, int texture_height,
@@ -112,4 +112,4 @@ void draw_mermaid_preview_panel(const RendererResultState& state, RendererPrevie
 }
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

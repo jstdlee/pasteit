@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string trim_copy(std::string_view value) {
@@ -245,4 +245,4 @@ RenderResult ExternalRendererService::render_qr(std::string_view payload, const 
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

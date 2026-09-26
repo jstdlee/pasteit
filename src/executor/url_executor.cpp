@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::filesystem::path available_generated_path(std::filesystem::path path) {
@@ -57,7 +57,7 @@ std::optional<std::string> record_text_clipboard(ExecutionContext& context, std:
         .mime_types = {"text/plain"},
         .bytes = bytes_from_string(text),
         .kind = kind,
-        .source_app = "pastit",
+        .source_app = "pasteit",
         .captured_at_ms = context.now_ms,
     });
     return item.ref;
@@ -107,7 +107,7 @@ ExecutionResult execute_url_action(const ActionInstance& action, ExecutionContex
                 result.output_path = output;
                 result.output_paths.push_back(output);
                 result.output_clipboard_ref = record_text_clipboard(context, path_to_utf8_string(output), ContentKind::Path);
-                context.path_history.observe(path_to_utf8_string(output), "pastit", context.now_ms);
+                context.path_history.observe(path_to_utf8_string(output), "pasteit", context.now_ms);
                 return result;
             }
             default:
@@ -118,4 +118,4 @@ ExecutionResult execute_url_action(const ActionInstance& action, ExecutionContex
     }
 }
 
-}  // namespace pastit
+}  // namespace pasteit

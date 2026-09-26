@@ -6,7 +6,7 @@
 #include <iomanip>
 #include <sstream>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::size_t kPreviewLimit = 80;
@@ -211,4 +211,4 @@ std::string timestamp_label(std::int64_t captured_at_ms) {
     return out.str();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

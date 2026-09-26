@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 std::string generated_filename(
     ActionKind action_kind,
@@ -15,4 +15,4 @@ std::string generated_filename(
     std::chrono::system_clock::time_point when,
     const std::filesystem::path& directory);
 
-}  // namespace pastit
+}  // namespace pasteit

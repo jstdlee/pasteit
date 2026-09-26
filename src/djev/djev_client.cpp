@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTEIT_HAS_CURL)
 #include <curl/curl.h>
 #elif !defined(_WIN32)
 #include <netdb.h>
@@ -26,7 +26,7 @@
 #include <unistd.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string json_escape(std::string_view value) {
@@ -363,7 +363,7 @@ const char* api_key_from_env() {
     return nullptr;
 }
 
-#if defined(PASTIT_HAS_CURL)
+#if defined(PASTEIT_HAS_CURL)
 std::size_t append_response(void* ptr, std::size_t size, std::size_t nmemb, void* userdata) {
     auto* output = static_cast<std::string*>(userdata);
     const auto total = size * nmemb;
@@ -690,4 +690,4 @@ std::string DjevClient::model_from_env() {
     return std::getenv("DJEV_MODEL") != nullptr ? std::getenv("DJEV_MODEL") : "typed-decisions";
 }
 
-}  // namespace pastit
+}  // namespace pasteit

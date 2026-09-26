@@ -4,7 +4,7 @@
 #include <atomic>
 #include <chrono>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 std::string random_id() {
     static std::atomic<unsigned long long> sequence{0};
@@ -57,4 +57,4 @@ void PromptTemplateService::restore_defaults(){
         templates_.push_back(std::move(value));
     }
 }
-}  // namespace pastit
+}  // namespace pasteit

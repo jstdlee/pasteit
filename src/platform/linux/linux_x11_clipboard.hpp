@@ -2,6 +2,6 @@
 
 #include "platform/linux/linux_x11_clipboard_impl.hpp"
 
-namespace pastit {
+namespace pasteit {
 using LinuxX11Clipboard = X11ClipboardWatcher;
 }

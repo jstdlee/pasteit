@@ -4,17 +4,17 @@
 #include <algorithm>
 #include <cstring>
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <imgui.h>
 #endif
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::size_t kMinimumEditorRows = 3;
 constexpr std::size_t kMaximumEditorRows = 10;
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 PlatformServices* clipboard_platform = nullptr;
 const char* (*fallback_get_clipboard)(ImGuiContext*) = nullptr;
 void (*fallback_set_clipboard)(ImGuiContext*, const char*) = nullptr;
@@ -50,7 +50,7 @@ int resize_string_callback(ImGuiInputTextCallbackData* data) {
 }  // namespace
 
 void install_imgui_clipboard_bridge(PlatformServices& platform) {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     auto& io = ImGui::GetPlatformIO();
     if (io.Platform_GetClipboardTextFn != get_clipboard_text) {
         fallback_get_clipboard = io.Platform_GetClipboardTextFn;
@@ -75,7 +75,7 @@ std::size_t multiline_editor_visible_rows(std::string_view value) {
 }
 
 bool copyable_text(std::string_view value, bool wrapped) {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     const std::string text{value};
     const bool clicked = wrapped
         ? (ImGui::TextWrapped("%s", text.c_str()), ImGui::IsItemClicked(ImGuiMouseButton_Left))
@@ -95,7 +95,7 @@ bool copyable_text(std::string_view value, bool wrapped) {
 }
 
 bool input_text_hint(const char* id, const char* hint, std::string& value) {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     if (value.capacity() < value.size() + 256) value.reserve(value.size() + 256);
     const bool changed = ImGui::InputTextWithHint(id, hint, value.data(), value.capacity() + 1,
                                                   ImGuiInputTextFlags_CallbackResize, resize_string_callback, &value);
@@ -112,7 +112,7 @@ bool input_text_hint(const char* id, const char* hint, std::string& value) {
 
 bool input_text_string(const char* label, std::string& value, bool multiline,
                        int extra_flags, float multiline_height) {
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
     if (value.capacity() < value.size() + 256) {
         value.reserve(value.size() + 256);
     }
@@ -159,4 +159,4 @@ bool input_text_string(const char* label, std::string& value, bool multiline,
 #endif
 }
 
-}  // namespace pastit
+}  // namespace pasteit

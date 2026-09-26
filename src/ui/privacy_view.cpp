@@ -1,6 +1,6 @@
 #include "ui/privacy_view.hpp"
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include "ui/icons.hpp"
 #include "ui/imgui_widgets.hpp"
 #include "ui/theme.hpp"
@@ -10,7 +10,7 @@
 
 #include <map>
 
-namespace pastit {
+namespace pasteit {
 
 void open_anonymize_view(AnonymizeViewState& state, std::string source, const AnonymizeOptions& options) {
     state = {};
@@ -22,7 +22,7 @@ void open_anonymize_view(AnonymizeViewState& state, std::string source, const An
     state.source = std::move(source);
 }
 
-#if defined(PASTIT_HAS_DESKTOP_DEPS)
+#if defined(PASTEIT_HAS_DESKTOP_DEPS)
 
 void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& host, UiLanguage language) {
     if (!state.open) return;
@@ -163,4 +163,4 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
 
 #endif
 
-}  // namespace pastit
+}  // namespace pasteit

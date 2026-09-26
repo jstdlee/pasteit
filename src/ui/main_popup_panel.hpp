@@ -3,7 +3,7 @@
 #include "ui/popup.hpp"
 #include <string_view>
 #include <vector>
-namespace pastit {
+namespace pasteit {
 struct MainPopupPanelState{
     std::vector<PopupRow> smart_rows;
     std::vector<PopupRow> prompt_rows;

@@ -3,7 +3,7 @@
 #include <map>
 #include <string>
 
-namespace pastit {
+namespace pasteit {
 
 enum class ActionKind {
     PasteText,
@@ -126,4 +126,4 @@ struct ActionInstance {
     bool enabled = true;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

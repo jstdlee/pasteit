@@ -3,7 +3,7 @@
 // Lucide icon glyphs (assets/lucide.ttf, ISC licence) as UTF-8 strings.
 // Generated from lucide-static 0.544.0 font/info.json.
 
-namespace pastit::icon {
+namespace pasteit::icon {
 
 inline constexpr const char* kPaste = "\xEE\x8F\xAC";  // clipboard-paste
 inline constexpr const char* kOpen = "\xEE\x82\xB9";  // external-link
@@ -79,4 +79,4 @@ inline constexpr const char* kQr = "\xEE\x87\x9F";  // qr-code
 inline constexpr unsigned int kFirstCodepoint = 0xE000;
 inline constexpr unsigned int kLastCodepoint = 0xE8FF;
 
-}  // namespace pastit::icon
+}  // namespace pasteit::icon

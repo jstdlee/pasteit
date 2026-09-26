@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 class FastActionExecutor {
 public:
@@ -83,4 +83,4 @@ private:
     std::uint64_t next_job_id_ = 0;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

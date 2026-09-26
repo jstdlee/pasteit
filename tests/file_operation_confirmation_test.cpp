@@ -72,11 +72,11 @@ std::vector<std::byte> bytes(std::string_view text) {
     return out;
 }
 
-pastit::ClipboardItem put_text(
-    pastit::ClipboardStore& store,
+pasteit::ClipboardItem put_text(
+    pasteit::ClipboardStore& store,
     std::string_view text,
-    pastit::ContentKind kind) {
-    return store.put(pastit::ClipboardData{
+    pasteit::ContentKind kind) {
+    return store.put(pasteit::ClipboardData{
         .mime_types = {"text/plain"},
         .bytes = bytes(text),
         .kind = kind,
@@ -85,11 +85,11 @@ pastit::ClipboardItem put_text(
     });
 }
 
-pastit::ActionInstance action(
-    pastit::ActionKind kind,
+pasteit::ActionInstance action(
+    pasteit::ActionKind kind,
     const std::string& source_ref,
     const std::string& target_ref = {}) {
-    pastit::ActionInstance out;
+    pasteit::ActionInstance out;
     out.id = "action_under_test";
     out.kind = kind;
     out.source_ref = source_ref;
@@ -101,14 +101,14 @@ pastit::ActionInstance action(
     return out;
 }
 
-pastit::PathLocation destination(
+pasteit::PathLocation destination(
     std::string ref,
     const std::filesystem::path& path,
     bool exists = true) {
-    return pastit::PathLocation{
+    return pasteit::PathLocation{
         .ref = std::move(ref),
         .path = path,
-        .kind = pastit::PathKind::Directory,
+        .kind = pasteit::PathKind::Directory,
         .last_seen_ms = 900,
         .source = "test",
         .exists = exists,
@@ -120,16 +120,16 @@ void create_test_directories(const std::filesystem::path& root) {
     std::filesystem::create_directories(root / "fallback");
 }
 
-void assert_cannot_confirm(pastit::FileOperationDraft& draft, const pastit::ClipboardStore& store) {
-    assert(!pastit::validate_file_operation_draft(draft, store));
+void assert_cannot_confirm(pasteit::FileOperationDraft& draft, const pasteit::ClipboardStore& store) {
+    assert(!pasteit::validate_file_operation_draft(draft, store));
     assert(!draft.validation_error.empty());
-    assert(!pastit::confirmed_action(draft, store).has_value());
+    assert(!pasteit::confirmed_action(draft, store).has_value());
 }
 
 }  // namespace
 
 int main() {
-    using namespace pastit;
+    using namespace pasteit;
 
     assert(needs_file_confirmation(ActionKind::SaveTextFile));
     assert(needs_file_confirmation(ActionKind::SaveImageFile));
@@ -153,7 +153,7 @@ int main() {
     assert(!needs_file_confirmation(ActionKind::PrettyJson));
     assert(!needs_file_confirmation(ActionKind::TransformText));
 
-    const TempDirectory temporary_directory{"pastit-file-operation-confirmation-test"};
+    const TempDirectory temporary_directory{"pasteit-file-operation-confirmation-test"};
     const auto& root = temporary_directory.path();
     create_test_directories(root);
 

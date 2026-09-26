@@ -11,7 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 constexpr std::size_t kPreviewLimit = 160;
@@ -223,4 +223,4 @@ std::filesystem::path ClipboardStore::default_data_dir() {
     return app_data_dir();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

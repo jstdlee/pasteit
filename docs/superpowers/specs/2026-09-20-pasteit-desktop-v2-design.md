@@ -106,7 +106,7 @@ The executable creates the platform backend, settings store, histories, Djev cli
 
 ## 5. Settings
 
-Settings are stored in `${XDG_CONFIG_HOME:-~/.config}/pastit/settings.json` on Linux. Writes use a temporary sibling file followed by atomic rename. Missing or malformed settings fall back field-by-field to defaults and surface a non-blocking warning in the Settings window.
+Settings are stored in `${XDG_CONFIG_HOME:-~/.config}/pasteit/settings.json` on Linux. Writes use a temporary sibling file followed by atomic rename. Missing or malformed settings fall back field-by-field to defaults and surface a non-blocking warning in the Settings window.
 
 ```cpp
 enum class UiLanguage { System, English, SimplifiedChinese };
@@ -230,7 +230,7 @@ The Settings window edits a working copy and provides Save, Cancel, and Reset Se
 
 ## 9. Single-instance behavior
 
-Linux uses an advisory lock in `${XDG_RUNTIME_DIR:-/tmp}/pastit-<uid>.lock`. A second process exits with a clear message instead of registering another global shortcut or starting another clipboard history. The initial version does not add IPC to raise the existing popup; that can be added behind the same platform service interface later.
+Linux uses an advisory lock in `${XDG_RUNTIME_DIR:-/tmp}/pasteit-<uid>.lock`. A second process exits with a clear message instead of registering another global shortcut or starting another clipboard history. The initial version does not add IPC to raise the existing popup; that can be added behind the same platform service interface later.
 
 ## 10. Async state and stale-result handling
 

@@ -1,7 +1,7 @@
 #include "ai/prompt_expander.hpp"
 #include <algorithm>
 #include <cctype>
-namespace pastit {
+namespace pasteit {
 namespace {
 
 bool valid_variable(std::string_view value) {
@@ -66,4 +66,4 @@ ExpandedPrompt expand_prompt(const PromptTemplate& prompt,std::string_view text,
     result.user_message=result.text_embedded?"Apply the requested transformation and return only the result.":std::string{text};
     return result;
 }
-}  // namespace pastit
+}  // namespace pasteit

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace pastit {
+namespace pasteit {
 
 enum class ContentKind {
     Unknown,
@@ -61,4 +61,4 @@ struct PathLocation {
     std::int64_t last_used_ms = 0;
 };
 
-}  // namespace pastit
+}  // namespace pasteit

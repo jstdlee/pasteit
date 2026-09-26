@@ -2,8 +2,8 @@
 
 #include "core/protocol.hpp"
 
-namespace pastit {
+namespace pasteit {
 
 DecisionRequest provider_test_request();
 
-}  // namespace pastit
+}  // namespace pasteit

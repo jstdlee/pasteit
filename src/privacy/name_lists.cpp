@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace pastit {
+namespace pasteit {
 namespace {
 
 std::string lower(std::string_view word) {
@@ -92,4 +92,4 @@ bool is_chinese_surname(std::string_view character) {
     return std::find(kChineseSurnames.begin(), kChineseSurnames.end(), character) != kChineseSurnames.end();
 }
 
-}  // namespace pastit
+}  // namespace pasteit

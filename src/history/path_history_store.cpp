@@ -4,7 +4,7 @@
 #include "util/replace_file.hpp"
 #include <fstream>
 #include <sstream>
-namespace pastit {
+namespace pasteit {
 PathHistoryLoadResult PathHistoryStore::load()const{
  PathHistoryLoadResult result;std::ifstream input(path_);if(!input)return result;std::ostringstream text;text<<input.rdbuf();const auto root=parse_json(text.str());
  if(!root||!root->array()){result.warning="Path history is malformed; an empty history was loaded.";return result;}
