@@ -64,6 +64,12 @@ public:
 int main() {
     static_assert(std::is_abstract_v<pastit::PlatformServices>);
     static_assert(std::is_abstract_v<MissingDirectoryChooserServices>);
+#if !defined(_WIN32)
+    // Full opacity must not wrap to 0 (invisible window).
+    assert(pastit::x11_opacity_cardinal(1.0F) == 0xFFFFFFFFUL);
+    assert(pastit::x11_opacity_cardinal(0.0F) == 0UL);
+    assert(pastit::x11_opacity_cardinal(0.5F) > 0x7FFFFF00UL && pastit::x11_opacity_cardinal(0.5F) < 0x80000100UL);
+#endif
     FakePlatformServices fake;
     fake.paths.push_back({.path = "/tmp/example", .kind = pastit::PathKind::Directory, .source = "test"});
     fake.focus.app_name = "editor";

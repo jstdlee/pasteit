@@ -11,6 +11,9 @@ namespace pastit {
 std::optional<std::filesystem::path> browser_open_path(const std::filesystem::path& path,
                                                       const std::filesystem::path& home_directory);
 
+// _NET_WM_WINDOW_OPACITY value for 0..1; never wraps to 0 at full opacity.
+unsigned long x11_opacity_cardinal(float opacity);
+
 class LinuxDesktopServices final : public PlatformServices {
 public:
     LinuxDesktopServices() = default;

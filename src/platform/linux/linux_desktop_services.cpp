@@ -2,6 +2,7 @@
 #include "platform/linux/linux_recent_paths.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -298,11 +299,18 @@ bool LinuxDesktopServices::move_popup_by(int delta_x, int delta_y) {
     (void)delta_x;(void)delta_y;return false;
 #endif
 }
+unsigned long x11_opacity_cardinal(float opacity) {
+    // Compute in double and clamp: 1.0F*4294967295.0F rounds to 2^32 in float,
+    // which X truncates to 0 (a fully transparent window).
+    const double scaled = std::round(std::clamp(static_cast<double>(opacity), 0.0, 1.0) * 4294967295.0);
+    return static_cast<unsigned long>(std::min(4294967295.0, scaled));
+}
+
 bool LinuxDesktopServices::set_popup_opacity(float opacity) {
 #if defined(PASTIT_HAS_X11)
     if (popup_window_id_ == 0 || opacity < 0.0F || opacity > 1.0F) return false;
     Display* display=XOpenDisplay(nullptr);if(!display)return false;const Atom property=XInternAtom(display,"_NET_WM_WINDOW_OPACITY",False);
-    const unsigned long value=static_cast<unsigned long>(opacity*4294967295.0F);XChangeProperty(display,static_cast<Window>(popup_window_id_),property,XA_CARDINAL,32,PropModeReplace,reinterpret_cast<const unsigned char*>(&value),1);XFlush(display);XCloseDisplay(display);return true;
+    const unsigned long value=x11_opacity_cardinal(opacity);XChangeProperty(display,static_cast<Window>(popup_window_id_),property,XA_CARDINAL,32,PropModeReplace,reinterpret_cast<const unsigned char*>(&value),1);XFlush(display);XCloseDisplay(display);return true;
 #else
     (void)opacity;return false;
 #endif
