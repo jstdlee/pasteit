@@ -217,6 +217,38 @@ std::string kind_slug(ActionKind kind) {
             return "restore_placeholders";
         case ActionKind::SummarizePage:
             return "summarize_page";
+        case ActionKind::TextToHex:
+            return "text_to_hex";
+        case ActionKind::HexToText:
+            return "hex_to_text";
+        case ActionKind::TextToBinary:
+            return "text_to_binary";
+        case ActionKind::BinaryToText:
+            return "binary_to_text";
+        case ActionKind::NumberToHex:
+            return "number_to_hex";
+        case ActionKind::NumberToDecimal:
+            return "number_to_decimal";
+        case ActionKind::NumberToBinary:
+            return "number_to_binary";
+        case ActionKind::NumberBases:
+            return "number_bases";
+        case ActionKind::IpToHex:
+            return "ip_to_hex";
+        case ActionKind::IpToInteger:
+            return "ip_to_integer";
+        case ActionKind::HexToIp:
+            return "hex_to_ip";
+        case ActionKind::SubnetDetails:
+            return "subnet_details";
+        case ActionKind::SplitSubnet:
+            return "split_subnet";
+        case ActionKind::MaskDetails:
+            return "mask_details";
+        case ActionKind::MaskToPrefix:
+            return "mask_to_prefix";
+        case ActionKind::MaskToNetmask:
+            return "mask_to_netmask";
     }
     return "action";
 }
@@ -701,6 +733,69 @@ bool has_ascii_letter(std::string_view text) {
     return std::any_of(text.begin(), text.end(), [](char ch) { return std::isalpha(static_cast<unsigned char>(ch)); });
 }
 
+// Hex/binary text, number bases, IPv4 forms, subnets and netmasks.
+void add_encoding_and_network_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::string& text) {
+    const bool single_token = text.find_first_of(" \t\n") == std::string::npos;
+    if (const auto subnet = parse_ipv4_subnet(text)) {
+        const auto network = format_ipv4(subnet->address & prefix_to_netmask(subnet->prefix)) + "/" + std::to_string(subnet->prefix);
+        add(catalog, item, ActionKind::SubnetDetails, "", "Subnet details  " + network,
+            "Network, broadcast, host range, mask, wildcard and host count", "subnet");
+        for (int prefix = subnet->prefix + 1; prefix <= std::min(subnet->prefix + 3, 30); ++prefix) {
+            add(catalog, item, ActionKind::SplitSubnet, "", "Split into /" + std::to_string(prefix) + "  (" +
+                std::to_string(1ULL << (prefix - subnet->prefix)) + " subnets)",
+                "List the /" + std::to_string(prefix) + " subnets with host ranges and broadcasts", "subnet",
+                {{"prefix", std::to_string(prefix)}});
+            catalog.actions.back().id += "_" + std::to_string(prefix);
+        }
+        return;
+    }
+    if (const auto prefix = single_token || text.starts_with('/') ? parse_mask(text) : std::nullopt) {
+        add(catalog, item, ActionKind::MaskDetails, "", "Mask details  /" + std::to_string(*prefix),
+            "Prefix length, netmask, wildcard, binary and host count", "mask");
+        if (text.starts_with('/')) {
+            add(catalog, item, ActionKind::MaskToNetmask, "", "As netmask  " + format_ipv4(prefix_to_netmask(*prefix)),
+                "Convert the prefix length to a dotted netmask", "mask");
+        } else {
+            add(catalog, item, ActionKind::MaskToPrefix, "", "As prefix  /" + std::to_string(*prefix),
+                "Convert the netmask to a prefix length", "mask");
+        }
+        return;
+    }
+    if (const auto address = parse_ipv4(text)) {
+        add(catalog, item, ActionKind::IpToHex, "", "IP to hex  " + ipv4_to_hex(*address),
+            "Convert this IPv4 address to its hexadecimal form", "ip");
+        add(catalog, item, ActionKind::IpToInteger, "", "IP to integer  " + std::to_string(*address),
+            "Convert this IPv4 address to a 32-bit number", "ip");
+        return;
+    }
+    if (const auto address = parse_hex_ipv4(text)) {
+        add(catalog, item, ActionKind::HexToIp, "", "Hex to IP  " + format_ipv4(*address),
+            "Convert this hexadecimal value to a dotted IPv4 address", "ip");
+    }
+    if (single_token) {
+        if (const auto number = parse_integer_literal(text)) {
+            const bool hex = text.size() > 2 && (text[1] == 'x' || text[1] == 'X');
+            const bool binary = text.size() > 2 && (text[1] == 'b' || text[1] == 'B');
+            add(catalog, item, ActionKind::NumberBases, "", "Number bases",
+                "Copy the decimal, hex, binary and octal forms", "number");
+            if (!hex) add(catalog, item, ActionKind::NumberToHex, "", "To hex  " + to_hex_literal(*number), "Convert to hexadecimal", "number");
+            if (hex || binary) add(catalog, item, ActionKind::NumberToDecimal, "", "To decimal  " + std::to_string(*number), "Convert to decimal", "number");
+            if (!binary && *number < (1ULL << 32)) {
+                add(catalog, item, ActionKind::NumberToBinary, "", "To binary  " + to_binary_literal(*number), "Convert to binary", "number");
+            }
+            return;
+        }
+    }
+    if (hex_to_text(text)) {
+        add(catalog, item, ActionKind::HexToText, "", "Decode hex", "Decode these hex bytes to readable text", "hex");
+    } else if (binary_to_text(text)) {
+        add(catalog, item, ActionKind::BinaryToText, "", "Decode binary", "Decode these 8-bit groups to readable text", "binary");
+    } else if (text.size() <= 1024) {
+        add(catalog, item, ActionKind::TextToHex, "", "Encode as hex", "Copy the UTF-8 bytes of this text as hex", "hex");
+        add(catalog, item, ActionKind::TextToBinary, "", "Encode as binary", "Copy the UTF-8 bytes of this text as 8-bit groups", "binary");
+    }
+}
+
 void add_text_utility_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::vector<PathLocation>& targets,
                               const FastContentSignals& signals, const std::string& source_text,
                               const ContentProfile& profile) {
@@ -728,6 +823,7 @@ void add_text_utility_actions(ActionCatalog& catalog, const ClipboardItem& item,
         add(catalog, item, ActionKind::CopyColorHsl, "", "Copy as HSL  " + color_hsl(*color),
             "Convert this color to CSS hsl() notation", "color", {{"color", color_hex(*color)}});
     }
+    add_encoding_and_network_actions(catalog, item, text);
     if (decode_jwt(text)) {
         add(catalog, item, ActionKind::DecodeJwt, "", "Decode JWT",
             "Decode the JWT header and claims (signature not verified)", "jwt");
@@ -894,7 +990,12 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
     const auto& profile = *catalog.profile;
     const auto add_privacy_actions = [&] {
         if (item.kind == ContentKind::Image) return;
-        if (const auto findings = find_pii(source_text); !findings.empty()) {
+        const auto findings = find_pii(source_text);
+        // A clipboard that is only one value (an IP, a CIDR, an email) has
+        // nothing around it to protect; converting it is the useful action.
+        const auto trimmed = trim_copy(source_text);
+        const bool whole_value = findings.size() == 1 && trim_copy(findings.front().text).size() + 4 >= trimmed.size();
+        if (!findings.empty() && !whole_value) {
             add(catalog, item, ActionKind::AnonymizeText, "", "Anonymize (" + std::to_string(findings.size()) + " found)",
                 "Replace names, contacts, IDs, addresses and secrets with placeholders", "privacy",
                 {{"findings", std::to_string(findings.size())}});

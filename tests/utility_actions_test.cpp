@@ -111,6 +111,60 @@ void transforms() {
     assert(vcard.find("EMAIL;TYPE=INTERNET:jane@example.com") != std::string::npos);
 }
 
+void encodings_and_networks() {
+    assert(text_to_hex("Hi!") == "486921");
+    assert(hex_to_text("48 69 21 0a") == "Hi!\n");
+    assert(hex_to_text("0x48 0x69 0x21") == "Hi!");
+    assert(!hex_to_text("zz11") && !hex_to_text("00ff"));  // not hex / not readable
+    assert(text_to_binary("Hi") == "01001000 01101001");
+    assert(binary_to_text("01001000 01101001") == "Hi");
+    assert(!binary_to_text("0100100"));
+
+    assert(parse_integer_literal("255") == 255ULL && parse_integer_literal("0xff") == 255ULL &&
+           parse_integer_literal("0b1111_1111") == 255ULL && parse_integer_literal("0o377") == 255ULL);
+    assert(!parse_integer_literal("12a"));
+    assert(to_hex_literal(255) == "0xFF" && to_binary_literal(10) == "0b1010" && to_binary_literal(255) == "0b1111_1111");
+    assert(integer_bases(8) == "Decimal: 8\nHex: 0x8\nBinary: 0b1000\nOctal: 0o10");
+
+    const auto ip = parse_ipv4("192.168.1.1");
+    assert(ip == 3232235777U && ipv4_to_hex(*ip) == "0xC0A80101");
+    assert(!parse_ipv4("192.168.1.256") && !parse_ipv4("1.2.3") && !parse_ipv4("01.2.3.4"));
+    assert(parse_hex_ipv4("0xC0A80101") == 3232235777U && parse_hex_ipv4("c0.a8.01.01") == 3232235777U);
+    assert(!parse_hex_ipv4("C0A80101") && !parse_hex_ipv4("10.20.30.40"));
+
+    assert(parse_mask("/24") == 24 && parse_mask("255.255.255.0") == 24 && parse_mask("255.255.240.0") == 20);
+    assert(parse_mask("0xFFFFFF00") == 24);
+    assert(!parse_mask("255.0.255.0") && !parse_mask("192.168.1.1") && !parse_mask("/33"));
+    assert(mask_details(26).find("Netmask: 255.255.255.192\nWildcard: 0.0.0.63\nBinary: 11111111.11111111.11111111.11000000") != std::string::npos);
+    assert(mask_details(26).find("Usable hosts: 62") != std::string::npos);
+
+    const auto subnet = parse_ipv4_subnet("10.1.2.77/24");
+    assert(subnet && subnet->prefix == 24);
+    const auto details = subnet_details(*subnet);
+    assert(details.find("Network: 10.1.2.0/24") != std::string::npos && details.find("Broadcast: 10.1.2.255") != std::string::npos &&
+           details.find("First host: 10.1.2.1") != std::string::npos && details.find("Usable hosts: 254") != std::string::npos &&
+           details.find("is host 77") != std::string::npos);
+    assert(parse_ipv4_subnet("172.16.5.4 255.255.0.0")->prefix == 16);
+    assert(split_subnet(*subnet, 26) ==
+           "10.1.2.0/26  hosts 10.1.2.1 - 10.1.2.62  broadcast 10.1.2.63\n"
+           "10.1.2.64/26  hosts 10.1.2.65 - 10.1.2.126  broadcast 10.1.2.127\n"
+           "10.1.2.128/26  hosts 10.1.2.129 - 10.1.2.190  broadcast 10.1.2.191\n"
+           "10.1.2.192/26  hosts 10.1.2.193 - 10.1.2.254  broadcast 10.1.2.255");
+    assert(split_subnet(*parse_ipv4_subnet("10.0.0.0/8"), 24, 3).ends_with("... 65533 more"));
+    assert(subnet_details(*parse_ipv4_subnet("10.0.0.0/31")).find("Usable hosts: 2") != std::string::npos);
+
+    // Catalog offers the right family for each shape.
+    assert(has_kind(catalog_for(ContentKind::Text, "10.1.2.0/24"), ActionKind::SplitSubnet));
+    assert(has_kind(catalog_for(ContentKind::Text, "255.255.255.0"), ActionKind::MaskToPrefix));
+    assert(has_kind(catalog_for(ContentKind::Text, "/20"), ActionKind::MaskToNetmask));
+    const auto ip_catalog = catalog_for(ContentKind::Text, "192.168.1.1");
+    assert(has_kind(ip_catalog, ActionKind::IpToHex) && has_kind(ip_catalog, ActionKind::PingIp));
+    assert(has_kind(catalog_for(ContentKind::Text, "0xC0A80101"), ActionKind::HexToIp));
+    assert(has_kind(catalog_for(ContentKind::Text, "0xff"), ActionKind::NumberToDecimal));
+    assert(has_kind(catalog_for(ContentKind::Text, "48656c6c6f20776f726c64"), ActionKind::HexToText));
+    assert(has_kind(catalog_for(ContentKind::Text, "hello"), ActionKind::TextToBinary));
+}
+
 void detectors() {
     // Prose with a trailing semicolon is no longer code; real code still is.
     assert(!detect_fast_content(ContentKind::Text, "Meet at noon; bring snacks;").code);
@@ -246,6 +300,16 @@ void execution() {
     const auto saved = execute_action(save_code, context);
     assert(saved.status == ExecutionStatus::Completed && saved.output_path->extension() == ".py");
 
+    const auto cidr = put("192.168.10.0/24", ContentKind::Text);
+    const auto split = run(ActionKind::SplitSubnet, cidr, {{"prefix", "25"}});
+    assert(store.read_text(*split.output_clipboard_ref) ==
+           "192.168.10.0/25  hosts 192.168.10.1 - 192.168.10.126  broadcast 192.168.10.127\n"
+           "192.168.10.128/25  hosts 192.168.10.129 - 192.168.10.254  broadcast 192.168.10.255");
+    const auto mask = put("255.255.255.128", ContentKind::Text);
+    assert(store.read_text(*run(ActionKind::MaskToPrefix, mask).output_clipboard_ref) == "/25");
+    const auto hex_ip = put("0x0A000001", ContentKind::Text);
+    assert(store.read_text(*run(ActionKind::HexToIp, hex_ip).output_clipboard_ref) == "10.0.0.1");
+
     // Content that no longer matches fails instead of copying garbage.
     const auto prose = put("not a color", ContentKind::Text);
     assert(run(ActionKind::CopyColorHex, prose).status == ExecutionStatus::Failed);
@@ -256,6 +320,7 @@ void execution() {
 
 int main() {
     transforms();
+    encodings_and_networks();
     detectors();
     catalog();
     ranking_and_display();

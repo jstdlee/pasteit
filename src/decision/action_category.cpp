@@ -52,6 +52,14 @@ ActionCategory action_category(ActionKind kind) {
         case ActionKind::ReverseDnsIp:
         case ActionKind::DigIp:
         case ActionKind::NetworkDiagnosticReport:
+        case ActionKind::IpToHex:
+        case ActionKind::IpToInteger:
+        case ActionKind::HexToIp:
+        case ActionKind::SubnetDetails:
+        case ActionKind::SplitSubnet:
+        case ActionKind::MaskDetails:
+        case ActionKind::MaskToPrefix:
+        case ActionKind::MaskToNetmask:
             return ActionCategory::Network;
         case ActionKind::CloneGithubHttps:
         case ActionKind::CloneGithubSsh:
@@ -112,6 +120,22 @@ double action_specificity_prior(ActionKind kind) {
         case ActionKind::ViewTable:
         case ActionKind::RestorePlaceholders:
             return 0.06;
+        case ActionKind::HexToText:
+        case ActionKind::BinaryToText:
+        case ActionKind::HexToIp:
+        case ActionKind::SubnetDetails:
+        case ActionKind::MaskDetails:
+        case ActionKind::NumberBases:
+            return 0.06;
+        case ActionKind::SplitSubnet:
+        case ActionKind::MaskToPrefix:
+        case ActionKind::MaskToNetmask:
+        case ActionKind::IpToHex:
+        case ActionKind::IpToInteger:
+        case ActionKind::NumberToHex:
+        case ActionKind::NumberToDecimal:
+        case ActionKind::NumberToBinary:
+            return 0.04;
         // Only offered when personal data was found in the clipboard.
         case ActionKind::AnonymizeText:
             return 0.05;

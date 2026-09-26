@@ -94,6 +94,23 @@ enum class ActionKind {
     AnonymizeText,
     RestorePlaceholders,
     SummarizePage,
+    // Encodings, number bases, IPv4 and subnets.
+    TextToHex,
+    HexToText,
+    TextToBinary,
+    BinaryToText,
+    NumberToHex,
+    NumberToDecimal,
+    NumberToBinary,
+    NumberBases,
+    IpToHex,
+    IpToInteger,
+    HexToIp,
+    SubnetDetails,
+    SplitSubnet,
+    MaskDetails,
+    MaskToPrefix,
+    MaskToNetmask,
 };
 
 struct ActionInstance {

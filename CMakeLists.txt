@@ -544,6 +544,9 @@ if (PASTIT_BUILD_TESTS)
     add_executable(openai_live_integration tests/openai_live_integration.cpp)
     target_link_libraries(openai_live_integration PRIVATE pastit_core)
 
+    add_executable(privacy_llm_live_integration tests/privacy_llm_live_integration.cpp)
+    target_link_libraries(privacy_llm_live_integration PRIVATE pastit_core)
+
     if (NOT WIN32)
         add_executable(x11_clipboard_seed tests/x11_clipboard_seed.cpp)
         target_link_libraries(x11_clipboard_seed PRIVATE pastit_core)

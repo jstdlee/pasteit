@@ -4,6 +4,7 @@
 #include "transform/text_transforms.hpp"
 #include "util/path_utf8.hpp"
 
+#include <cstdlib>
 #include <optional>
 #include <string>
 
@@ -83,6 +84,53 @@ std::optional<UtilityOutput> transform(const ActionInstance& action, const std::
         }
         case ActionKind::DecodeJwt: return wrap(decode_jwt(text), ContentKind::Text, "copied decoded JWT");
         case ActionKind::GenerateUuid: return UtilityOutput{generate_uuid_v4(), ContentKind::Text, "copied new UUID"};
+        case ActionKind::TextToHex: return UtilityOutput{text_to_hex(text), ContentKind::Text, "copied hex"};
+        case ActionKind::HexToText: return wrap(hex_to_text(text), ContentKind::Text, "copied decoded text");
+        case ActionKind::TextToBinary: return UtilityOutput{text_to_binary(text), ContentKind::Text, "copied binary"};
+        case ActionKind::BinaryToText: return wrap(binary_to_text(text), ContentKind::Text, "copied decoded text");
+        case ActionKind::NumberBases:
+        case ActionKind::NumberToHex:
+        case ActionKind::NumberToDecimal:
+        case ActionKind::NumberToBinary: {
+            const auto number = parse_integer_literal(text);
+            if (!number) return std::nullopt;
+            const auto value = action.kind == ActionKind::NumberBases ? integer_bases(*number)
+                             : action.kind == ActionKind::NumberToHex ? to_hex_literal(*number)
+                             : action.kind == ActionKind::NumberToBinary ? to_binary_literal(*number) : std::to_string(*number);
+            return UtilityOutput{value, ContentKind::Text, "copied " + (action.kind == ActionKind::NumberBases ? std::string{"number bases"} : value)};
+        }
+        case ActionKind::IpToHex:
+        case ActionKind::IpToInteger: {
+            const auto address = parse_ipv4(text);
+            if (!address) return std::nullopt;
+            const auto value = action.kind == ActionKind::IpToHex ? ipv4_to_hex(*address) : std::to_string(*address);
+            return UtilityOutput{value, ContentKind::Text, "copied " + value};
+        }
+        case ActionKind::HexToIp: {
+            const auto address = parse_hex_ipv4(text);
+            if (!address) return std::nullopt;
+            return UtilityOutput{format_ipv4(*address), ContentKind::Text, "copied " + format_ipv4(*address)};
+        }
+        case ActionKind::SubnetDetails:
+        case ActionKind::SplitSubnet: {
+            const auto subnet = parse_ipv4_subnet(text);
+            if (!subnet) return std::nullopt;
+            if (action.kind == ActionKind::SubnetDetails) return UtilityOutput{subnet_details(*subnet), ContentKind::Text, "copied subnet details"};
+            const auto prefix = std::atoi(parameter(action, "prefix").c_str());
+            auto list = split_subnet(*subnet, prefix);
+            if (list.empty()) return std::nullopt;
+            return UtilityOutput{std::move(list), ContentKind::Text, "copied /" + std::to_string(prefix) + " subnets"};
+        }
+        case ActionKind::MaskDetails:
+        case ActionKind::MaskToPrefix:
+        case ActionKind::MaskToNetmask: {
+            const auto prefix = parse_mask(text);
+            if (!prefix) return std::nullopt;
+            const auto value = action.kind == ActionKind::MaskDetails ? mask_details(*prefix)
+                             : action.kind == ActionKind::MaskToPrefix ? "/" + std::to_string(*prefix)
+                                                                       : format_ipv4(prefix_to_netmask(*prefix));
+            return UtilityOutput{value, ContentKind::Text, action.kind == ActionKind::MaskDetails ? "copied mask details" : "copied " + value};
+        }
         case ActionKind::CopyContactVCard: {
             const auto signals = detect_fast_content(ContentKind::Text, source);
             if (!signals.contact) return std::nullopt;
@@ -99,6 +147,22 @@ std::optional<UtilityOutput> transform(const ActionInstance& action, const std::
 
 bool is_utility_action(ActionKind kind) {
     switch (kind) {
+        case ActionKind::TextToHex:
+        case ActionKind::HexToText:
+        case ActionKind::TextToBinary:
+        case ActionKind::BinaryToText:
+        case ActionKind::NumberToHex:
+        case ActionKind::NumberToDecimal:
+        case ActionKind::NumberToBinary:
+        case ActionKind::NumberBases:
+        case ActionKind::IpToHex:
+        case ActionKind::IpToInteger:
+        case ActionKind::HexToIp:
+        case ActionKind::SubnetDetails:
+        case ActionKind::SplitSubnet:
+        case ActionKind::MaskDetails:
+        case ActionKind::MaskToPrefix:
+        case ActionKind::MaskToNetmask:
         case ActionKind::ToUpperCase:
         case ActionKind::ToLowerCase:
         case ActionKind::ToTitleCase:

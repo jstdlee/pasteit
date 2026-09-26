@@ -167,5 +167,17 @@ int main() {
     if (!habit_actions.empty()) habit_request.snapshot.usage_hints.push_back({habit_actions.back().id, 0.8, 12});
     const bool habit_ok = run_case("usage_habits", habit_request, client);
     if (habit_ok && !habit_actions.empty()) std::cout << "usage_habits hinted=" << habit_actions.back().id << "\n";
-    return text_ok && json_ok && image_ok && path_ok && bounded_ok && habit_ok ? 0 : 1;
+    // An uncertain local shape adds a content_type question; the live model
+    // must answer both questions.
+    auto shape_request = make_request("req_live_shape", pastit::ContentKind::Text, "clip_shape", "a;1\nb;2");
+    shape_request.snapshot.profile = pastit::ClipboardProfileHint{
+        .shape = "csv", .confidence = 0.5, .lines = 2, .columns = 2, .header = false, .tags = {},
+        .alternatives = {{"csv", "separated table rows"}, {"prose", "natural-language text"}, {"key_value", "key: value settings"}}};
+    pastit::DjevClient shape_client(endpoint, pastit::DjevClient::model_from_env());
+    const auto shape_response = shape_client.decide(shape_request);
+    const bool shape_ok = shape_response.valid && !shape_response.content_type.empty();
+    std::cout << "content_type " << (shape_ok ? "ok" : "failed") << ": " << shape_response.content_type << " ("
+              << shape_response.content_type_confidence << ") choice=" << shape_response.choice
+              << (shape_response.valid ? "" : " error=" + shape_response.error) << "\n";
+    return text_ok && json_ok && image_ok && path_ok && bounded_ok && habit_ok && shape_ok ? 0 : 1;
 }

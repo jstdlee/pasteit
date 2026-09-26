@@ -168,6 +168,19 @@ const char* action_icon(ActionKind kind) {
         case ActionKind::SortLines:
         case ActionKind::DedupeLines: return icon::kListOrdered;
         case ActionKind::SaveCodeFile: return icon::kFileCode;
+        case ActionKind::TextToHex:
+        case ActionKind::HexToText:
+        case ActionKind::TextToBinary:
+        case ActionKind::BinaryToText: return icon::kBraces;
+        case ActionKind::NumberBases:
+        case ActionKind::NumberToHex:
+        case ActionKind::NumberToDecimal:
+        case ActionKind::NumberToBinary: return icon::kHash;
+        case ActionKind::SubnetDetails:
+        case ActionKind::SplitSubnet:
+        case ActionKind::MaskDetails:
+        case ActionKind::MaskToPrefix:
+        case ActionKind::MaskToNetmask: return icon::kLayers;
         default: return category_icon(action_category(kind));
     }
 }

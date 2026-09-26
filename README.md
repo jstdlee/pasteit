@@ -43,6 +43,8 @@ Custom prompt opens a small dialog for one-off instructions and sends the copied
 
 Selecting an action records it in `data/usage.json`, a decayed frequency model (half-life about 14 days). Choices are counted per context: content kind, detected signals (code, IP, date/time, contact, numbers, …), focused app, and time of day. Action keys are semantic (action kind, destination path, prompt template), never clipboard text. The model does two things. It adds a bounded ranking bonus of at most 0.20, smoothed so a single click cannot dominate, both to the Djev probabilities and to the local fallback. It also sends up to five `state.habits` entries (`action_id`, `share`, `count`) with each Djev request, so the model can weigh your frequent operations against what the content suggests. Settings → Usage insights shows the most frequent choices per content kind and can reset the history.
 
+The general LLM can be any OpenAI-compatible server. Servers that reject sampling parameters (such as diffusion LLMs) get one retry without `temperature`, and PasteIt remembers that endpoint.
+
 ## Build And Test
 
 ```bash
@@ -68,6 +70,10 @@ An optional `openai_live_integration` uses `GENERAL_LLM_URL`, `GENERAL_LLM_MODEL
 
 - Text: paste, save-to-file, contact/business-card extraction with vCard copy/save, Mermaid generation for diagram-like text, QR for short payloads (up to 512 bytes and 6 lines), Explain text/code, Translate, Rewrite, Summarize, and custom-template actions, all ranked together in the main action list. Local utilities: UPPER/lower/Title case, tidy whitespace, sort lines, remove duplicate lines, word count, Base64 encode/decode, URL encode/decode, and Markdown table from comma/tab/semicolon rows. Numbers get Graph data plus sum/mean/median/min/max. Code gets "Save as .py/.cpp/…" with a detected extension.
 - Colors (`#hex`, `rgb()`, `hsl()`): copy as HEX, RGB, or HSL
+- Encodings and numbers: text to hex bytes or 8-bit binary and back (decoding is offered only when the result is readable text), and integers written as `255`, `0xff`, `0b1111_1111` or `0o377` converted between decimal, hex, binary and octal
+- IPv4: address to hex (`192.168.1.1` -> `0xC0A80101`) or 32-bit integer, and hex (`0xC0A80101`, `c0.a8.01.01`) back to dotted form
+- Subnets (`10.1.2.0/24` or `10.1.2.5 255.255.255.0`): details (network, broadcast, host range, wildcard, host count, binary mask) and split into the next three smaller prefixes with host ranges
+- Netmasks (`255.255.255.0`, `/24`, `0xFFFFFF00`): prefix, netmask, wildcard, binary and host count, plus prefix <-> netmask conversion
 - JWT: decode header and claims with a readable expiry (the signature is not verified); UUID: generate a fresh v4
 - URL: paste, open, copy clean URL without `utm_*`/`fbclid`/… tracking parameters, copy as Markdown link, URL-decode, generate QR, copy GitHub HTTPS/SSH remotes, clone GitHub repositories, download, and save the URL response bytes to a target file; Save URL File does not save the URL string as a `.url` text file
 - Email: paste, save `.eml`, compose actions, and QR payload generation

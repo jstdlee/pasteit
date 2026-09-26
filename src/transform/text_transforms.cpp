@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <ctime>
@@ -740,6 +741,298 @@ std::string contact_vcard(const std::vector<std::pair<std::string, std::string>>
         else if (kind == "address") out << "ADR:;;" << escape(value) << ";;;;\r\n";
     }
     out << "END:VCARD\r\n";
+    return out.str();
+}
+
+std::string text_to_hex(std::string_view text) {
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(text.size() * 2);
+    for (const unsigned char ch : text) {
+        out += digits[ch >> 4];
+        out += digits[ch & 0x0F];
+    }
+    return out;
+}
+
+std::optional<std::string> hex_to_text(std::string_view text) {
+    std::string digits;
+    const auto value = trim(text);
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        const char ch = value[index];
+        if (ch == '0' && index + 1 < value.size() && (value[index + 1] == 'x' || value[index + 1] == 'X')) {
+            ++index;
+            continue;
+        }
+        if (ch == ' ' || ch == ':' || ch == '-' || ch == '\n' || ch == '\r' || ch == '\t' || ch == ',') continue;
+        if (hex_value(ch) < 0) return std::nullopt;
+        digits += ch;
+    }
+    if (digits.size() < 4 || digits.size() % 2 != 0) return std::nullopt;
+    std::string out;
+    for (std::size_t index = 0; index < digits.size(); index += 2) {
+        out += static_cast<char>(hex_value(digits[index]) * 16 + hex_value(digits[index + 1]));
+    }
+    if (!readable_utf8(out)) return std::nullopt;
+    return out;
+}
+
+std::string text_to_binary(std::string_view text) {
+    std::string out;
+    for (const unsigned char ch : text) {
+        if (!out.empty()) out += ' ';
+        for (int bit = 7; bit >= 0; --bit) out += (ch >> bit) & 1 ? '1' : '0';
+    }
+    return out;
+}
+
+std::optional<std::string> binary_to_text(std::string_view text) {
+    std::string bits;
+    for (const char ch : text) {
+        if (ch == '0' || ch == '1') bits += ch;
+        else if (ch != ' ' && ch != '\n' && ch != '\r' && ch != '\t' && ch != '_') return std::nullopt;
+    }
+    if (bits.size() < 8 || bits.size() % 8 != 0) return std::nullopt;
+    std::string out;
+    for (std::size_t index = 0; index < bits.size(); index += 8) {
+        unsigned char value = 0;
+        for (std::size_t bit = 0; bit < 8; ++bit) value = static_cast<unsigned char>((value << 1) | (bits[index + bit] - '0'));
+        out += static_cast<char>(value);
+    }
+    if (!readable_utf8(out)) return std::nullopt;
+    return out;
+}
+
+std::optional<unsigned long long> parse_integer_literal(std::string_view text) {
+    auto value = trim(text);
+    std::erase(value, '_');
+    if (value.empty() || value.size() > 66) return std::nullopt;
+    int base = 10;
+    std::string_view digits{value};
+    if (digits.size() > 2 && digits[0] == '0') {
+        const char prefix = static_cast<char>(std::tolower(static_cast<unsigned char>(digits[1])));
+        if (prefix == 'x') base = 16;
+        else if (prefix == 'b') base = 2;
+        else if (prefix == 'o') base = 8;
+        if (base != 10) digits.remove_prefix(2);
+    }
+    unsigned long long out = 0;
+    const auto result = std::from_chars(digits.data(), digits.data() + digits.size(), out, base);
+    if (result.ec != std::errc{} || result.ptr != digits.data() + digits.size()) return std::nullopt;
+    return out;
+}
+
+std::string to_hex_literal(unsigned long long value) {
+    std::ostringstream out;
+    out << "0x" << std::uppercase << std::hex << value;
+    return out.str();
+}
+
+std::string to_binary_literal(unsigned long long value) {
+    if (value == 0) return "0b0";
+    std::string bits;
+    for (; value != 0; value >>= 1) bits.insert(bits.begin(), static_cast<char>('0' + (value & 1)));
+    // Group by 4 from the right for readability.
+    std::string grouped;
+    for (std::size_t index = 0; index < bits.size(); ++index) {
+        if (index != 0 && (bits.size() - index) % 4 == 0) grouped += '_';
+        grouped += bits[index];
+    }
+    return "0b" + grouped;
+}
+
+std::string integer_bases(unsigned long long value) {
+    std::ostringstream out;
+    out << "Decimal: " << value << "\nHex: " << to_hex_literal(value) << "\nBinary: " << to_binary_literal(value)
+        << "\nOctal: 0o" << std::oct << value;
+    return out.str();
+}
+
+std::optional<std::uint32_t> parse_ipv4(std::string_view text) {
+    const auto value = trim(text);
+    std::uint32_t address = 0;
+    int parts = 0;
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const auto end = value.find('.', start);
+        const auto part = std::string_view{value}.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (part.empty() || part.size() > 3 || (part.size() > 1 && part[0] == '0')) return std::nullopt;
+        unsigned int octet = 0;
+        const auto result = std::from_chars(part.data(), part.data() + part.size(), octet);
+        if (result.ec != std::errc{} || result.ptr != part.data() + part.size() || octet > 255) return std::nullopt;
+        address = (address << 8) | octet;
+        ++parts;
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    if (parts != 4) return std::nullopt;
+    return address;
+}
+
+std::string format_ipv4(std::uint32_t address) {
+    return std::to_string(address >> 24) + "." + std::to_string((address >> 16) & 0xFF) + "." +
+           std::to_string((address >> 8) & 0xFF) + "." + std::to_string(address & 0xFF);
+}
+
+std::string ipv4_to_hex(std::uint32_t address) {
+    std::ostringstream out;
+    out << "0x" << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << address;
+    return out.str();
+}
+
+std::optional<std::uint32_t> parse_hex_ipv4(std::string_view text) {
+    auto value = trim(text);
+    if (value.find('.') != std::string::npos) {
+        // Dotted hex: c0.a8.01.01 (each part 1-2 hex digits, at least one letter overall
+        // or explicit 0x parts, so decimal addresses are not misread).
+        std::uint32_t address = 0;
+        int parts = 0;
+        bool has_letter = false;
+        std::istringstream stream(value);
+        for (std::string part; std::getline(stream, part, '.');) {
+            if (part.starts_with("0x") || part.starts_with("0X")) {
+                part = part.substr(2);
+                has_letter = true;
+            }
+            if (part.empty() || part.size() > 2) return std::nullopt;
+            unsigned int octet = 0;
+            for (const char ch : part) {
+                const int digit = hex_value(ch);
+                if (digit < 0) return std::nullopt;
+                if (digit > 9) has_letter = true;
+                octet = octet * 16 + static_cast<unsigned int>(digit);
+            }
+            address = (address << 8) | octet;
+            ++parts;
+        }
+        if (parts != 4 || !has_letter) return std::nullopt;
+        return address;
+    }
+    const bool prefixed = value.starts_with("0x") || value.starts_with("0X");
+    if (prefixed) value = value.substr(2);
+    if (value.size() != 8 || !prefixed) return std::nullopt;  // bare 8-digit hex is too ambiguous
+    std::uint32_t address = 0;
+    for (const char ch : value) {
+        const int digit = hex_value(ch);
+        if (digit < 0) return std::nullopt;
+        address = (address << 4) | static_cast<std::uint32_t>(digit);
+    }
+    return address;
+}
+
+std::uint32_t prefix_to_netmask(int prefix) {
+    if (prefix <= 0) return 0;
+    if (prefix >= 32) return 0xFFFFFFFFU;
+    return 0xFFFFFFFFU << (32 - prefix);
+}
+
+std::optional<int> netmask_to_prefix(std::uint32_t mask) {
+    const auto inverted = ~mask;
+    if ((inverted & (inverted + 1)) != 0) return std::nullopt;  // ones must be contiguous
+    int prefix = 0;
+    for (std::uint32_t bit = 0x80000000U; bit != 0 && (mask & bit); bit >>= 1) ++prefix;
+    return prefix;
+}
+
+std::optional<int> parse_mask(std::string_view text) {
+    const auto value = trim(text);
+    if (value.starts_with('/')) {
+        int prefix = -1;
+        const auto result = std::from_chars(value.data() + 1, value.data() + value.size(), prefix);
+        if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || prefix < 0 || prefix > 32) return std::nullopt;
+        return prefix;
+    }
+    if (const auto dotted = parse_ipv4(value)) {
+        // A mask starts with 255 or is all zeros; other addresses are hosts.
+        if ((*dotted >> 24) != 255 && *dotted != 0) return std::nullopt;
+        return netmask_to_prefix(*dotted);
+    }
+    if (value.starts_with("0x") || value.starts_with("0X")) {
+        if (const auto number = parse_integer_literal(value); number && *number <= 0xFFFFFFFFULL && *number >= 0x80000000ULL) {
+            return netmask_to_prefix(static_cast<std::uint32_t>(*number));
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Ipv4Subnet> parse_ipv4_subnet(std::string_view text) {
+    const auto value = trim(text);
+    const auto slash = value.find('/');
+    if (slash != std::string::npos && slash > 0) {
+        const auto address = parse_ipv4(std::string_view{value}.substr(0, slash));
+        const auto prefix = parse_mask(std::string_view{value}.substr(slash));
+        if (!address || !prefix) return std::nullopt;
+        return Ipv4Subnet{*address, *prefix};
+    }
+    const auto space = value.find_first_of(" \t");
+    if (space != std::string::npos) {
+        const auto address = parse_ipv4(std::string_view{value}.substr(0, space));
+        const auto prefix = parse_mask(trim(std::string_view{value}.substr(space)));
+        if (!address || !prefix) return std::nullopt;
+        return Ipv4Subnet{*address, *prefix};
+    }
+    return std::nullopt;
+}
+
+namespace {
+
+std::string dotted_binary(std::uint32_t value) {
+    std::string out;
+    for (int bit = 31; bit >= 0; --bit) {
+        out += (value >> bit) & 1 ? '1' : '0';
+        if (bit % 8 == 0 && bit != 0) out += '.';
+    }
+    return out;
+}
+
+unsigned long long host_count(int prefix) {
+    if (prefix >= 32) return 1;
+    if (prefix == 31) return 2;  // RFC 3021 point-to-point
+    return (1ULL << (32 - prefix)) - 2;
+}
+
+}  // namespace
+
+std::string mask_details(int prefix) {
+    const auto mask = prefix_to_netmask(prefix);
+    std::ostringstream out;
+    out << "Prefix: /" << prefix << "\nNetmask: " << format_ipv4(mask) << "\nWildcard: " << format_ipv4(~mask)
+        << "\nBinary: " << dotted_binary(mask) << "\nHex: " << ipv4_to_hex(mask)
+        << "\nAddresses: " << (prefix == 0 ? 4294967296ULL : 1ULL << (32 - prefix)) << "\nUsable hosts: " << host_count(prefix);
+    return out.str();
+}
+
+std::string subnet_details(const Ipv4Subnet& subnet) {
+    const auto mask = prefix_to_netmask(subnet.prefix);
+    const auto network = subnet.address & mask;
+    const auto broadcast = network | ~mask;
+    std::ostringstream out;
+    out << "Network: " << format_ipv4(network) << "/" << subnet.prefix << "\nNetmask: " << format_ipv4(mask)
+        << "\nWildcard: " << format_ipv4(~mask) << "\nBroadcast: " << format_ipv4(broadcast);
+    if (subnet.prefix <= 30) {
+        out << "\nFirst host: " << format_ipv4(network + 1) << "\nLast host: " << format_ipv4(broadcast - 1);
+    } else if (subnet.prefix == 31) {
+        out << "\nHosts: " << format_ipv4(network) << " - " << format_ipv4(broadcast);
+    }
+    out << "\nUsable hosts: " << host_count(subnet.prefix) << "\nBinary mask: " << dotted_binary(mask);
+    if (subnet.address != network) out << "\nAddress " << format_ipv4(subnet.address) << " is host " << (subnet.address - network) << " in this network";
+    return out.str();
+}
+
+std::string split_subnet(const Ipv4Subnet& subnet, int new_prefix, std::size_t limit) {
+    if (new_prefix <= subnet.prefix || new_prefix > 32) return {};
+    const auto network = subnet.address & prefix_to_netmask(subnet.prefix);
+    const auto count = 1ULL << (new_prefix - subnet.prefix);
+    const auto size = 1ULL << (32 - new_prefix);
+    std::ostringstream out;
+    for (unsigned long long index = 0; index < count && index < limit; ++index) {
+        const auto start = static_cast<std::uint32_t>(network + index * size);
+        const auto end = static_cast<std::uint32_t>(start + size - 1);
+        if (index != 0) out << '\n';
+        out << format_ipv4(start) << "/" << new_prefix;
+        if (new_prefix <= 30) out << "  hosts " << format_ipv4(start + 1) << " - " << format_ipv4(end - 1) << "  broadcast " << format_ipv4(end);
+    }
+    if (count > limit) out << "\n... " << (count - limit) << " more";
     return out.str();
 }
 

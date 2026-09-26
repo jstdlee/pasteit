@@ -89,6 +89,9 @@ std::string usage_action_key(const ActionInstance& action, const DecisionSnapsho
     if (const auto template_id = action.parameters.find("template_id"); template_id != action.parameters.end()) {
         key += "|template:" + template_id->second;
     }
+    if (action.kind == ActionKind::SplitSubnet) {
+        if (const auto prefix = action.parameters.find("prefix"); prefix != action.parameters.end()) key += "|prefix:" + prefix->second;
+    }
     if (const auto recipe = action.parameters.find("recipe_id"); recipe != action.parameters.end()) {
         key += "|recipe:" + recipe->second;
     }
