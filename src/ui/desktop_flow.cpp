@@ -68,6 +68,8 @@ double local_match_bonus(std::string_view object, std::string_view input, std::u
 }
 
 constexpr std::size_t kMaximumUsageHints = 5;
+// Below this local confidence Djev also answers which content type it is.
+constexpr double kAskDjevBelowConfidence = 0.6;
 
 }  // namespace
 
@@ -136,6 +138,27 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
             .app = input.focused_app,
             .now_ms = input.captured_at_ms,
         };
+        if (batch.catalog.profile) {
+            const auto& profile = *batch.catalog.profile;
+            if (profile.confidence >= 0.6 && profile.shape != DataShape::Prose && profile.shape != DataShape::Token &&
+                profile.shape != DataShape::Empty) {
+                batch.usage_context.signals.push_back(data_shape_name(profile.shape));
+            }
+            ClipboardProfileHint hint{
+                .shape = data_shape_name(profile.shape),
+                .confidence = profile.confidence,
+                .lines = profile.estimated_lines,
+                .columns = profile.columns,
+                .header = profile.header,
+                .tags = profile.tags,
+            };
+            if (profile.confidence < kAskDjevBelowConfidence && profile.candidates.size() >= 2) {
+                for (const auto& [shape, score] : profile.candidates) {
+                    hint.alternatives.emplace_back(data_shape_name(shape), data_shape_description(shape));
+                }
+            }
+            snapshot.profile = std::move(hint);
+        }
         // Content shapes recognised by the catalog also describe the usage
         // context, e.g. a user who always converts colors to RGB.
         for (const auto& [kind, tag] : std::initializer_list<std::pair<ActionKind, const char*>>{

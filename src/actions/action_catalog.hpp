@@ -3,6 +3,7 @@
 #include "core/action.hpp"
 #include "core/protocol.hpp"
 #include "config/app_settings.hpp"
+#include "detect/content_profile.hpp"
 
 #include <optional>
 #include <string>
@@ -12,6 +13,8 @@ namespace pastit {
 
 struct ActionCatalog {
     std::vector<ActionInstance> actions;
+    // General shape of the current clipboard item, judged from a sample.
+    std::optional<ContentProfile> profile;
 
     std::optional<ActionInstance> find(const std::string& id) const;
     std::optional<ActionInstance> find_by_kind_and_label(ActionKind kind, const std::string& label) const;

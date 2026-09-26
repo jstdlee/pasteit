@@ -204,6 +204,18 @@ std::string kind_slug(ActionKind kind) {
             return "copy_contact_vcard";
         case ActionKind::SaveContactVCard:
             return "save_contact_vcard";
+        case ActionKind::PreviewMarkdown:
+            return "preview_markdown";
+        case ActionKind::ViewTable:
+            return "view_table";
+        case ActionKind::RunPipeline:
+            return "run_pipeline";
+        case ActionKind::AnonymizeText:
+            return "anonymize_text";
+        case ActionKind::RestorePlaceholders:
+            return "restore_placeholders";
+        case ActionKind::SummarizePage:
+            return "summarize_page";
     }
     return "action";
 }
@@ -391,11 +403,17 @@ std::vector<PathLocation> path_targets(const DecisionSnapshot& snapshot) {
     return out;
 }
 
+constexpr std::size_t kMaxDetectionBytes = 1024 * 1024;
+
+// Local detectors read at most 1 MiB; the content profile samples beyond it.
 std::string source_text_for_detection(const ClipboardItem& item) {
     if (!item.blob_path.empty()) {
         std::ifstream input(item.blob_path, std::ios::binary);
         if (input) {
-            return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+            std::string text(kMaxDetectionBytes, '\0');
+            input.read(text.data(), static_cast<std::streamsize>(text.size()));
+            text.resize(static_cast<std::size_t>(input.gcount()));
+            return text;
         }
     }
     return item.preview;
@@ -787,6 +805,23 @@ void add_json_utility_actions(ActionCatalog& catalog, const ClipboardItem& item,
     }
 }
 
+void add_profile_actions(ActionCatalog& catalog, const ClipboardItem& item, const ContentProfile& profile) {
+    if (profile.is(DataShape::Markdown, 0.55)) {
+        add(catalog, item, ActionKind::PreviewMarkdown, "", "Preview Markdown",
+            "Render headings, lists, tables, and code blocks", "markdown");
+    }
+    if (profile.is(DataShape::Csv) || profile.is(DataShape::Tsv)) {
+        const std::string delimiter(1, profile.delimiter);
+        add(catalog, item, ActionKind::ViewTable, "", "View as table",
+            "Open " + std::to_string(profile.columns) + " columns in a sortable, filterable table with charts", "table",
+            {{"format", "delimited"}, {"delimiter", delimiter}, {"header", profile.header ? "1" : "0"}});
+    }
+    if (profile.estimated_lines >= 2 && profile.shape != DataShape::Token && profile.shape != DataShape::Binary) {
+        add(catalog, item, ActionKind::RunPipeline, "", "Run pipeline",
+            "Sort, count, filter, or awk these lines and preview the output", "pipeline");
+    }
+}
+
 void add_url_utility_actions(ActionCatalog& catalog, const ClipboardItem& item, const std::string& source_text) {
     const auto url = trim_copy(source_text);
     if (url.empty() || url.find('\n') != std::string::npos) return;
@@ -824,6 +859,10 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
     const auto& item = snapshot.clipboard_items.front();
     const auto source_text = item.kind == ContentKind::Image ? std::string{} : source_text_for_detection(item);
     const auto signals = detect_fast_content(item.kind, source_text);
+    catalog.profile = item.blob_path.empty() || item.kind == ContentKind::Image
+        ? profile_content(item.kind, source_text)
+        : profile_content(item.kind, sample_file(item.blob_path));
+    const auto& profile = *catalog.profile;
     switch (item.kind) {
             case ContentKind::Text:
             case ContentKind::DateTime:
@@ -844,6 +883,7 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                         "Preview this numeric sequence as a line, bar, or pie chart", "graph");
                 }
                 add_qr_action(catalog, item, signals, source_text);
+                add_profile_actions(catalog, item, profile);
                 add_text_utility_actions(catalog, item, targets, signals, source_text);
                 add_prompt_actions(catalog, item, templates, provider, signals);
                 add(catalog, item, ActionKind::CustomPrompt, "", "Custom prompt",
@@ -910,6 +950,12 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                         "Save pretty JSON to " + path_to_utf8_string(target.path), "pretty");
                 }
                 add_json_utility_actions(catalog, item, source_text);
+                if (json_to_csv(source_text) || profile.shape == DataShape::Ndjson) {
+                    add(catalog, item, ActionKind::ViewTable, "", "View as table",
+                        "Open these JSON records in a sortable, filterable table", "table", {{"format", "json"}});
+                }
+                add(catalog, item, ActionKind::RunPipeline, "", "Run pipeline",
+                    "Transform this JSON with jq or line tools and preview the output", "pipeline");
                 add(catalog, item, ActionKind::CustomPrompt, "", "Custom prompt",
                     "Enter a prompt and send this JSON to the configured general LLM", "ai");
                 break;

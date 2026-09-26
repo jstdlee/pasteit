@@ -156,6 +156,7 @@ add_library(pastit_core
     src/transform/text_transforms.cpp
     src/core/core.cpp
     src/detect/content_detector.cpp
+    src/detect/content_profile.cpp
     src/detect/fast_content_detector.cpp
     src/detect/resume_detector.cpp
     src/djev/decision_session.cpp
@@ -498,6 +499,10 @@ if (PASTIT_BUILD_TESTS)
     add_executable(utility_actions_test tests/utility_actions_test.cpp)
     target_link_libraries(utility_actions_test PRIVATE pastit_core)
     add_test(NAME utility_actions_test COMMAND utility_actions_test)
+
+    add_executable(content_profile_test tests/content_profile_test.cpp)
+    target_link_libraries(content_profile_test PRIVATE pastit_core)
+    add_test(NAME content_profile_test COMMAND content_profile_test)
 
     add_executable(usage_model_test tests/usage_model_test.cpp)
     target_link_libraries(usage_model_test PRIVATE pastit_core)

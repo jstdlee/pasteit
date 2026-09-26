@@ -105,6 +105,26 @@ int main() {
     assert(*habits->array()->front().get("share")->number() == 0.73);
     assert(habit_payload.find("state.habits lists actions") != std::string::npos);
 
+    // Uncertain local shape: the profile and a content_type question are sent.
+    auto profiled = datetime_request;
+    profiled.snapshot.profile = pastit::ClipboardProfileHint{
+        .shape = "csv", .confidence = 0.52, .lines = 3, .columns = 2, .header = true, .tags = {"sampled"},
+        .alternatives = {{"csv", "comma separated rows"}, {"prose", "natural-language text"}}};
+    const auto profiled_root = pastit::parse_json(pastit::DjevClient::build_payload(profiled, "jev-test"));
+    assert(profiled_root.has_value());
+    const auto* profile = profiled_root->get("state")->get("clipboard")->get("profile");
+    assert(profile && *profile->get("shape")->string() == "csv" && *profile->get("columns")->number() == 2);
+    const auto* question = profiled_root->get("questions")->get("content_type");
+    assert(question && question->get("criteria")->get("prose"));
+
+    // Answers are read by question name even when content_type comes first.
+    const auto parsed = pastit::DjevClient::parse_response(
+        R"({"answers":{"content_type":{"type":"choice","choice":"csv","probabilities":{"csv":0.9,"prose":0.1},"confidence":0.9},)"
+        R"("best_action":{"type":"choice","choice":"datetime-kind-action","probabilities":{"datetime-kind-action":0.8},"confidence":0.8}}})",
+        profiled);
+    assert(parsed.valid && parsed.choice == "datetime-kind-action" && parsed.content_type == "csv");
+    assert(parsed.content_type_confidence == 0.9);
+
     pastit::DecisionRequest request;
     request.protocol_version = 1;
     request.request_id = "req_budget";

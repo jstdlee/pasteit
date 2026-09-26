@@ -245,7 +245,21 @@ std::string build_compact_payload(const DecisionRequest& request, const std::str
         out << "\"preview\":\"" << json_escape(truncate_codepoints(current->preview, 256)) << "\",";
         out << "\"size_bytes\":" << current->size_bytes << ",";
         out << "\"mime_summary\":\"" << json_escape(mime_summary(*current)) << "\",";
-        out << "\"captured_at_ms\":" << current->captured_at_ms << "}";
+        out << "\"captured_at_ms\":" << current->captured_at_ms;
+        if (const auto& profile = request.snapshot.profile) {
+            out << ",\"profile\":{\"shape\":\"" << json_escape(profile->shape) << "\",";
+            out << "\"confidence\":" << std::round(profile->confidence * 100.0) / 100.0 << ",";
+            out << "\"lines\":" << profile->lines;
+            if (profile->columns > 0) {
+                out << ",\"columns\":" << profile->columns << ",\"header\":" << (profile->header ? "true" : "false");
+            }
+            out << ",\"tags\":[";
+            for (std::size_t index = 0; index < profile->tags.size() && index < 8; ++index) {
+                out << (index ? "," : "") << "\"" << json_escape(profile->tags[index]) << "\"";
+            }
+            out << "]}";
+        }
+        out << "}";
     }
     out << ",\"target\":{\"focused_target_hash\":\"" << json_escape(request.snapshot.focused_target_hash) << "\",";
     out << "\"app\":\"" << json_escape(request.snapshot.focused_app) << "\",";
@@ -291,7 +305,19 @@ std::string build_compact_payload(const DecisionRequest& request, const std::str
         }
         out << "\"" << json_escape(action.id) << "\":\"" << json_escape(truncate_codepoints(action.description, 120)) << "\"";
     }
-    out << "}}}}";
+    out << "}}";
+    if (request.snapshot.profile && request.snapshot.profile->alternatives.size() >= 2) {
+        // The local shape guess is uncertain: let the model settle it too.
+        out << ",\"content_type\":{\"type\":\"choice\",";
+        out << "\"instructions\":\"Which content type is the current clipboard?\",\"criteria\":{";
+        const auto& alternatives = request.snapshot.profile->alternatives;
+        for (std::size_t index = 0; index < alternatives.size(); ++index) {
+            out << (index ? "," : "") << "\"" << json_escape(alternatives[index].first) << "\":\""
+                << json_escape(alternatives[index].second) << "\"";
+        }
+        out << "}}";
+    }
+    out << "}}";
     return out.str();
 }
 
@@ -579,9 +605,30 @@ DecisionResponse DjevClient::parse_response(std::string_view body, const Decisio
     }
 
     response.request_id = extract_string(body, "request_id");
-    response.choice = extract_string(body, "choice");
-    response.confidence = extract_number(body, "confidence", 0.0);
-    response.probabilities = extract_probabilities(body);
+    const auto root = parse_json(body);
+    const JsonValue* answers = root ? root->get("answers") : nullptr;
+    const JsonValue* best = answers ? answers->get("best_action") : nullptr;
+    if (best != nullptr && best->object()) {
+        // Multi-question responses: read each answer by name, never by the
+        // first "choice" key in the body.
+        if (const auto* choice = best->get("choice"); choice && choice->string()) response.choice = *choice->string();
+        if (const auto* confidence = best->get("confidence")) response.confidence = confidence->number().value_or(0.0);
+        if (const auto* probabilities = best->get("probabilities"); probabilities && probabilities->object()) {
+            for (const auto& [id, value] : *probabilities->object()) {
+                if (const auto number = value.number()) response.probabilities[id] = *number;
+            }
+        }
+        if (const auto* type = answers->get("content_type"); type && type->object()) {
+            if (const auto* choice = type->get("choice"); choice && choice->string()) response.content_type = *choice->string();
+            if (const auto* confidence = type->get("confidence")) {
+                response.content_type_confidence = confidence->number().value_or(0.0);
+            }
+        }
+    } else {
+        response.choice = extract_string(body, "choice");
+        response.confidence = extract_number(body, "confidence", 0.0);
+        response.probabilities = extract_probabilities(body);
+    }
 
     const auto ids = request_action_ids(request);
     if (response.request_id.empty()) {

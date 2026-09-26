@@ -62,7 +62,16 @@ ActionCategory action_category(ActionKind kind) {
         case ActionKind::ExplainText:
         case ActionKind::ExplainCode:
         case ActionKind::CustomPrompt:
+        case ActionKind::SummarizePage:
             return ActionCategory::Ai;
+        case ActionKind::PreviewMarkdown:
+        case ActionKind::ViewTable:
+            return ActionCategory::Media;
+        case ActionKind::RunPipeline:
+            return ActionCategory::Code;
+        case ActionKind::AnonymizeText:
+        case ActionKind::RestorePlaceholders:
+            return ActionCategory::Extract;
         case ActionKind::DrawMermaidDiagram:
         case ActionKind::GenerateQr:
         case ActionKind::AnnotateImage:
@@ -99,6 +108,9 @@ double action_specificity_prior(ActionKind kind) {
         case ActionKind::JsonToYaml:
         case ActionKind::DrawMermaidDiagram:
         case ActionKind::SaveCodeFile:
+        case ActionKind::PreviewMarkdown:
+        case ActionKind::ViewTable:
+        case ActionKind::RestorePlaceholders:
             return 0.06;
         // The obvious primary use of the content.
         case ActionKind::PasteText:

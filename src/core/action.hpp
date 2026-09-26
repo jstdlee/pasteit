@@ -87,6 +87,13 @@ enum class ActionKind {
     GenerateUuid,
     CopyContactVCard,
     SaveContactVCard,
+    // Data views, pipelines, privacy, and web.
+    PreviewMarkdown,
+    ViewTable,
+    RunPipeline,
+    AnonymizeText,
+    RestorePlaceholders,
+    SummarizePage,
 };
 
 struct ActionInstance {
