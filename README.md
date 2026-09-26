@@ -94,6 +94,12 @@ Before ranking, PasteIt profiles the clipboard from a bounded sample (the first 
 - **Charts**: line, bar, pie, scatter and histogram, drawn live with hover values. From a table, pick the X column and one or more numeric series; number lists open directly. Charts copy or save as PNG.
 - **Markdown preview**: headings, emphasis, links, code, quotes, nested and task lists, tables and fenced code, with copy as HTML or plain text.
 
+## Pipelines
+
+Run pipeline opens a builder with the clipboard on the left and live output on the right. Commands chain with `|`, e.g. `sort | uniq -c | sort -nr | head -n 10`. Built-in stages run inside PasteIt on every platform: `sort` (`-n -r -u -f -k N -t SEP`), `uniq` (`-c -d -u -i`), `wc` (`-l -w -c -m`), `head`/`tail` (`-n N`), `grep` (`-i -v -o -c -n -F`, ECMAScript regex), `cut` (`-d -f`, `-c`), `tr` (sets, ranges, `-d`, `-s`), `sed 's/re/rep/g'`, `nl`, `rev`, `tac`, `column`, `trim`, `upper`, `lower`, `join [SEP]` and `anonymize`. Other programs run only if listed under Settings → Pipelines → Allowed external tools (default `gawk`, `awk`, `jq`); they are started by argv with the text on stdin, never through a shell. `;`, `&`, redirects and `$(...)` are rejected, and each run is limited to 2 seconds and 1 MiB of output.
+
+Saved recipes (name, command, and the content they apply to: `lines`, `any`, or shapes such as `csv`, `json`, `log`) appear as ranked actions and take part in usage learning. Defaults include Count occurrences, Unique lines, Line count, First column, Sum column 2, Errors only and JSON keys.
+
 ## Desktop Popup
 
 `pastit` is the desktop entry point. A per-user lock prevents duplicate V2 processes. Start it once, then press `Ctrl+Alt+F` to capture the focused target and open the popup. The movable, opacity-configurable popup shows the top eight Djev/fallback actions as cards: a category icon, the label, the shortened destination (`~/…`) or a one-line description, and a confidence bar when Jev ranked the list (the local fallback is an ordering, so it shows no bar). Click a card, press its number key 1–8, or use Up/Down and Enter. The header shows the content kind, detected signals (color, code, JSON, …), the size, and whether Jev or the local fallback ranked the list; colors show a swatch. The window height fits its content after each ranking. The root window is a normal decorated window, so other applications can cover it; Escape closes without executing.

@@ -89,6 +89,9 @@ std::string usage_action_key(const ActionInstance& action, const DecisionSnapsho
     if (const auto template_id = action.parameters.find("template_id"); template_id != action.parameters.end()) {
         key += "|template:" + template_id->second;
     }
+    if (const auto recipe = action.parameters.find("recipe_id"); recipe != action.parameters.end()) {
+        key += "|recipe:" + recipe->second;
+    }
     return key;
 }
 
@@ -105,6 +108,8 @@ std::string usage_action_label(std::string_view action_key) {
             while (path.size() > 1 && (path.back() == '/' || path.back() == '\\')) path.remove_suffix(1);
             const auto slash = path.find_last_of("/\\");
             label += " \xE2\x86\x92 " + std::string{slash == std::string_view::npos ? path : path.substr(slash + 1)};
+        } else if (part.starts_with("recipe:")) {
+            label += " (" + std::string{part.substr(7)} + ")";
         } else if (part.starts_with("template:")) {
             label += " (" + std::string{part.substr(9)} + ")";
         }

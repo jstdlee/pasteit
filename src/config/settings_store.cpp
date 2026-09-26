@@ -142,6 +142,38 @@ SettingsLoadResult SettingsStore::load() const {
             if (!value.id.empty() && !value.name.empty() && !value.system_prompt.empty()) s.prompt_templates.push_back(std::move(value));
         }
     }
+    const auto strings_of = [](const JsonValue* value) {
+        std::vector<std::string> out;
+        if (value && value->array()) {
+            for (const auto& item : *value->array()) if (item.string()) out.push_back(*item.string());
+        }
+        return out;
+    };
+    if (const auto* pipelines = root->get("pipelines"); pipelines && pipelines->object()) {
+        if (const auto* tools = pipelines->get("allowed_tools"); tools && tools->array()) s.pipelines.allowed_tools = strings_of(tools);
+        if (const auto* recipes = pipelines->get("recipes"); recipes && recipes->array()) {
+            s.pipelines.recipes.clear();
+            for (const auto& item : *recipes->array()) {
+                PipelineRecipe recipe{
+                    .id = string_value(item.get("id")),
+                    .name = string_value(item.get("name")),
+                    .command = string_value(item.get("command")),
+                    .applies_to = string_value(item.get("applies_to"), "lines"),
+                    .enabled = bool_value(item.get("enabled"), true),
+                    .built_in = bool_value(item.get("built_in"), false),
+                };
+                if (!recipe.id.empty() && !recipe.command.empty()) s.pipelines.recipes.push_back(std::move(recipe));
+            }
+        }
+    }
+    if (const auto* privacy = root->get("privacy"); privacy && privacy->object()) {
+        s.privacy.replacement_style = string_value(privacy->get("replacement_style"), s.privacy.replacement_style);
+        s.privacy.anonymize_before_llm = bool_value(privacy->get("anonymize_before_llm"), false);
+        s.privacy.allow_page_fetch = bool_value(privacy->get("allow_page_fetch"), false);
+        s.privacy.disabled_categories = strings_of(privacy->get("disabled_categories"));
+        s.privacy.always_hide = strings_of(privacy->get("always_hide"));
+        s.privacy.never_hide = strings_of(privacy->get("never_hide"));
+    }
     normalize_settings(s);
     return result;
 }
@@ -190,7 +222,31 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
             << ",\"system_prompt\":" << json_quote(t.system_prompt) << ",\"temperature\":" << t.temperature
             << ",\"enabled\":" << (t.enabled?"true":"false") << ",\"built_in\":" << (t.built_in?"true":"false") << '}';
     }
-    out << "]\n}\n";
+    out << "]";
+    const auto write_strings = [&out](const std::vector<std::string>& values) {
+        out << '[';
+        for (std::size_t i = 0; i < values.size(); ++i) out << (i ? "," : "") << json_quote(values[i]);
+        out << ']';
+    };
+    out << ",\n\"pipelines\":{\"allowed_tools\":";
+    write_strings(settings.pipelines.allowed_tools);
+    out << ",\"recipes\":[";
+    for (std::size_t i = 0; i < settings.pipelines.recipes.size(); ++i) {
+        const auto& recipe = settings.pipelines.recipes[i];
+        out << (i ? "," : "") << "{\"id\":" << json_quote(recipe.id) << ",\"name\":" << json_quote(recipe.name)
+            << ",\"command\":" << json_quote(recipe.command) << ",\"applies_to\":" << json_quote(recipe.applies_to)
+            << ",\"enabled\":" << (recipe.enabled ? "true" : "false") << ",\"built_in\":" << (recipe.built_in ? "true" : "false") << '}';
+    }
+    out << "]}";
+    out << ",\n\"privacy\":{\"replacement_style\":" << json_quote(settings.privacy.replacement_style)
+        << ",\"anonymize_before_llm\":" << (settings.privacy.anonymize_before_llm ? "true" : "false")
+        << ",\"allow_page_fetch\":" << (settings.privacy.allow_page_fetch ? "true" : "false") << ",\"disabled_categories\":";
+    write_strings(settings.privacy.disabled_categories);
+    out << ",\"always_hide\":";
+    write_strings(settings.privacy.always_hide);
+    out << ",\"never_hide\":";
+    write_strings(settings.privacy.never_hide);
+    out << "}\n}\n";
     out.flush();
     if (!out) { error = "Could not write settings file."; return false; }
     out.close();

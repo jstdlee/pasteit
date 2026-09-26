@@ -45,6 +45,7 @@ int main() {
         {"python", "import os\n\ndef main():\n    print(os.getcwd())\n", DataShape::Code},
         {"cpp", "#include <vector>\nint main() {\n    std::vector<int> v;\n    return 0;\n}\n", DataShape::Code},
         {"log", "2026-09-26 10:00:01 INFO started\n2026-09-26 10:00:02 WARN slow disk\n2026-09-26 10:00:03 ERROR failed\n", DataShape::Log},
+        {"level log", "error: disk full\nwarning: slow\nerror: timeout\ninfo: started\n", DataShape::Log},
         {"key value", "host = example.com\nport = 8080\nuser = admin\n", DataShape::KeyValue},
         {"yaml", "server:\n  host: example.com\n  port: 8080\nusers:\n  - alice\n  - bob\n", DataShape::Yaml},
         {"html", "<!DOCTYPE html>\n<html><body><div>Hello</div></body></html>", DataShape::Html},

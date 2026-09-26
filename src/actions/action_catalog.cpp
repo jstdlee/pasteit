@@ -847,6 +847,30 @@ std::string action_kind_slug(ActionKind kind) {
     return kind_slug(kind);
 }
 
+bool pipeline_recipe_applies(const PipelineRecipe& recipe, const ContentProfile& profile) {
+    if (!recipe.enabled || profile.shape == DataShape::Binary || profile.shape == DataShape::Empty) return false;
+    std::istringstream tokens(recipe.applies_to);
+    for (std::string token; std::getline(tokens, token, ',');) {
+        token = trim_copy(token);
+        if (token == "any") return true;
+        if (token == "lines" && profile.estimated_lines >= 3 && profile.shape != DataShape::Json) return true;
+        if (token == data_shape_name(profile.shape) && profile.confidence >= 0.6) return true;
+    }
+    return false;
+}
+
+void add_pipeline_recipe_actions(ActionCatalog& catalog, const DecisionSnapshot& snapshot,
+                                 const std::vector<PipelineRecipe>& recipes) {
+    if (!catalog.profile || snapshot.clipboard_items.empty()) return;
+    const auto& item = snapshot.clipboard_items.front();
+    for (const auto& recipe : recipes) {
+        if (!pipeline_recipe_applies(recipe, *catalog.profile)) continue;
+        add(catalog, item, ActionKind::RunPipeline, "", recipe.name, recipe.command, "pipeline",
+            {{"recipe_id", recipe.id}, {"command", recipe.command}});
+        catalog.actions.back().id += "_" + sanitize_ref(recipe.id);
+    }
+}
+
 ActionCatalog build_catalog(const DecisionSnapshot& snapshot) {
     return build_catalog(snapshot, {}, {});
 }

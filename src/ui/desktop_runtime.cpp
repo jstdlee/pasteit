@@ -39,6 +39,7 @@
 #include "ui/icons.hpp"
 #include "util/utf8.hpp"
 #include "ui/data_views.hpp"
+#include "ui/pipeline_view.hpp"
 #include "ui/theme.hpp"
 #include "ui/image_preview_panel.hpp"
 #include "ui/clipboard_history_model.hpp"
@@ -613,6 +614,7 @@ int run_desktop_runtime() {
     ChartViewState chart_view;
     TableViewState table_view;
     MarkdownViewState markdown_view;
+    PipelineViewState pipeline_view;
     const auto default_chart_path = [&] {
         const auto directory = settings.default_image_directory.empty()
             ? std::filesystem::current_path() : settings.default_image_directory;
@@ -675,13 +677,6 @@ int run_desktop_runtime() {
     std::string clipboard_preview_text;
     DecisionState decision_state = DecisionState::Idle;
     SettingsPage settings_page = SettingsPage::General;
-    // Filled in by the pipeline and privacy features.
-    const auto draw_pipeline_settings = [&](UiLanguage language) {
-        section_heading(icon::kPipeline, tr(language, UiTextKey::Pipeline));
-    };
-    const auto draw_privacy_settings = [&](UiLanguage language) {
-        section_heading(icon::kShield, tr(language, UiTextKey::Privacy));
-    };
     bool fit_popup_pending = false;
     const auto fit_popup_to = [&](int desired_height) {
         fit_popup_pending = false;
@@ -700,6 +695,72 @@ int run_desktop_runtime() {
     std::uint64_t request_counter = 0;
     bool popup_visible = false;
     AppSettings settings_draft = settings;
+    // The anonymize pipeline stage; replaced by the privacy feature.
+    std::function<std::string(std::string_view)> pipeline_anonymizer;
+    const auto draw_pipeline_settings = [&](UiLanguage language) {
+        const auto& pal = palette();
+        section_heading(icon::kPipeline, tr(language, UiTextKey::Pipeline), tr(language, UiTextKey::PipelinesHelp));
+        if (begin_form("settings-pipelines", 170.0F)) {
+            form_row(tr(language, UiTextKey::AllowedTools), tr(language, UiTextKey::AllowedToolsHelp));
+            std::string tools;
+            for (const auto& tool : settings_draft.pipelines.allowed_tools) tools += (tools.empty() ? "" : ", ") + tool;
+            if (input_text_string("##allowed-tools", tools)) {
+                settings_draft.pipelines.allowed_tools.clear();
+                std::istringstream parts(tools);
+                for (std::string part; std::getline(parts, part, ',');) {
+                    part = trim(part);
+                    // Bare program names only: no paths, no shell syntax.
+                    if (!part.empty() && part.find_first_of("/\\ ;|&$`<>") == std::string::npos) {
+                        settings_draft.pipelines.allowed_tools.push_back(part);
+                    }
+                }
+            }
+            end_form();
+        }
+        ImGui::SeparatorText(tr(language, UiTextKey::Recipes).c_str());
+        std::optional<std::size_t> remove;
+        if (ImGui::BeginTable("settings-recipes", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn(tr(language, UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 56.0F);
+            ImGui::TableSetupColumn(tr(language, UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.4F);
+            ImGui::TableSetupColumn(tr(language, UiTextKey::AppliesTo).c_str(), ImGuiTableColumnFlags_WidthStretch, 0.8F);
+            ImGui::TableSetupColumn(tr(language, UiTextKey::Command).c_str(), ImGuiTableColumnFlags_WidthStretch, 2.6F);
+            ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, 32.0F);
+            ImGui::TableHeadersRow();
+            for (std::size_t index = 0; index < settings_draft.pipelines.recipes.size(); ++index) {
+                auto& recipe = settings_draft.pipelines.recipes[index];
+                ImGui::PushID(static_cast<int>(index));
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Checkbox("##enabled", &recipe.enabled);
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                input_text_string("##name", recipe.name);
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                input_text_string("##applies", recipe.applies_to);
+                ImGui::TableNextColumn();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                input_text_string("##command", recipe.command);
+                ImGui::TableNextColumn();
+                if (ImGui::SmallButton(ui_fonts().icons ? icon::kTrash : "x")) remove = index;
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        if (remove) settings_draft.pipelines.recipes.erase(settings_draft.pipelines.recipes.begin() + static_cast<std::ptrdiff_t>(*remove));
+        if (ImGui::Button(with_icon(icon::kPlus, tr(language, UiTextKey::NewRecipe)).c_str())) {
+            settings_draft.pipelines.recipes.push_back({.id = "custom-" + std::to_string(current_time_ms()), .name = "New recipe",
+                                                        .command = "sort | uniq -c", .applies_to = "lines"});
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(with_icon(icon::kUndo, tr(language, UiTextKey::RestoreDefaults)).c_str())) {
+            settings_draft.pipelines.recipes = default_pipeline_recipes();
+        }
+        (void)pal;
+    };
+    const auto draw_privacy_settings = [&](UiLanguage language) {
+        section_heading(icon::kShield, tr(language, UiTextKey::Privacy));
+    };
     std::string settings_status = settings_load.warning;
     if (!clipboard_history_load.warning.empty()) {
         if (!settings_status.empty()) settings_status += "\n";
@@ -717,7 +778,7 @@ int run_desktop_runtime() {
     const auto has_any_auxiliary_window = [&] {
         return image_preview.open || file_confirmation.has_value() ||
                prompt_parameter_dialog.open || custom_prompt_dialog.open || chart_view.open || table_view.open ||
-               markdown_view.open ||
+               markdown_view.open || pipeline_view.open ||
                has_fast_action_result_panel() ||
                std::any_of(generation_jobs.begin(), generation_jobs.end(), [](const auto& job) {
                    return job->panel.open;
@@ -818,6 +879,7 @@ int run_desktop_runtime() {
         input.hash = settings.hash;
         input.date_time = settings.date_time;
         input.usage = &usage_model;
+        input.pipeline_recipes = settings.pipelines.recipes;
         if (focus.current_directory.has_value()) {
             input.focused_current_directory = *focus.current_directory;
         }
@@ -1075,6 +1137,11 @@ int run_desktop_runtime() {
                 return;
             }
             open_table_view(table_view, std::move(*table), tr(UiTextKey::ViewTable));
+            return;
+        }
+        if (action->kind == ActionKind::RunPipeline) {
+            const auto command = action->parameters.contains("command") ? action->parameters.at("command") : std::string{};
+            open_pipeline_view(pipeline_view, clipboard_store.read_text(action->source_ref), command);
             return;
         }
         if (action->kind == ActionKind::PreviewMarkdown) {
@@ -2145,6 +2212,23 @@ int run_desktop_runtime() {
         draw_chart_view(chart_view, data_view_host, ui_language);
         draw_table_view(table_view, chart_view, data_view_host, ui_language, default_chart_path());
         draw_markdown_view(markdown_view, data_view_host, ui_language);
+        {
+            PipelineOptions pipeline_options;
+            pipeline_options.allowed_tools = settings.pipelines.allowed_tools;
+            pipeline_options.anonymize = pipeline_anonymizer;
+            const PipelineViewHost pipeline_host{
+                .data = data_view_host,
+                .replace_clipboard = [&](std::string_view text) { platform->publish_text(text); },
+                .save_recipe = [&](PipelineRecipe recipe) {
+                    recipe.id = "custom-" + std::to_string(current_time_ms());
+                    settings.pipelines.recipes.push_back(recipe);
+                    settings_draft.pipelines.recipes.push_back(recipe);
+                    std::string save_error;
+                    if (!settings_store.save(settings, save_error)) settings_status = save_error;
+                },
+            };
+            draw_pipeline_view(pipeline_view, pipeline_options, pipeline_host, ui_language);
+        }
 
         if (file_confirmation) {
             auto& state = *file_confirmation;

@@ -74,6 +74,39 @@ struct AnnotationSettings {
     bool operator==(const AnnotationSettings&) const = default;
 };
 
+// A saved command pipeline offered as an action for matching content.
+// applies_to lists shape names (csv, json, log, ...), "lines" for any text
+// with several lines, or "any".
+struct PipelineRecipe {
+    std::string id;
+    std::string name;
+    std::string command;
+    std::string applies_to = "lines";
+    bool enabled = true;
+    bool built_in = false;
+
+    bool operator==(const PipelineRecipe&) const = default;
+};
+
+struct PipelineSettings {
+    // External programs pipelines may run (by argv, never via a shell).
+    std::vector<std::string> allowed_tools{"gawk", "awk", "jq"};
+    std::vector<PipelineRecipe> recipes;
+
+    bool operator==(const PipelineSettings&) const = default;
+};
+
+struct PrivacySettings {
+    std::string replacement_style = "placeholder";  // placeholder | mask | fake | redact
+    bool anonymize_before_llm = false;
+    bool allow_page_fetch = false;
+    std::vector<std::string> disabled_categories;
+    std::vector<std::string> always_hide;  // custom words, e.g. client names
+    std::vector<std::string> never_hide;
+
+    bool operator==(const PrivacySettings&) const = default;
+};
+
 enum class UiTheme { Dark = 0, Light = 1 };
 
 struct AppSettings {
@@ -92,11 +125,14 @@ struct AppSettings {
     DateTimeSettings date_time;
     AnnotationSettings annotation;
     std::vector<PromptTemplate> prompt_templates;
+    PipelineSettings pipelines;
+    PrivacySettings privacy;
 
     bool operator==(const AppSettings&) const = default;
 };
 
 std::vector<PromptTemplate> default_prompt_templates();
+std::vector<PipelineRecipe> default_pipeline_recipes();
 AppSettings default_settings();
 void normalize_settings(AppSettings& settings);
 

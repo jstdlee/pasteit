@@ -126,6 +126,7 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
     add_default(input.downloads.resume_directory,"default_download","configured-download",default_download_refs);
 
     batch.catalog = build_catalog(snapshot, input.prompt_templates, input.general_llm);
+    add_pipeline_recipe_actions(batch.catalog, snapshot, input.pipeline_recipes);
     if (!snapshot.clipboard_items.empty()) {
         const auto& item = snapshot.clipboard_items.front();
         batch.ranking_context.input_kind = item.kind;

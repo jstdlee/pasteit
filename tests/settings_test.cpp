@@ -79,9 +79,16 @@ int main() {
     settings.date_time.use_24_hour_clock = false;
     settings.annotation.export_format = "png";
     settings.annotation.save_directory = root / "annotations";
+    settings.pipelines.allowed_tools = {"jq"};
+    settings.pipelines.recipes = {{"r1", "Top words", "tr ' ' '\\n' | sort | uniq -c", "prose,lines", false, false}};
+    settings.privacy.replacement_style = "mask";
+    settings.privacy.anonymize_before_llm = true;
+    settings.privacy.always_hide = {"Project Falcon"};
     std::string error;
     assert(store.save(settings, error));
     const auto loaded = store.load();
+    assert(loaded.settings.pipelines == settings.pipelines);
+    assert(loaded.settings.privacy == settings.privacy);
     assert(loaded.loaded_from_disk);
     assert(loaded.warning.empty());
     assert(std::fabs(loaded.settings.window_opacity - 0.72F) < 0.001F);

@@ -1,0 +1,47 @@
+#pragma once
+
+#include <chrono>
+#include <cstddef>
+#include <functional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace pastit {
+
+// One stage of a pipeline: a command name and its arguments, tokenized like a
+// POSIX shell (quotes and backslashes) but never executed by one.
+struct PipelineStage {
+    std::vector<std::string> argv;
+};
+
+struct PipelineParse {
+    std::vector<PipelineStage> stages;
+    std::string error;
+};
+
+struct PipelineOptions {
+    std::vector<std::string> allowed_tools;  // external programs, e.g. gawk, jq
+    std::chrono::milliseconds timeout{2000};
+    std::size_t max_output = 1024 * 1024;
+    // Optional text filter for the "anonymize" stage.
+    std::function<std::string(std::string_view)> anonymize;
+};
+
+struct PipelineResult {
+    bool ok = false;
+    std::string output;
+    std::string error;
+    bool truncated = false;
+    std::chrono::milliseconds elapsed{0};
+};
+
+PipelineParse parse_pipeline(std::string_view command);
+PipelineResult run_pipeline(std::string_view input, std::string_view command, const PipelineOptions& options);
+
+// Names of the stages implemented in PasteIt itself (portable, no process).
+const std::vector<std::string>& builtin_pipeline_commands();
+// One-line usage for the builder's help list.
+std::string pipeline_command_help(std::string_view name);
+
+}  // namespace pastit

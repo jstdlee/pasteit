@@ -155,6 +155,8 @@ add_library(pastit_core
     src/graph/graph_renderer.cpp
     src/graph/chart.cpp
     src/table/table_data.cpp
+    src/pipeline/pipeline.cpp
+    src/pipeline/process_runner.cpp
     src/transform/text_transforms.cpp
     src/core/core.cpp
     src/detect/content_detector.cpp
@@ -200,6 +202,7 @@ add_library(pastit_core
     src/ui/imgui_widgets.cpp
     src/ui/theme.cpp
     src/ui/data_views.cpp
+    src/ui/pipeline_view.cpp
     src/ui/localization.cpp
     src/ui/clipboard_history_model.cpp
     src/ui/clipboard_history_panel.cpp
@@ -514,6 +517,10 @@ if (PASTIT_BUILD_TESTS)
     add_executable(data_views_test tests/data_views_test.cpp)
     target_link_libraries(data_views_test PRIVATE pastit_core)
     add_test(NAME data_views_test COMMAND data_views_test)
+
+    add_executable(pipeline_test tests/pipeline_test.cpp)
+    target_link_libraries(pipeline_test PRIVATE pastit_core)
+    add_test(NAME pipeline_test COMMAND pipeline_test)
 
     add_executable(usage_model_test tests/usage_model_test.cpp)
     target_link_libraries(usage_model_test PRIVATE pastit_core)

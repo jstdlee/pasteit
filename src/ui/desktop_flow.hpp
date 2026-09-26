@@ -30,6 +30,7 @@ struct DesktopDecisionInput {
     HashSettings hash;
     DateTimeSettings date_time;
     const UsageModel* usage = nullptr;
+    std::vector<PipelineRecipe> pipeline_recipes;
 };
 
 struct DesktopDecisionBatch {

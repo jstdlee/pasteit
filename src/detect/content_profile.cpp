@@ -377,7 +377,8 @@ ContentProfile profile_content(ContentKind kind, const ContentSample& sample) {
     score(DataShape::Markdown, markdown_score(head, lines, markdown_tags));
 
     static const std::regex log_line(
-        R"(^\s*(\[?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}|\[?\d{2}:\d{2}:\d{2}|[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}|\[?(INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\b))");
+        R"(^\s*(\[?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}|\[?\d{2}:\d{2}:\d{2}|[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}|\[?(INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\b))",
+        std::regex_constants::ECMAScript | std::regex_constants::icase);
     const double logs = share_matching(lines, log_line);
     if (lines.size() >= 2 && logs >= 0.6) score(DataShape::Log, 0.5 + 0.4 * logs);
 

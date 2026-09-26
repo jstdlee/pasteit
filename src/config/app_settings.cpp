@@ -59,6 +59,18 @@ std::vector<PromptTemplate> default_prompt_templates() {
     };
 }
 
+std::vector<PipelineRecipe> default_pipeline_recipes() {
+    return {
+        {"builtin-count", "Count occurrences", "sort | uniq -c | sort -nr", "lines", true, true},
+        {"builtin-unique", "Unique lines", "sort -u", "lines", true, true},
+        {"builtin-line-count", "Line count", "wc -l", "lines", true, true},
+        {"builtin-first-column", "First column", "cut -d , -f 1", "csv", true, true},
+        {"builtin-sum-column", "Sum column 2", "awk -F, 'NR > 1 { s += $2 } END { print s }'", "csv", true, true},
+        {"builtin-errors", "Errors only", "grep -i 'error|fail|fatal|exception'", "log", true, true},
+        {"builtin-json-keys", "JSON keys", "jq -c 'if type == \"array\" then .[0] | keys else keys end'", "json,ndjson", true, true},
+    };
+}
+
 AppSettings default_settings() {
     AppSettings settings;
     settings.default_image_directory = home_path("Pictures");
@@ -74,6 +86,7 @@ AppSettings default_settings() {
 #endif
     settings.annotation.save_directory = home_path("Pictures");
     settings.prompt_templates = default_prompt_templates();
+    settings.pipelines.recipes = default_pipeline_recipes();
     return settings;
 }
 

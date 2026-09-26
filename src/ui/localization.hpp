@@ -23,6 +23,7 @@ enum class UiTextKey{
     StatusIdle,StatusRanking,StatusRanked,StatusFallback,ClickToCopy,Theme,ThemeDark,ThemeLight,
     ConfirmOverwrite,FastAnnotation,Comment,Undo,Clear,SaveAnnotatedSvg,CopyTemporaryImagePath,OpenPngExternally,Pause,Resume,ClipboardHistoryDetail,RecentPathDetail,MermaidRendererHelp,MermaidHomepage,MermaidCliPath,MermaidCliArguments,QrHelp,QrHomepage,QrErrorCorrection,QrMargin,QrScale,DownloadResumeDirectory,KeepPartFiles,TerminalCommand,TerminalProfile,ShowSha256,ShowSha512,DateSpacingEnabled,Points,Uses,ViewTable,PreviewMarkdown,Pipeline,Anonymize,
     Privacy,DjevHelp,LlmHelp,PromptTemplatesHelp,Testing,Downloads,TerminalAndFiles,AnnotationDirectory,AnnotationSvgOnly,DateTime,SourceTimeZone,TargetTimeZone,UnsavedChanges,PromptParametersHelp,SuggestedFolders,
+    PipelineHelp,ExternalTool,PipelineInput,PipelineOutput,SaveAsRecipe,RecipeName,AllowedTools,AllowedToolsHelp,Recipes,AppliesTo,Command,NewRecipe,PipelinesHelp,
     Filter,Columns,Statistics,Chart,Copied,Rows,CopyAsSql,CopyAsJson,CopyAsCsv,CopyAsMarkdown,ShowSource,CopyPlainText,CopyHtml,ChartLine,ChartBar,ChartPie,ChartScatter,ChartHistogram,RowNumber,XAxis,YAxis
 };
 UiLanguage resolve_language(UiLanguage requested,std::string_view locale);
