@@ -1,5 +1,6 @@
 #include "ui/qr_preview_panel.hpp"
 #include "ui/theme.hpp"
+#include "ui/icons.hpp"
 #include "ui/localization.hpp"
 
 #include "ui/imgui_widgets.hpp"
@@ -46,51 +47,51 @@ void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPane
                            const std::function<bool(const std::filesystem::path&)>& open_path) {
     auto model = build_qr_preview_panel_model(state);
     panel.poll();
-    if (begin_tool_window(model.viewport.title, &open,
-                          ImVec2(model.viewport.initial_width, model.viewport.initial_height), &focus_pending)) {
-        for (std::size_t index = 0; index < model.toolbar.size(); ++index) {
-            if (index != 0 && index != 2) ImGui::SameLine();
-            const auto& command = model.toolbar[index];
-            if (!command.enabled) ImGui::BeginDisabled();
-            if (ImGui::Button(command.label.c_str())) {
-                if (command.kind == PanelCommandKind::CopyText) {
-                    ImGui::SetClipboardText(command.value.c_str());
-                } else if (command.kind == PanelCommandKind::SaveText) {
-                    panel.save(command, ".txt");
-                } else if (command.kind == PanelCommandKind::ShowSource) {
-                    panel.select_view(command, model.preview_available);
-                } else if (command.kind == PanelCommandKind::ShowPreview) {
-                    panel.select_view(command, model.preview_available);
-                } else if (command.kind == PanelCommandKind::SaveRenderedOutput) {
-                    panel.save(command, ".png");
-                }
-            }
-            if (!command.enabled) ImGui::EndDisabled();
+    if (begin_tool_window(model.viewport.title, &open, ImVec2(440.0F, 540.0F), &focus_pending)) {
+        const auto& p = palette();
+        const auto find = [&](std::string_view id) -> const FastActionPanelCommand* {
+            for (const auto& command : model.toolbar) if (command.id == id) return &command;
+            return nullptr;
+        };
+        // The code fills the window above the payload line and the buttons.
+        const float reserved = footer_height() + ImGui::GetTextLineHeightWithSpacing() * 2.0F;
+        const auto available = ImGui::GetContentRegionAvail();
+        if (model.preview_available && texture_id != 0 && texture_width > 0 && texture_height > 0) {
+            const float side = std::max(64.0F, std::min(available.x, available.y - reserved));
+            const float scale = side / static_cast<float>(std::max(texture_width, texture_height));
+            const ImVec2 size(texture_width * scale, texture_height * scale);
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (available.x - size.x) * 0.5F);
+            ImGui::Image((ImTextureID)(intptr_t)texture_id, size);
+        } else {
+            ImGui::PushTextWrapPos(0.0F);
+            ImGui::TextColored(p.warning, "%s",
+                               model.status_text.empty() ? "QR image unavailable; the payload is shown below." : model.status_text.c_str());
+            ImGui::PopTextWrapPos();
         }
-        input_text_string("Destination", panel.destination);
-        ImGui::Checkbox(tr(UiTextKey::ConfirmOverwrite).c_str(), &panel.confirm_overwrite);
-        if (!panel.status_text.empty()) copyable_text(panel.status_text, true);
-        if (!model.preview_available) {
-            copyable_text(model.status_text.empty() ? "QR renderer unavailable; payload is shown below." : model.status_text,
-                          true);
-        } else if (panel.mode == RendererPreviewPanelState::Mode::Preview) {
-            if (texture_id != 0 && texture_width > 0 && texture_height > 0) {
-                ImGui::BeginChild("qr-inline-preview", ImVec2(0.0F, 280.0F), ImGuiChildFlags_Borders);
-                const auto available = ImGui::GetContentRegionAvail();
-                const float scale = std::min({1.0F, available.x / static_cast<float>(texture_width),
-                                              available.y / static_cast<float>(texture_height)});
-                ImGui::Image((ImTextureID)(intptr_t)texture_id,
-                             ImVec2(texture_width * scale, texture_height * scale));
-                ImGui::EndChild();
-            } else {
-                copyable_text("QR image could not be displayed here.", true);
+        auto payload = model.primary_text.substr(0, 160);
+        for (auto& ch : payload) if (ch == '\n') ch = ' ';
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextColored(p.text_muted, "%s%s", payload.c_str(), model.primary_text.size() > 160 ? "\xE2\x80\xA6" : "");
+        ImGui::PopTextWrapPos();
+        if (!panel.status_text.empty()) ImGui::TextColored(p.success, "%s", panel.status_text.c_str());
+
+        const auto* save_png = find("save_rendered");
+        const int clicked = footer_buttons({{with_icon(icon::kFolderOpen, tr(UiTextKey::OpenPngExternally)), false, model.preview_available},
+                                            {with_icon(icon::kSave, tr(UiTextKey::SavePng)), false, save_png != nullptr},
+                                            {with_icon(icon::kCopy, tr(UiTextKey::CopyPayload)), true}});
+        if (clicked == 0 && state.active().output_path) panel.open_preview(state.active().output_path->string(), open_path);
+        if (clicked == 1) ImGui::OpenPopup("qr-save");
+        if (clicked == 2) ImGui::SetClipboardText(model.primary_text.c_str());
+        if (ImGui::BeginPopup("qr-save")) {
+            ImGui::SetNextItemWidth(320.0F);
+            input_text_hint("##qr-destination", tr(UiTextKey::Destination).c_str(), panel.destination);
+            ImGui::Checkbox(tr(UiTextKey::ConfirmOverwrite).c_str(), &panel.confirm_overwrite);
+            if (primary_button(tr(UiTextKey::Save)) && save_png != nullptr) {
+                panel.save(*save_png, ".png");
+                ImGui::CloseCurrentPopup();
             }
-            if (ImGui::SmallButton(tr(UiTextKey::OpenPngExternally).c_str())) {
-                panel.open_preview(state.active().output_path->string(), open_path);
-            }
+            ImGui::EndPopup();
         }
-        std::string editable = model.primary_text;
-        input_text_string("##qr-payload", editable, true, ImGuiInputTextFlags_ReadOnly);
     }
     ImGui::End();
 }

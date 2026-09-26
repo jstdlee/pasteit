@@ -1,4 +1,6 @@
 #include "ui/clipboard_history_panel.hpp"
+#include "ui/theme.hpp"
+#include "ui/icons.hpp"
 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
 #include "ui/multi_viewport.hpp"
@@ -22,6 +24,15 @@ bool compact_button(const char* label, const std::string& ref) {
 }
 
 void draw_content_type_icon(ContentKind kind) {
+    // Lucide glyphs in a per-kind color; the drawn shapes below are the
+    // fallback when the icon font is missing.
+    const char* glyph = kind == ContentKind::Text ? icon::kFileText : kind == ContentKind::Url ? icon::kLink
+                      : kind == ContentKind::Email ? icon::kMail : kind == ContentKind::Image ? icon::kMedia
+                      : kind == ContentKind::Path ? icon::kFolder : kind == ContentKind::Json ? icon::kBraces : icon::kInfo;
+    const ActionCategory tint = kind == ContentKind::Url ? ActionCategory::Open : kind == ContentKind::Email ? ActionCategory::Network
+                              : kind == ContentKind::Image ? ActionCategory::Media : kind == ContentKind::Path ? ActionCategory::Save
+                              : kind == ContentKind::Json ? ActionCategory::Convert : ActionCategory::Paste;
+    if (icon_cell(glyph, category_color(tint))) return;
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     constexpr ImVec2 size{18.0F, 18.0F};
     const ImVec2 max{origin.x + size.x, origin.y + size.y};
@@ -119,7 +130,7 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
         ImGui::TableSetupColumn(tr(language, UiTextKey::Source).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Size).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Captured).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
-        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 120.0F);
+        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 96.0F);
         ImGui::TableHeadersRow();
 
         for (const auto& row : model.rows) {
@@ -144,14 +155,16 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
             ImGui::TableNextColumn();
             copyable_text(row.captured_label);
             ImGui::TableNextColumn();
-            if (compact_button(tr(language, UiTextKey::View).c_str(), row.ref)) {
+            ImGui::PushID(row.ref.c_str());
+            if (icon_button("view", icon::kEye, tr(language, UiTextKey::View))) {
                 command = view_clipboard_history_item(state, row.ref);
             }
             ImGui::SameLine();
             if (!row.can_use) {
                 ImGui::BeginDisabled();
             }
-            if (compact_button(tr(language, UiTextKey::Use).c_str(), row.ref)) {
+            // Puts the item back on the system clipboard (text or image).
+            if (icon_button("copy", icon::kCopy, tr(language, UiTextKey::Copy))) {
                 command = use_clipboard_history_item(row.ref);
             }
             if (!row.can_use) {
@@ -161,12 +174,13 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
             if (!row.can_save) {
                 ImGui::BeginDisabled();
             }
-            if (compact_button(tr(language, UiTextKey::Save).c_str(), row.ref)) {
+            if (icon_button("save", icon::kSave, tr(language, UiTextKey::Save))) {
                 command = save_clipboard_history_item(row.ref);
             }
             if (!row.can_save) {
                 ImGui::EndDisabled();
             }
+            ImGui::PopID();
         }
         ImGui::EndTable();
     }
@@ -179,16 +193,10 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
         const auto detail_height = std::clamp(250.0F + rows * ImGui::GetTextLineHeightWithSpacing(), 360.0F, 760.0F);
         ImGui::SetNextWindowSize(ImVec2(720.0F, detail_height), ImGuiCond_FirstUseEver);
         if (ImGui::Begin((tr(UiTextKey::ClipboardHistoryDetail) + "##clipboard-history-detail").c_str(), &detail_open, ImGuiWindowFlags_NoSavedSettings)) {
-            if (!model.detail->is_image) {
-                if (ImGui::Button(tr(language, UiTextKey::Copy).c_str())) {
-                    command = copy_clipboard_history_item(model.detail->ref);
-                }
-                ImGui::SameLine();
-            }
             if (!model.detail->can_use) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::Button(tr(language, UiTextKey::Use).c_str())) {
+            if (ImGui::Button(with_icon(icon::kCopy, tr(language, UiTextKey::Copy)).c_str())) {
                 command = use_clipboard_history_item(model.detail->ref);
             }
             if (!model.detail->can_use) {

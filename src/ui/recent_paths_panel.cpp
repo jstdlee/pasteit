@@ -1,4 +1,6 @@
 #include "ui/recent_paths_panel.hpp"
+#include "ui/theme.hpp"
+#include "ui/icons.hpp"
 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
 #include "ui/multi_viewport.hpp"
@@ -16,6 +18,9 @@ bool compact_button(const char* label, const std::string& ref) {
 }
 
 void draw_path_type_icon(const RecentPathRow& row) {
+    const bool folder = row.type == "folder";
+    const auto tint = !row.exists ? palette().text_muted : category_color(folder ? ActionCategory::Save : ActionCategory::Paste);
+    if (icon_cell(folder ? icon::kFolder : icon::kFile, tint)) return;
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     constexpr ImVec2 size{18.0F, 18.0F};
     auto* draw = ImGui::GetWindowDrawList();
@@ -64,7 +69,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
         ImGui::TableSetupColumn(tr(language, UiTextKey::Source).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Uses).c_str(), ImGuiTableColumnFlags_WidthFixed, 48.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Seen).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.4F);
-        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 150.0F);
+        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 96.0F);
         ImGui::TableHeadersRow();
 
         for (const auto& row : model.rows) {
@@ -88,11 +93,11 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             ImGui::TableNextColumn();
             copyable_text(row.last_seen_label);
             ImGui::TableNextColumn();
-            if (compact_button(tr(language, UiTextKey::View).c_str(), row.ref)) {
+            if (icon_button("view", icon::kEye, tr(language, UiTextKey::View))) {
                 command = view_recent_path(state, row.ref);
             }
             ImGui::SameLine();
-            if (compact_button(tr(language, UiTextKey::Copy).c_str(), row.ref)) {
+            if (icon_button("copy", icon::kCopy, tr(language, UiTextKey::Copy))) {
                 const RecentPathsModel& current = model;
                 command = copy_recent_path(current, row.ref);
             }
@@ -100,7 +105,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             if (!row.can_open) {
                 ImGui::BeginDisabled();
             }
-            if (compact_button(tr(language, UiTextKey::Open).c_str(), row.ref)) {
+            if (icon_button("open", icon::kFolderOpen, tr(language, UiTextKey::Open))) {
                 command = open_recent_path(model, row.ref);
             }
             if (!row.can_open) {

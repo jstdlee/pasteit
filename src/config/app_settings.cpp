@@ -1,6 +1,7 @@
 #include "config/app_settings.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <cstdlib>
 
@@ -51,10 +52,10 @@ bool is_annotation_format(std::string_view value) {
 
 std::vector<PromptTemplate> default_prompt_templates() {
     return {
-        {.id="builtin-translate", .name="Translate", .system_prompt="Translate {text}. Source language: {source_language}. Target language: {target_language}.", .temperature=0.2, .enabled=true, .built_in=true},
-        {.id="builtin-rewrite", .name="Rewrite", .system_prompt="Rewrite for clarity and fluency while preserving meaning: {text}", .temperature=0.3, .enabled=true, .built_in=true},
-        {.id="builtin-summarize", .name="Summarize", .system_prompt="Summarize factually and concisely: {text}", .temperature=0.2, .enabled=true, .built_in=true},
-        {.id="builtin-explain-text", .name="Explain text", .system_prompt="Explain this text clearly and concisely: {text}", .temperature=0.2, .enabled=true, .built_in=true},
+        {.id="builtin-translate", .name="Translate", .system_prompt="Translate {text}. Source language: {source_language}. Target language: {target_language}.", .temperature=0.1, .enabled=true, .built_in=true},
+        {.id="builtin-rewrite", .name="Rewrite", .system_prompt="Rewrite for clarity and fluency while preserving meaning: {text}", .temperature=0.7, .enabled=true, .built_in=true},
+        {.id="builtin-summarize", .name="Summarize", .system_prompt="Summarize factually and concisely: {text}", .temperature=0.3, .enabled=true, .built_in=true},
+        {.id="builtin-explain-text", .name="Explain text", .system_prompt="Explain this text clearly and concisely: {text}", .temperature=0.4, .enabled=true, .built_in=true},
         {.id="builtin-explain-code", .name="Explain code", .system_prompt="Explain what this code does, including important inputs, outputs, and edge cases: {text}", .temperature=0.2, .enabled=true, .built_in=true},
     };
 }
@@ -92,6 +93,15 @@ AppSettings default_settings() {
 
 void normalize_settings(AppSettings& settings) {
     settings.window_opacity = std::clamp(settings.window_opacity, 0.55F, 1.0F);
+    // Built-in templates still on the old one-size default (0.2/0.3) move to
+    // the per-purpose default; edited temperatures are kept.
+    for (auto& prompt : settings.prompt_templates) {
+        if (!prompt.built_in || (std::fabs(prompt.temperature - 0.2) > 1e-6 && std::fabs(prompt.temperature - 0.3) > 1e-6)) continue;
+        for (const auto& fresh : default_prompt_templates()) {
+            if (fresh.id == prompt.id) prompt.temperature = fresh.temperature;
+        }
+    }
+    for (auto& prompt : settings.prompt_templates) prompt.temperature = std::clamp(prompt.temperature, 0.0, 2.0);
     if (settings.schema_version < 1) settings.schema_version = 1;
     if (!is_qr_error_correction(settings.renderers.qr_error_correction)) {
         settings.renderers.qr_error_correction = "M";

@@ -35,6 +35,12 @@ int main() {
     assert(!parse_pipeline("sort | | uniq").error.empty());
     assert(!parse_pipeline("grep 'open").error.empty());
 
+    // Stage editor round trip keeps quoted and escaped pipes inside a stage.
+    const auto stages = split_pipeline_text(R"(grep 'a|b' | sed s/x\|y/z/ |  wc -l )");
+    assert(stages.size() == 3 && stages[0] == "grep 'a|b'" && stages[1] == R"(sed s/x\|y/z/)" && stages[2] == "wc -l");
+    assert(join_pipeline_stages(stages) == R"(grep 'a|b' | sed s/x\|y/z/ | wc -l)");
+    assert(split_pipeline_text("  ").empty());
+
     const std::string words = "pear\napple\npear\nfig\napple\npear";
     assert(run(words, "sort") == "apple\napple\nfig\npear\npear\npear");
     assert(run(words, "sort -u") == "apple\nfig\npear");

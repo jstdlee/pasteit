@@ -790,7 +790,7 @@ void add_encoding_and_network_actions(ActionCatalog& catalog, const ClipboardIte
         add(catalog, item, ActionKind::HexToText, "", "Decode hex", "Decode these hex bytes to readable text", "hex");
     } else if (binary_to_text(text)) {
         add(catalog, item, ActionKind::BinaryToText, "", "Decode binary", "Decode these 8-bit groups to readable text", "binary");
-    } else if (text.size() <= 1024) {
+    } else if (single_token || (text.size() <= 256 && text.find('\n') == std::string::npos)) {
         add(catalog, item, ActionKind::TextToHex, "", "Encode as hex", "Copy the UTF-8 bytes of this text as hex", "hex");
         add(catalog, item, ActionKind::TextToBinary, "", "Encode as binary", "Copy the UTF-8 bytes of this text as 8-bit groups", "binary");
     }

@@ -68,6 +68,13 @@ inline constexpr const char* kMarkdown = "\xEE\x8C\xAB";  // file-type
 inline constexpr const char* kGlobe = "\xEE\x83\xA8";  // globe
 inline constexpr const char* kBrain = "\xEE\x8F\x8A";  // brain
 inline constexpr const char* kBot = "\xEE\x86\xBB";  // bot
+inline constexpr const char* kMail = "\xEE\x84\x8F";  // mail
+inline constexpr const char* kFile = "\xEE\x83\x80";  // file
+inline constexpr const char* kChevronUp = "\xEE\x81\xB0";  // chevron-up
+inline constexpr const char* kChevronDown = "\xEE\x81\xAD";  // chevron-down
+inline constexpr const char* kInsertBelow = "\xEE\x82\xA2";  // corner-down-right
+inline constexpr const char* kMessage = "\xEE\x95\xB9";  // message-square-text
+inline constexpr const char* kQr = "\xEE\x87\x9F";  // qr-code
 
 inline constexpr unsigned int kFirstCodepoint = 0xE000;
 inline constexpr unsigned int kLastCodepoint = 0xE8FF;

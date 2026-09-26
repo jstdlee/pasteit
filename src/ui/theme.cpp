@@ -395,6 +395,25 @@ void draw_category_icon(ImDrawList* draw, ImVec2 center, float size, ActionCateg
     }
 }
 
+bool icon_cell(const char* glyph, ImVec4 color, float size) {
+    if (!current_fonts.icons || glyph == nullptr) return false;
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float font_size = size * 0.95F;
+    const ImVec2 extent = current_fonts.regular->CalcTextSizeA(font_size, 1000.0F, 0.0F, glyph);
+    ImGui::GetWindowDrawList()->AddText(current_fonts.regular, font_size,
+                                        ImVec2(origin.x + (size - extent.x) * 0.5F, origin.y + (size - extent.y) * 0.5F),
+                                        ImGui::GetColorU32(color), glyph);
+    ImGui::Dummy(ImVec2(size, size));
+    return true;
+}
+
+bool icon_button(const char* id, const char* glyph, const std::string& tooltip) {
+    const auto label = std::string{current_fonts.icons && glyph != nullptr ? glyph : tooltip.c_str()} + "##" + id;
+    const bool clicked = ImGui::SmallButton(label.c_str());
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
+    return clicked;
+}
+
 float pill(std::string_view text, ImVec4 color, bool filled) {
     const auto& fonts = current_fonts;
     ImGui::PushFont(fonts.bold, fonts.small);

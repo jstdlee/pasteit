@@ -2,6 +2,7 @@
 
 #if defined(PASTIT_HAS_DESKTOP_DEPS)
 #include "ui/icons.hpp"
+#include "ui/imgui_widgets.hpp"
 #include "ui/theme.hpp"
 
 #include <imgui.h>
@@ -121,17 +122,7 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
             const float ask_width = ImGui::CalcTextSize(ask_label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0F + 12.0F;
             ImGui::SetNextItemWidth(-ask_width);
             if (custom) {
-                ImGui::InputTextWithHint("##ask-custom", tr(language, UiTextKey::PromptInstructions).c_str(), state.custom_prompt.data(),
-                                         state.custom_prompt.capacity() + 1, ImGuiInputTextFlags_CallbackResize,
-                                         [](ImGuiInputTextCallbackData* data) {
-                                             if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
-                                                 auto* text = static_cast<std::string*>(data->UserData);
-                                                 text->resize(static_cast<std::size_t>(data->BufTextLen));
-                                                 data->Buf = text->data();
-                                             }
-                                             return 0;
-                                         },
-                                         &state.custom_prompt);
+                input_text_hint("##ask-custom", tr(language, UiTextKey::PromptInstructions).c_str(), state.custom_prompt);
             } else {
                 ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::AskLlmHelp).c_str());
             }

@@ -545,6 +545,40 @@ std::string pipeline_command_help(std::string_view name) {
     return found == help.end() ? std::string{name} + "  external tool (must be allowed in Settings)" : found->second;
 }
 
+std::vector<std::string> split_pipeline_text(std::string_view command) {
+    std::vector<std::string> stages{""};
+    char quote = 0;
+    for (std::size_t index = 0; index < command.size(); ++index) {
+        const char ch = command[index];
+        if (quote == 0 && ch == '\\' && index + 1 < command.size()) {
+            stages.back() += ch;
+            stages.back() += command[++index];
+            continue;
+        }
+        if (quote != 0) {
+            if (ch == quote) quote = 0;
+        } else if (ch == '\'' || ch == '"') {
+            quote = ch;
+        } else if (ch == '|') {
+            stages.emplace_back();
+            continue;
+        }
+        stages.back() += ch;
+    }
+    for (auto& stage : stages) stage = trim(stage);
+    if (stages.size() == 1 && stages.front().empty()) stages.clear();
+    return stages;
+}
+
+std::string join_pipeline_stages(const std::vector<std::string>& stages) {
+    std::string out;
+    for (const auto& stage : stages) {
+        if (!out.empty()) out += " | ";
+        out += stage;
+    }
+    return out;
+}
+
 PipelineParse parse_pipeline(std::string_view command) {
     PipelineParse parse;
     PipelineStage stage;

@@ -13,6 +13,11 @@
 namespace pastit {
 
 void open_pipeline_view(PipelineViewState& state, std::string input, std::string command) {
+    if (state.pending) {
+        state.abandoned.push_back(std::move(*state.pending));
+        state.pending.reset();
+    }
+    state.active_stage = -1;
     state.open = true;
     state.focus_pending = true;
     state.input = std::move(input);
@@ -28,6 +33,10 @@ void open_pipeline_view(PipelineViewState& state, std::string input, std::string
 
 namespace {
 
+bool blank(const std::string& text) {
+    return text.find_first_not_of(" \t") == std::string::npos;
+}
+
 std::size_t count_lines(const std::string& text) {
     return text.empty() ? 0 : static_cast<std::size_t>(std::count(text.begin(), text.end(), '\n')) + 1;
 }
@@ -36,6 +45,9 @@ std::size_t count_lines(const std::string& text) {
 
 void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options, const PipelineViewHost& host,
                         UiLanguage language) {
+    std::erase_if(state.abandoned, [](std::future<PipelineResult>& run) {
+        return run.wait_for(std::chrono::milliseconds{0}) == std::future_status::ready;
+    });
     if (!state.open) return;
     // Collect a finished run, then start the next one once edits settle.
     if (state.pending && state.pending->wait_for(std::chrono::milliseconds{0}) == std::future_status::ready) {
@@ -57,44 +69,94 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
         ImGui::PushTextWrapPos(0.0F);
         ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::PipelineHelp).c_str());
         ImGui::PopTextWrapPos();
+        // The whole command stays editable; the stage rows below edit the
+        // same text one stage at a time.
         ImGui::SetNextItemWidth(-FLT_MIN);
-        if (input_text_string("##pipeline-command", state.command)) state.edited = now;
-        // Quick inserts append a stage.
+        if (input_text_hint("##pipeline-command", tr(language, UiTextKey::PipelineCommandHint).c_str(), state.command)) state.edited = now;
+
+        auto stages = split_pipeline_text(state.command);
+        bool stages_changed = false;
+        std::optional<std::size_t> remove, move_up, move_down, insert_after;
+        const float icon_width = ImGui::CalcTextSize(ui_fonts().icons ? icon::kPlus : "Delete").x;
+        const float row_buttons = (icon_width + ImGui::GetStyle().FramePadding.x * 2.0F + 4.0F) * 4.0F + 12.0F;
+        for (std::size_t index = 0; index < stages.size(); ++index) {
+            ImGui::PushID(static_cast<int>(index));
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(state.active_stage == static_cast<int>(index) ? p.accent : p.text_muted, "%zu", index + 1);
+            ImGui::SameLine(0.0F, 8.0F);
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - row_buttons);
+            if (input_text_hint("##stage", "", stages[index])) stages_changed = true;
+            if (ImGui::IsItemActive() || ImGui::IsItemFocused()) state.active_stage = static_cast<int>(index);
+            ImGui::SameLine(0.0F, 4.0F);
+            if (index == 0) ImGui::BeginDisabled();
+            if (icon_button("up", icon::kChevronUp, tr(language, UiTextKey::MoveUp))) move_up = index;
+            if (index == 0) ImGui::EndDisabled();
+            ImGui::SameLine(0.0F, 4.0F);
+            if (index + 1 == stages.size()) ImGui::BeginDisabled();
+            if (icon_button("down", icon::kChevronDown, tr(language, UiTextKey::MoveDown))) move_down = index;
+            if (index + 1 == stages.size()) ImGui::EndDisabled();
+            ImGui::SameLine(0.0F, 4.0F);
+            if (icon_button("insert", icon::kPlus, tr(language, UiTextKey::InsertStage))) insert_after = index;
+            ImGui::SameLine(0.0F, 4.0F);
+            if (icon_button("remove", icon::kTrash, tr(language, UiTextKey::Delete))) remove = index;
+            ImGui::PopID();
+        }
+        if (ImGui::SmallButton(with_icon(icon::kPlus, tr(language, UiTextKey::AddStage)).c_str())) {
+            stages.emplace_back();
+            state.active_stage = static_cast<int>(stages.size()) - 1;
+            stages_changed = true;
+        }
+        if (move_up) { std::swap(stages[*move_up], stages[*move_up - 1]); stages_changed = true; }
+        if (move_down) { std::swap(stages[*move_down], stages[*move_down + 1]); stages_changed = true; }
+        if (insert_after) {
+            stages.insert(stages.begin() + static_cast<std::ptrdiff_t>(*insert_after) + 1, std::string{});
+            state.active_stage = static_cast<int>(*insert_after) + 1;
+            stages_changed = true;
+        }
+        if (remove) {
+            stages.erase(stages.begin() + static_cast<std::ptrdiff_t>(*remove));
+            state.active_stage = -1;
+            stages_changed = true;
+        }
+        // Templates: fill the active stage when empty, otherwise insert after
+        // it (or append). The inserted text stays editable like any stage.
+        const auto insert_stage = [&](const std::string& text) {
+            const bool has_active = state.active_stage >= 0 && state.active_stage < static_cast<int>(stages.size());
+            if (has_active && blank(stages[static_cast<std::size_t>(state.active_stage)])) {
+                stages[static_cast<std::size_t>(state.active_stage)] = text;
+            } else if (!has_active && !stages.empty() && blank(stages.back())) {
+                stages.back() = text;
+                state.active_stage = static_cast<int>(stages.size()) - 1;
+            } else {
+                const auto at = has_active ? static_cast<std::size_t>(state.active_stage) + 1 : stages.size();
+                stages.insert(stages.begin() + static_cast<std::ptrdiff_t>(at), text);
+                state.active_stage = static_cast<int>(at);
+            }
+            stages_changed = true;
+        };
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::StageTemplates).c_str());
+        const auto chip = [&](const std::string& label, const std::string& text, const std::string& tooltip, const ImVec4* color) {
+            ImGui::SameLine(0.0F, 4.0F);
+            if (ImGui::GetCursorPosX() + ImGui::CalcTextSize(label.c_str()).x + 24.0F > ImGui::GetContentRegionMax().x) ImGui::NewLine();
+            if (color) ImGui::PushStyleColor(ImGuiCol_Text, *color);
+            if (ImGui::SmallButton((label + "##chip").c_str())) insert_stage(text);
+            if (color) ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
+        };
         static const char* quick[] = {"sort", "sort -nr", "uniq -c", "wc -l", "head -n 10", "grep -i ''", "cut -d , -f 1",
                                       "sed 's/a/b/g'", "tr a-z A-Z", "column", "anonymize"};
-        for (std::size_t index = 0; index < std::size(quick); ++index) {
-            if (index) ImGui::SameLine(0.0F, 4.0F);
-            if (ImGui::GetCursorPosX() + ImGui::CalcTextSize(quick[index]).x + 24.0F > ImGui::GetContentRegionMax().x) ImGui::NewLine();
-            if (ImGui::SmallButton(quick[index])) {
-                state.command += state.command.empty() ? quick[index] : std::string{" | "} + quick[index];
-                state.edited = now;
-            }
-            if (ImGui::IsItemHovered()) {
-                const std::string name{quick[index], std::string_view{quick[index]}.find(' ')};
-                ImGui::SetTooltip("%s", pipeline_command_help(name).c_str());
-            }
+        for (const char* text : quick) {
+            const std::string_view view{text};
+            chip(text, text, pipeline_command_help(view.substr(0, view.find(' '))), nullptr);
         }
-        for (const auto& [name, expansion] : options.custom_commands) {
-            ImGui::SameLine(0.0F, 4.0F);
-            if (ImGui::GetCursorPosX() + ImGui::CalcTextSize(name.c_str()).x + 24.0F > ImGui::GetContentRegionMax().x) ImGui::NewLine();
-            ImGui::PushStyleColor(ImGuiCol_Text, p.accent);
-            if (ImGui::SmallButton((name + "##custom").c_str())) {
-                state.command += (state.command.empty() ? "" : " | ") + name;
-                state.edited = now;
-            }
-            ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", expansion.c_str());
-        }
+        for (const auto& [name, expansion] : options.custom_commands) chip(name, name, expansion, &p.accent);
         for (const auto& tool : options.allowed_tools) {
-            ImGui::SameLine(0.0F, 4.0F);
-            if (ImGui::GetCursorPosX() + ImGui::CalcTextSize(tool.c_str()).x + 24.0F > ImGui::GetContentRegionMax().x) ImGui::NewLine();
-            ImGui::PushStyleColor(ImGuiCol_Text, p.warning);
-            if (ImGui::SmallButton(tool.c_str())) {
-                state.command += (state.command.empty() ? "" : " | ") + tool + (tool == "jq" ? " '.'" : " '{ print }'");
-                state.edited = now;
-            }
-            ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(language, UiTextKey::ExternalTool).c_str());
+            chip(tool, tool + (tool == "jq" ? " '.'" : " '{ print }'"), tr(language, UiTextKey::ExternalTool), &p.warning);
+        }
+        if (stages_changed) {
+            state.command = join_pipeline_stages(stages);
+            state.edited = now;
         }
 
         // Input and output side by side.

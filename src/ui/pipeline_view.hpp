@@ -10,6 +10,7 @@
 #include <future>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace pastit {
 
@@ -21,6 +22,10 @@ struct PipelineViewState {
     std::string ran_command;
     std::chrono::steady_clock::time_point edited{};
     std::optional<std::future<PipelineResult>> pending;
+    // Runs replaced while still in flight; collected without blocking, since
+    // destroying a std::async future waits for it.
+    std::vector<std::future<PipelineResult>> abandoned;
+    int active_stage = -1;  // chips insert after this stage
     PipelineResult result;
     bool has_result = false;
     std::string recipe_name;

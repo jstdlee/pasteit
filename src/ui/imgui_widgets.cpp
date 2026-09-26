@@ -94,6 +94,22 @@ bool copyable_text(std::string_view value, bool wrapped) {
 #endif
 }
 
+bool input_text_hint(const char* id, const char* hint, std::string& value) {
+#if defined(PASTIT_HAS_DESKTOP_DEPS)
+    if (value.capacity() < value.size() + 256) value.reserve(value.size() + 256);
+    const bool changed = ImGui::InputTextWithHint(id, hint, value.data(), value.capacity() + 1,
+                                                  ImGuiInputTextFlags_CallbackResize, resize_string_callback, &value);
+    // Typing within the reserved capacity does not resize; resync the length.
+    value.resize(std::strlen(value.c_str()));
+    return changed;
+#else
+    (void)id;
+    (void)hint;
+    (void)value;
+    return false;
+#endif
+}
+
 bool input_text_string(const char* label, std::string& value, bool multiline,
                        int extra_flags, float multiline_height) {
 #if defined(PASTIT_HAS_DESKTOP_DEPS)

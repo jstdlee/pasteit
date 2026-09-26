@@ -57,6 +57,12 @@ const UiFonts& ui_fonts();
 ImVec4 category_color(ActionCategory category);
 void draw_category_icon(ImDrawList* draw, ImVec2 center, float size, ActionCategory category, ImU32 color);
 
+// Draws an icon glyph in a size x size cell and advances the cursor; returns
+// false (drawing nothing) when the icon font is unavailable.
+bool icon_cell(const char* glyph, ImVec4 color, float size = 18.0F);
+// Small icon button with a tooltip; falls back to the text label.
+bool icon_button(const char* id, const char* glyph, const std::string& tooltip);
+
 // Rounded pill label; returns its width.
 float pill(std::string_view text, ImVec4 color, bool filled = false);
 

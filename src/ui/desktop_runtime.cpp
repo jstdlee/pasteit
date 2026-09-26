@@ -294,6 +294,7 @@ struct CustomPromptDialog {
     bool focus_pending = true;
     ActionInstance action;
     std::string prompt;
+    std::string template_id;  // empty = custom prompt
 };
 
 struct AuxiliaryPanelWindow {
@@ -868,17 +869,19 @@ int run_desktop_runtime() {
             end_form();
         }
         ImGui::SeparatorText(tr(language, UiTextKey::Detect).c_str());
-        int column = 0;
-        for (const auto category : all_pii_categories()) {
-            const auto name = pii_category_name(category);
-            auto& disabled = privacy.disabled_categories;
-            const auto found = std::find(disabled.begin(), disabled.end(), name);
-            bool enabled = found == disabled.end();
-            if (column++ % 3 != 0) ImGui::SameLine(ImGui::GetContentRegionAvail().x > 0 ? (column - 1) % 3 * 190.0F : 0.0F);
-            if (ImGui::Checkbox(pii_category_label(category).c_str(), &enabled)) {
-                if (enabled) disabled.erase(found);
-                else disabled.push_back(name);
+        if (ImGui::BeginTable("privacy-categories", 2, ImGuiTableFlags_SizingStretchSame)) {
+            for (const auto category : all_pii_categories()) {
+                ImGui::TableNextColumn();
+                const auto name = pii_category_name(category);
+                auto& disabled = privacy.disabled_categories;
+                const auto found = std::find(disabled.begin(), disabled.end(), name);
+                bool enabled = found == disabled.end();
+                if (ImGui::Checkbox(pii_category_label(category).c_str(), &enabled)) {
+                    if (enabled) disabled.erase(found);
+                    else disabled.push_back(name);
+                }
             }
+            ImGui::EndTable();
         }
     };
     std::string settings_status = settings_load.warning;
@@ -1744,8 +1747,8 @@ int run_desktop_runtime() {
             : preview_excerpt(clipboard_preview_text.empty() ? current_item->preview : clipboard_preview_text, 3);
         const float line_height = ImGui::GetTextLineHeight();
         const float preview_lines_height = std::min(line_height * 3.0F + ImGui::GetStyle().ItemSpacing.y,
-            std::max(line_height, ImGui::CalcTextSize(preview.c_str(), nullptr, false,
-                                                      ImGui::GetContentRegionAvail().x - 24.0F).y));
+            std::max(ImGui::GetFrameHeight(), ImGui::CalcTextSize(preview.c_str(), nullptr, false,
+                                                      ImGui::GetContentRegionAvail().x - 24.0F - 80.0F).y));
         const float preview_height = preview_texture.id != 0
             ? std::min(120.0F, static_cast<float>(preview_texture.height)) + 20.0F
             : preview_lines_height + 20.0F;
@@ -1778,16 +1781,29 @@ int run_desktop_runtime() {
                 }
             }
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + text_x);
-            ImGui::PushTextWrapPos(0.0F);
+            // Leave room for the Copy / Ask LLM buttons at the right.
+            const float button_room = (ImGui::GetFrameHeight() + 6.0F) * 2.0F + 8.0F;
+            ImGui::PushTextWrapPos(ImGui::GetWindowContentRegionMax().x - button_room);
             ImGui::BeginGroup();
             const ImVec2 clip_min = ImGui::GetCursorScreenPos();
-            ImGui::PushClipRect(clip_min, ImVec2(clip_min.x + ImGui::GetContentRegionAvail().x, clip_min.y + preview_lines_height), true);
+            ImGui::PushClipRect(clip_min, ImVec2(clip_min.x + ImGui::GetContentRegionAvail().x - button_room, clip_min.y + preview_lines_height), true);
             ImGui::TextUnformatted(preview.c_str());
             ImGui::PopClipRect();
             ImGui::EndGroup();
             ImGui::PopTextWrapPos();
-            if (ImGui::IsItemClicked()) platform->copy_text(current_item->preview);
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::ClickToCopy).c_str());
+            // Copy and Ask LLM live in the preview's top-right corner.
+            const auto custom_action = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+                [](const ActionInstance& action) { return action.kind == ActionKind::CustomPrompt && action.enabled; });
+            const float buttons_width = (ImGui::GetFrameHeight() + 6.0F) * (custom_action != active_batch.catalog.actions.end() ? 2.0F : 1.0F);
+            ImGui::SetCursorPos(ImVec2(ImGui::GetWindowContentRegionMax().x - buttons_width, ImGui::GetStyle().WindowPadding.y));
+            if (icon_button("preview-copy", icon::kCopy, tr(ui_language, UiTextKey::CopyClipboardText))) {
+                platform->copy_text(clipboard_store.read_text(current_item->ref));
+                execution_status = tr(ui_language, UiTextKey::Copied);
+            }
+            if (custom_action != active_batch.catalog.actions.end()) {
+                ImGui::SameLine(0.0F, 6.0F);
+                if (icon_button("preview-ask", icon::kAi, tr(ui_language, UiTextKey::AskLlmTitle))) activated_action = custom_action->id;
+            }
         } else {
             ImGui::TextColored(theme_palette.text_muted, "%s", tr(ui_language,UiTextKey::NoClipboard).c_str());
         }
@@ -1817,7 +1833,6 @@ int run_desktop_runtime() {
         tool_button(ActionKind::RunPipeline, UiTextKey::Pipeline, icon::kPipeline);
         tool_button(ActionKind::AnonymizeText, UiTextKey::Anonymize, icon::kEyeOff);
         tool_button(ActionKind::AnnotateImage, UiTextKey::AnnotateImage, icon::kEdit);
-        tool_button(ActionKind::CustomPrompt, UiTextKey::CustomPrompt, icon::kAi);
 
         if (popup_model.rows.empty()) {
             ImGui::Spacing();
@@ -1982,7 +1997,7 @@ int run_desktop_runtime() {
             };
             const float body_height = ImGui::GetContentRegionAvail().y - footer_height();
             // Section list.
-            ImGui::BeginChild("settings-nav", ImVec2(190.0F * ImGui::GetStyle().FontScaleDpi, body_height), false);
+            ImGui::BeginChild("settings-nav", ImVec2(150.0F * ImGui::GetStyle().FontScaleDpi, body_height), false);
             for (const auto& entry : sections) {
                 const bool selected = settings_page == entry.page;
                 if (selected) ImGui::PushStyleColor(ImGuiCol_Text, pal.accent);
@@ -2129,11 +2144,12 @@ int run_desktop_runtime() {
                 PromptTemplateService service(settings_draft.prompt_templates);
                 if (prompt_panel_model.modal == PromptTemplateModal::None) prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates);
                 std::string view_id, edit_id, duplicate_id, delete_id;
-                if (ImGui::BeginTable("settings-prompt-templates", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 64);
+                if (ImGui::BeginTable("settings-prompt-templates", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                                      ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp)) {
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 52);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 3);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Temperature).c_str(), ImGuiTableColumnFlags_WidthFixed, 90);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 130);
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Temperature).c_str(), ImGuiTableColumnFlags_WidthFixed, 110);
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 150);
                     ImGui::TableHeadersRow();
                     for (const auto& row : prompt_panel_model.rows) {
                         ImGui::PushID(("settings-"+row.id).c_str());
@@ -2142,10 +2158,19 @@ int run_desktop_runtime() {
                         if (ImGui::Checkbox("##enabled", &enabled)) { std::string error; service.set_enabled(row.id, enabled, error); }
                         ImGui::TableNextColumn();
                         ImGui::AlignTextToFramePadding();
-                        ImGui::TextUnformatted(row.name.c_str());
-                        if (row.built_in) { ImGui::SameLine(); pill(tr(ui_language,UiTextKey::BuiltIn), pal.text_muted); }
+                        // Built-in templates are marked by a muted name and a tooltip.
+                        ImGui::TextColored(row.built_in ? pal.text_muted : pal.text, "%s", row.name.c_str());
+                        if (row.built_in && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::BuiltIn).c_str());
                         ImGui::TableNextColumn();
-                        ImGui::Text("%.1f", row.temperature);
+                        // 0 = deterministic (translate, code); higher = more varied wording.
+                        float temperature = static_cast<float>(row.temperature);
+                        ImGui::SetNextItemWidth(-FLT_MIN);
+                        if (ImGui::SliderFloat("##temperature", &temperature, 0.0F, 1.5F, "%.1f")) {
+                            for (auto& prompt : settings_draft.prompt_templates) {
+                                if (prompt.id == row.id) prompt.temperature = std::round(temperature * 10.0F) / 10.0;
+                            }
+                        }
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::TemperatureHelp).c_str());
                         ImGui::TableNextColumn();
                         const auto icon_button = [&](const char* glyph, const char* fallback, const char* id) {
                             const auto label = std::string{ui_fonts().icons ? glyph : fallback} + id;
@@ -2396,43 +2421,51 @@ int run_desktop_runtime() {
         }
 
         if (custom_prompt_dialog.open) {
-            const auto custom_prompt_title = with_icon(icon::kAi, tr(ui_language, UiTextKey::CustomPrompt)) + "###custom-prompt";
-            if (begin_tool_window(custom_prompt_title, &custom_prompt_dialog.open, ImVec2(560, 300), &custom_prompt_dialog.focus_pending)) {
-                ImGui::TextColored(palette().text_muted, "%s", tr(ui_language, UiTextKey::PromptInstructions).c_str());
-                input_text_string("##custom-prompt-input", custom_prompt_dialog.prompt, true, 0, -footer_height());
-                const bool can_run = !trim(custom_prompt_dialog.prompt).empty();
-                const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Generate), true, can_run}});
+            // Ask LLM: a prompt template or a custom instruction for the clipboard text.
+            const auto title = with_icon(icon::kAi, tr(ui_language, UiTextKey::AskLlmTitle)) + "###custom-prompt";
+            if (begin_tool_window(title, &custom_prompt_dialog.open, ImVec2(580, 320), &custom_prompt_dialog.focus_pending)) {
+                const auto custom_label = tr(ui_language, UiTextKey::CustomPrompt);
+                const auto selected = std::find_if(settings.prompt_templates.begin(), settings.prompt_templates.end(),
+                    [&](const PromptTemplate& prompt) { return prompt.id == custom_prompt_dialog.template_id; });
+                const bool custom = selected == settings.prompt_templates.end();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                if (ImGui::BeginCombo("##ask-template", custom ? custom_label.c_str() : selected->name.c_str())) {
+                    if (ImGui::Selectable(custom_label.c_str(), custom)) custom_prompt_dialog.template_id.clear();
+                    for (const auto& prompt : settings.prompt_templates) {
+                        if (prompt.enabled && ImGui::Selectable(prompt.name.c_str(), prompt.id == custom_prompt_dialog.template_id)) {
+                            custom_prompt_dialog.template_id = prompt.id;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                if (custom) {
+                    ImGui::TextColored(palette().text_muted, "%s", tr(ui_language, UiTextKey::PromptInstructions).c_str());
+                    input_text_string("##custom-prompt-input", custom_prompt_dialog.prompt, true, 0, -footer_height());
+                } else {
+                    ImGui::PushTextWrapPos(0.0F);
+                    ImGui::TextColored(palette().text_muted, "%s", selected->system_prompt.c_str());
+                    ImGui::PopTextWrapPos();
+                }
+                const bool can_run = !custom || !trim(custom_prompt_dialog.prompt).empty();
+                const auto privacy_note = settings.privacy.anonymize_before_llm ? tr(ui_language, UiTextKey::AskLlmHelp) : std::string{};
+                const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Generate), true, can_run}},
+                                                   privacy_note);
                 if (clicked == 0) custom_prompt_dialog.open = false;
                 if (clicked == 1) {
-                    if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
-                        execution_status = "General LLM provider is not configured";
+                    const auto source_text = clipboard_store.read_text(custom_prompt_dialog.action.source_ref);
+                    const auto [llm_text, protected_text] = protect_for_llm(source_text);
+                    if (custom) {
+                        start_text_job(custom_prompt_dialog.action, custom_prompt_dialog.prompt, llm_text, 0.2, protected_text);
                     } else {
-                        const auto source_text = clipboard_store.read_text(custom_prompt_dialog.action.source_ref);
-                        const auto [llm_text, protected_text] = protect_for_llm(source_text);
-                        TextGenerationRequest request{
-                            .request_id = active_batch.request.request_id + "_custom_" + std::to_string(++request_counter),
-                            .endpoint = active_batch.general_llm.endpoint,
-                            .api_key = active_batch.general_llm.api_key,
-                            .model_id = active_batch.general_llm.model_id,
-                            .system_message = custom_prompt_dialog.prompt,
-                            .user_message = llm_text,
-                            .temperature = 0.2,
-                        };
-                        auto job = std::make_unique<GenerationJob>();
-                        job->kind = GenerationJob::Kind::TextPrompt;
-                        job->action = custom_prompt_dialog.action;
-                        job->source_text = source_text;
-                        job->state.start(job->action.id, source_text, request);
-                        job->restore_placeholders = protected_text;
-                        job->panel = {.open = true, .running = true, .request_id = request.request_id,
-                                      .editable_text = {}, .error = {}};
-                        job->pending.emplace(std::async(std::launch::async, [&llm_client, request] {
-                            return llm_client.generate(request);
-                        }));
-                        generation_jobs.push_back(std::move(job));
-                        custom_prompt_dialog.open = false;
-                        execution_status = "Custom prompt is running…";
+                        PromptVariables variables;
+                        if (const auto remembered = prompt_parameter_memory.find(selected->id); remembered != prompt_parameter_memory.end()) {
+                            variables.values = remembered->second;
+                        }
+                        const auto expanded = expand_prompt(*selected, llm_text, variables);
+                        start_text_job(custom_prompt_dialog.action, expanded.system_message, expanded.user_message,
+                                       selected->temperature, protected_text);
                     }
+                    custom_prompt_dialog.open = false;
                 }
             }
             ImGui::End();

@@ -42,6 +42,10 @@ struct PipelineResult {
 };
 
 PipelineParse parse_pipeline(std::string_view command);
+// Raw text of each stage (quotes kept) split at unquoted, unescaped '|', and
+// the inverse; used by the stage editor so edits never change quoting.
+std::vector<std::string> split_pipeline_text(std::string_view command);
+std::string join_pipeline_stages(const std::vector<std::string>& stages);
 PipelineResult run_pipeline(std::string_view input, std::string_view command, const PipelineOptions& options);
 
 // Names of the stages implemented in PasteIt itself (portable, no process).

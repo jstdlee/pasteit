@@ -447,17 +447,7 @@ void draw_table_view(TableViewState& state, ChartViewState& chart, const DataVie
         // Toolbar: filter, columns, stats, chart, export.
         const float toolbar_right = 330.0F * ImGui::GetStyle().FontScaleDpi;
         ImGui::SetNextItemWidth(std::max(160.0F, ImGui::GetContentRegionAvail().x - toolbar_right));
-        ImGui::InputTextWithHint("##table-filter", (std::string{ui_fonts().icons ? icon::kSearch : ""} + " " + tr(language, UiTextKey::Filter)).c_str(),
-                                 state.filter.data(), state.filter.capacity() + 1, ImGuiInputTextFlags_CallbackResize,
-                                 [](ImGuiInputTextCallbackData* data) {
-                                     if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
-                                         auto* text = static_cast<std::string*>(data->UserData);
-                                         text->resize(static_cast<std::size_t>(data->BufTextLen));
-                                         data->Buf = text->data();
-                                     }
-                                     return 0;
-                                 },
-                                 &state.filter);
+        input_text_hint("##table-filter", (std::string{ui_fonts().icons ? icon::kSearch : ""} + " " + tr(language, UiTextKey::Filter)).c_str(), state.filter);
         ImGui::SameLine();
         if (ImGui::Button(with_icon(icon::kLayers, tr(language, UiTextKey::Columns)).c_str())) ImGui::OpenPopup("table-columns");
         if (ImGui::BeginPopup("table-columns")) {
