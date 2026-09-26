@@ -35,7 +35,8 @@
 #include "ui/desktop_flow.hpp"
 #include "ui/decision_future_slot.hpp"
 #include "ui/ai_result_panel.hpp"
-#include "ui/font_loader.hpp"
+#include "transform/text_transforms.hpp"
+#include "ui/theme.hpp"
 #include "ui/image_preview_panel.hpp"
 #include "ui/clipboard_history_model.hpp"
 #include "ui/clipboard_history_panel.hpp"
@@ -60,6 +61,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <iomanip>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -437,13 +439,57 @@ void glfw_error_callback(int error, const char* description) {
     std::cerr << "GLFW error " << error << ": " << (description == nullptr ? "unknown" : description) << '\n';
 }
 
-std::string action_row_text(const PopupRow& row) {
-    std::ostringstream label;
-    label << static_cast<int>(std::lround(row.probability * 100.0)) << "%  " << row.label;
-    if (!row.target_path.empty()) {
-        label << "\n      " << row.target_path;
+enum class DecisionState { Idle, Pending, Ranked, Fallback };
+
+std::string content_kind_label(ContentKind kind) {
+    switch (kind) {
+        case ContentKind::Text: return "TEXT";
+        case ContentKind::Url: return "URL";
+        case ContentKind::Email: return "EMAIL";
+        case ContentKind::Image: return "IMAGE";
+        case ContentKind::Path: return "PATH";
+        case ContentKind::Json: return "JSON";
+        case ContentKind::DateTime: return "DATE";
+        case ContentKind::Unknown: break;
     }
-    return label.str();
+    return "DATA";
+}
+
+std::string human_size(std::uint64_t bytes) {
+    std::ostringstream out;
+    if (bytes < 1024) out << bytes << " B";
+    else if (bytes < 1024 * 1024) out << std::fixed << std::setprecision(1) << static_cast<double>(bytes) / 1024.0 << " KB";
+    else out << std::fixed << std::setprecision(1) << static_cast<double>(bytes) / (1024.0 * 1024.0) << " MB";
+    return out.str();
+}
+
+// First non-empty lines of the clipboard text with runs of spaces collapsed.
+std::string preview_excerpt(std::string_view text, std::size_t max_lines) {
+    std::string out;
+    std::size_t lines = 0;
+    std::size_t start = 0;
+    while (start < text.size() && lines < max_lines) {
+        auto end = text.find('\n', start);
+        if (end == std::string_view::npos) end = text.size();
+        std::string line;
+        bool space = false;
+        for (const char ch : text.substr(start, end - start)) {
+            if (ch == ' ' || ch == '\t' || ch == '\r') {
+                space = !line.empty();
+                continue;
+            }
+            if (space) line += ' ';
+            space = false;
+            line += ch;
+        }
+        if (!line.empty()) {
+            if (!out.empty()) out += '\n';
+            out += line.substr(0, 400);
+            ++lines;
+        }
+        start = end + 1;
+    }
+    return out;
 }
 
 #endif
@@ -492,7 +538,7 @@ int run_desktop_runtime() {
     glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    GLFWwindow* window = glfwCreateWindow(720, 420, "PasteIt", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(660, 520, "PasteIt", nullptr, nullptr);
     if (window == nullptr) {
         glfwTerminate();
         std::cerr << "Failed to create PasteIt popup window\n";
@@ -516,24 +562,23 @@ int run_desktop_runtime() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    const auto font_path = first_existing_font(platform->preferred_ui_fonts());
-    if (!font_path.empty()) {
-        const auto font_filename =
-#if defined(_WIN32)
-            path_to_utf8(font_path);
-#else
-            font_path.string();
-#endif
-        ImGui::GetIO().Fonts->AddFontFromFileTTF(font_filename.c_str(), 17.0F, nullptr,
-                                                 ImGui::GetIO().Fonts->GetGlyphRangesChineseFull());
+    // Dear ImGui 1.92 rasterizes glyphs on demand, so CJK text needs no
+    // pre-baked glyph ranges and any font size can be pushed per widget.
+    load_ui_fonts(platform->preferred_ui_fonts());
+    float dpi_scale = 1.0F;
+    {
+        float scale_x = 1.0F;
+        float scale_y = 1.0F;
+        glfwGetWindowContentScale(window, &scale_x, &scale_y);
+        dpi_scale = std::clamp(scale_y, 1.0F, 3.0F);
     }
-    ImGui::StyleColorsDark();
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 12.0F;
-    style.FrameRounding = 7.0F;
-    style.WindowPadding = ImVec2(18.0F, 16.0F);
-    style.ItemSpacing = ImVec2(8.0F, 9.0F);
-    configure_independent_viewports(ImGui::GetIO(), style);
+    UiTheme applied_theme = settings.theme;
+    const auto apply_ui_theme = [&](UiTheme theme) {
+        apply_theme(theme, dpi_scale);
+        configure_independent_viewports(ImGui::GetIO(), ImGui::GetStyle());
+        applied_theme = theme;
+    };
+    apply_ui_theme(settings.theme);
     if (!ImGui_ImplGlfw_InitForOpenGL(window, true) || !ImGui_ImplOpenGL3_Init("#version 130")) {
         std::cerr << "Failed to initialize Dear ImGui backends\n";
         ImGui::DestroyContext();
@@ -614,7 +659,20 @@ int run_desktop_runtime() {
     std::optional<FileOperationConfirmationViewState> file_confirmation;
     std::optional<std::filesystem::path> manual_destination;
     PromptTemplatesPanelModel prompt_panel_model = build_prompt_templates_panel_model(settings.prompt_templates);
-    std::string decision_status = "Press Ctrl+Alt+F";
+    std::string decision_status;
+    DecisionState decision_state = DecisionState::Idle;
+    bool fit_popup_pending = false;
+    const auto fit_popup_to = [&](int desired_height) {
+        fit_popup_pending = false;
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = monitor == nullptr ? nullptr : glfwGetVideoMode(monitor);
+        const int maximum = mode == nullptr ? 900 : static_cast<int>(mode->height * 0.85);
+        const int height = std::clamp(desired_height, 240, std::max(240, maximum));
+        int width = 0;
+        int current = 0;
+        glfwGetWindowSize(window, &width, &current);
+        if (std::abs(current - height) > 2) glfwSetWindowSize(window, width, height);
+    };
     std::string execution_status;
     std::optional<ExecutionResult> last_execution;
     int selected_row = 0;
@@ -794,15 +852,18 @@ int run_desktop_runtime() {
             }
         }
         if (active_batch.catalog.actions.empty()) {
-            decision_status = "Clipboard is empty or unsupported";
+            decision_status.clear();
+            decision_state = DecisionState::Idle;
             pending_decision.clear();
         } else {
-            decision_status = "Djev is ranking actions…";
+            decision_status.clear();
+            decision_state = DecisionState::Pending;
             const auto request = active_batch.request;
             pending_decision.replace(std::async(std::launch::async, [client = djev_client, request] {
                 return client.decide(request);
             }));
         }
+        fit_popup_pending = true;
         glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
         glfwRestoreWindow(window);
         glfwShowWindow(window);
@@ -1164,15 +1225,12 @@ int run_desktop_runtime() {
                                                          active_batch.ranking_context);
             if (prepared.status == DecisionSessionStatus::Ready) {
                 popup_model = build_popup_model(active_batch.request.snapshot, prepared.ranked);
-                if (popup_visible) {
-                    const int rows_height = static_cast<int>(popup_model.rows.size()) * 34;
-                    const bool image_source = !active_batch.request.snapshot.clipboard_items.empty() &&
-                        active_batch.request.snapshot.clipboard_items.front().kind == ContentKind::Image;
-                    glfwSetWindowSize(window, 720, std::clamp(190 + rows_height + (image_source ? 105 : 35), 340, 575));
-                    position_popup(window);
-                }
-                decision_status = prepared.message == "ranked" ? "Ranked by local Djev" : prepared.message;
+                fit_popup_pending = popup_visible;
+                const bool ranked = prepared.message == "ranked";
+                decision_state = ranked ? DecisionState::Ranked : DecisionState::Fallback;
+                decision_status = ranked ? std::string{} : prepared.message;
             } else {
+                decision_state = DecisionState::Idle;
                 decision_status = prepared.message.empty() ? "Djev did not return executable actions" : prepared.message;
             }
         }
@@ -1243,11 +1301,13 @@ int run_desktop_runtime() {
             continue;
         }
 
+        if (settings_draft.theme != applied_theme) apply_ui_theme(settings_draft.theme);
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         const char* locale_value=std::getenv("LANG");
         const auto ui_language=resolve_language(settings.language,locale_value==nullptr?std::string_view{}:std::string_view{locale_value});
+        set_active_language(ui_language);
         std::optional<std::string> activated_action;
         std::optional<PromptVariables> activated_prompt_variables;
         const auto auxiliary_window_class = independent_window_class();
@@ -1260,81 +1320,173 @@ int run_desktop_runtime() {
         const auto flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                            ImGuiWindowFlags_NoSavedSettings;
         ImGui::Begin("PasteItPopup", nullptr, flags);
-            copyable_text("PasteIt");
-        ImGui::SameLine(0.0F, 10.0F);
-            copyable_text(decision_status, true);
+        const auto& theme_palette = palette();
+        const auto& theme_fonts = ui_fonts();
         if (ImGui::BeginTabBar("main-tabs")) {
         if (ImGui::BeginTabItem(tr(ui_language,UiTextKey::SmartActions).c_str())) {
-        const auto smart_body_height = std::max(0.0F, ImGui::GetContentRegionAvail().y - ImGui::GetTextLineHeightWithSpacing());
-        ImGui::BeginChild("smart-actions-body", ImVec2(0.0F, smart_body_height), false);
+        ImGui::BeginChild("smart-actions-body", ImVec2(0.0F, 0.0F), false);
+        const float body_top = ImGui::GetCursorScreenPos().y;
+        const ClipboardItem* current_item = active_batch.request.snapshot.clipboard_items.empty()
+            ? nullptr : &active_batch.request.snapshot.clipboard_items.front();
+
+        // Header: content kind + detected signals on the left, ranking state on the right.
+        if (current_item != nullptr) {
+            pill(content_kind_label(current_item->kind), theme_palette.accent);
+            for (const auto& signal : active_batch.usage_context.signals) {
+                ImGui::SameLine(0.0F, 6.0F);
+                pill(signal, theme_palette.text_muted);
+            }
+            ImGui::SameLine();
+        }
+        {
+            const bool pending = pending_decision.pending();
+            const ImVec4 dot = pending ? theme_palette.warning
+                             : decision_state == DecisionState::Ranked ? theme_palette.success
+                             : decision_state == DecisionState::Fallback ? theme_palette.warning
+                             : theme_palette.text_muted;
+            auto state_text = tr(ui_language, pending ? UiTextKey::StatusRanking
+                                              : decision_state == DecisionState::Ranked ? UiTextKey::StatusRanked
+                                              : decision_state == DecisionState::Fallback ? UiTextKey::StatusFallback
+                                              : UiTextKey::StatusIdle);
+            if (current_item != nullptr) state_text = human_size(current_item->size_bytes) + "  \xC2\xB7  " + state_text;
+            ImGui::PushFont(nullptr, theme_fonts.small);
+            const float state_width = ImGui::CalcTextSize(state_text.c_str()).x + 14.0F;
+            const float right_x = ImGui::GetWindowContentRegionMax().x - state_width;
+            if (current_item == nullptr) ImGui::NewLine();
+            ImGui::SameLine(std::max(ImGui::GetCursorPosX(), right_x));
+            const ImVec2 at = ImGui::GetCursorScreenPos();
+            ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(at.x + 4.0F, at.y + ImGui::GetFontSize() * 0.55F), 3.5F,
+                                                        ImGui::GetColorU32(dot));
+            ImGui::SetCursorScreenPos(ImVec2(at.x + 12.0F, at.y));
+            ImGui::TextColored(theme_palette.text_muted, "%s", state_text.c_str());
+            if (ImGui::IsItemHovered() && !decision_status.empty()) ImGui::SetTooltip("%s", decision_status.c_str());
+            ImGui::PopFont();
+        }
+
+        // Preview card.
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, theme_palette.surface);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0F);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0F, 10.0F));
+        const auto preview = current_item == nullptr ? std::string{} : preview_excerpt(current_item->preview, 3);
+        const float line_height = ImGui::GetTextLineHeight();
+        const float preview_lines_height = std::min(line_height * 3.0F + ImGui::GetStyle().ItemSpacing.y,
+            std::max(line_height, ImGui::CalcTextSize(preview.c_str(), nullptr, false,
+                                                      ImGui::GetContentRegionAvail().x - 24.0F).y));
+        const float preview_height = preview_texture.id != 0
+            ? std::min(120.0F, static_cast<float>(preview_texture.height)) + 20.0F
+            : preview_lines_height + 20.0F;
+        ImGui::BeginChild("clipboard-preview", ImVec2(0.0F, preview_height), ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoScrollbar);
         if (preview_texture.id != 0) {
-            constexpr float max_width = 190.0F;
-            constexpr float max_height = 120.0F;
-            const float scale = std::min(max_width / static_cast<float>(preview_texture.width),
-                                         max_height / static_cast<float>(preview_texture.height));
+            const float scale = std::min(260.0F / static_cast<float>(preview_texture.width),
+                                         std::min(120.0F, static_cast<float>(preview_texture.height)) /
+                                             static_cast<float>(preview_texture.height));
             if (ImGui::ImageButton("clipboard-thumbnail", (ImTextureID)(intptr_t)preview_texture.id,
                                    ImVec2(preview_texture.width * scale, preview_texture.height * scale))) {
                 image_preview.open = true;
                 image_preview.focus_pending = true;
             }
-        } else if (!active_batch.request.snapshot.clipboard_items.empty()) {
-                copyable_text(active_batch.request.snapshot.clipboard_items.front().preview, true);
-        } else {
-                copyable_text(tr(ui_language,UiTextKey::NoClipboard));
-        }
-        ImGui::Separator();
-
-        const auto graph_choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
-            [](const ActionInstance& action) { return action.kind == ActionKind::Graph && action.enabled; });
-        if (graph_choice != active_batch.catalog.actions.end()) {
-            if (ImGui::SmallButton(tr(ui_language, UiTextKey::GraphData).c_str())) activated_action = graph_choice->id;
             ImGui::SameLine();
-        }
-        const auto annotation_choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
-            [](const ActionInstance& action) { return action.kind == ActionKind::AnnotateImage && action.enabled; });
-        if (annotation_choice != active_batch.catalog.actions.end()) {
-            if (ImGui::SmallButton(tr(ui_language, UiTextKey::AnnotateImage).c_str())) {
-                activated_action = annotation_choice->id;
+            ImGui::TextColored(theme_palette.text_muted, "%d \xC3\x97 %d", preview_texture.width, preview_texture.height);
+        } else if (current_item != nullptr) {
+            float text_x = 0.0F;
+            if (const auto swatch = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+                    [](const ActionInstance& action) { return action.kind == ActionKind::CopyColorRgb; });
+                swatch != active_batch.catalog.actions.end()) {
+                if (const auto color = parse_color(swatch->parameters.at("color"))) {
+                    const ImVec2 at = ImGui::GetCursorScreenPos();
+                    const float side = preview_lines_height;
+                    ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + side, at.y + side),
+                        IM_COL32(color->r, color->g, color->b, static_cast<int>(color->a * 255)), 6.0F);
+                    ImGui::GetWindowDrawList()->AddRect(at, ImVec2(at.x + side, at.y + side),
+                        ImGui::GetColorU32(theme_palette.border), 6.0F);
+                    text_x = side + 12.0F;
+                }
             }
-            ImGui::SameLine();
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + text_x);
+            ImGui::PushTextWrapPos(0.0F);
+            ImGui::BeginGroup();
+            const ImVec2 clip_min = ImGui::GetCursorScreenPos();
+            ImGui::PushClipRect(clip_min, ImVec2(clip_min.x + ImGui::GetContentRegionAvail().x, clip_min.y + preview_lines_height), true);
+            ImGui::TextUnformatted(preview.c_str());
+            ImGui::PopClipRect();
+            ImGui::EndGroup();
+            ImGui::PopTextWrapPos();
+            if (ImGui::IsItemClicked()) platform->copy_text(current_item->preview);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::ClickToCopy).c_str());
+        } else {
+            ImGui::TextColored(theme_palette.text_muted, "%s", tr(ui_language,UiTextKey::NoClipboard).c_str());
         }
-        const auto custom_choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
-            [](const ActionInstance& action) { return action.kind == ActionKind::CustomPrompt && action.enabled; });
-        if (custom_choice != active_batch.catalog.actions.end() &&
-            ImGui::SmallButton(tr(ui_language, UiTextKey::CustomPrompt).c_str())) {
-            activated_action = custom_choice->id;
-        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor();
+
+        // Quick tools that open a dialog rather than run immediately.
+        bool any_tool = false;
+        const auto tool_button = [&](ActionKind kind, UiTextKey key) {
+            const auto choice = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+                [kind](const ActionInstance& action) { return action.kind == kind && action.enabled; });
+            if (choice == active_batch.catalog.actions.end()) return;
+            const bool listed = std::any_of(popup_model.rows.begin(), popup_model.rows.end(),
+                                            [&](const PopupRow& row) { return row.action_id == choice->id; });
+            if (listed) return;
+            if (any_tool) ImGui::SameLine(0.0F, 6.0F);
+            any_tool = true;
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 999.0F);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.0F, 4.0F));
+            if (ImGui::Button(tr(ui_language, key).c_str())) activated_action = choice->id;
+            ImGui::PopStyleVar(2);
+        };
+        tool_button(ActionKind::Graph, UiTextKey::GraphData);
+        tool_button(ActionKind::AnnotateImage, UiTextKey::AnnotateImage);
+        tool_button(ActionKind::CustomPrompt, UiTextKey::CustomPrompt);
 
         if (popup_model.rows.empty()) {
-            copyable_text(pending_decision.pending() ? tr(ui_language,UiTextKey::WaitingDjev) : tr(ui_language,UiTextKey::NoRankedActions));
+            ImGui::Spacing();
+            ImGui::TextColored(theme_palette.text_muted, "%s",
+                               (pending_decision.pending() ? tr(ui_language,UiTextKey::WaitingDjev)
+                                                           : tr(ui_language,UiTextKey::NoRankedActions)).c_str());
         } else {
+            const bool typing = ImGui::GetIO().WantTextInput;
             if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
                 selected_row = std::max(0, selected_row - 1);
             }
             if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
                 selected_row = std::min(static_cast<int>(popup_model.rows.size()) - 1, selected_row + 1);
             }
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0F, 4.0F));
             for (std::size_t index = 0; index < popup_model.rows.size(); ++index) {
                 const auto& row = popup_model.rows[index];
-                ImGui::PushID(row.action_id.c_str());
-                const auto selectable_flags = row.enabled ? ImGuiSelectableFlags_AllowDoubleClick : ImGuiSelectableFlags_Disabled;
-                if (ImGui::Selectable(action_row_text(row).c_str(), static_cast<int>(index) == selected_row,
-                                      selectable_flags, ImVec2(0.0F, row.target_path.empty() ? 30.0F : 48.0F))) {
+                const int shortcut = index < 9 ? static_cast<int>(index) + 1 : 0;
+                const ActionCardModel card{
+                    .label = row.label,
+                    .detail = row.detail,
+                    .category = row.category,
+                    // Fallback scores are only an ordering, not a confidence.
+                    .probability = decision_state == DecisionState::Ranked ? row.probability : 0.0,
+                    .shortcut = shortcut,
+                    .selected = static_cast<int>(index) == selected_row,
+                    .enabled = row.enabled,
+                };
+                const bool shortcut_pressed = shortcut > 0 && !typing &&
+                    ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_1 + shortcut - 1), false);
+                if ((action_card(row.action_id.c_str(), card) || shortcut_pressed) && row.enabled) {
                     selected_row = static_cast<int>(index);
-                    if (row.enabled) {
-                        activated_action = row.action_id;
-                    }
+                    activated_action = row.action_id;
                 }
-                ImGui::PopID();
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_Enter) && selected_row >= 0 &&
+            ImGui::PopStyleVar();
+            if (!typing && ImGui::IsKeyPressed(ImGuiKey_Enter) && selected_row >= 0 &&
                 selected_row < static_cast<int>(popup_model.rows.size()) && popup_model.rows[selected_row].enabled) {
                 activated_action = popup_model.rows[selected_row].action_id;
             }
         }
         if (!execution_status.empty()) {
-            ImGui::Separator();
-                copyable_text(execution_status, true);
+            ImGui::Spacing();
+            ImGui::PushTextWrapPos(0.0F);
+            ImGui::TextColored(last_execution.has_value() && last_execution->status == ExecutionStatus::Failed
+                                   ? theme_palette.danger : theme_palette.success, "%s", execution_status.c_str());
+            ImGui::PopTextWrapPos();
             if (last_execution.has_value() && !last_execution->output_paths.empty()) {
                 const auto& output = last_execution->output_paths.front();
                 if (ImGui::SmallButton(tr(ui_language,UiTextKey::CopyPath).c_str())) platform->copy_text(path_to_utf8_string(output));
@@ -1343,6 +1495,17 @@ int run_desktop_runtime() {
                 ImGui::SameLine();
                 if (ImGui::SmallButton(tr(ui_language,UiTextKey::OpenFolder).c_str())) platform->open_path(output.parent_path());
             }
+        }
+        // Fit the window to its content once per ranking instead of guessing
+        // row heights; the user can still resize, and long lists scroll.
+        if (fit_popup_pending) {
+            const float content_height = ImGui::GetCursorScreenPos().y - body_top;
+            const float chrome = body_top - main_viewport->Pos.y + ImGui::GetStyle().WindowPadding.y * 2.0F;
+            if (diagnostics) {
+                std::cerr << "PasteIt fit content=" << content_height << " chrome=" << chrome
+                          << " rows=" << popup_model.rows.size() << '\n';
+            }
+            fit_popup_to(static_cast<int>(std::ceil(content_height + chrome)));
         }
         ImGui::EndChild();
         ImGui::EndTabItem();
@@ -1428,6 +1591,13 @@ int run_desktop_runtime() {
                 const char* languages[] = {"System", "English", "简体中文"};
                 if (ImGui::Combo(tr(ui_language,UiTextKey::Language).c_str(), &language, languages, 3)) {
                     settings_draft.language = static_cast<UiLanguage>(language);
+                }
+                int theme = static_cast<int>(settings_draft.theme);
+                const auto dark_label = tr(ui_language, UiTextKey::ThemeDark);
+                const auto light_label = tr(ui_language, UiTextKey::ThemeLight);
+                const char* themes[] = {dark_label.c_str(), light_label.c_str()};
+                if (ImGui::Combo(tr(ui_language,UiTextKey::Theme).c_str(), &theme, themes, 2)) {
+                    settings_draft.theme = static_cast<UiTheme>(theme);
                 }
                 if (ImGui::SliderFloat(tr(ui_language,UiTextKey::Opacity).c_str(), &settings_draft.window_opacity, 0.55F, 1.0F) &&
                     !platform->set_popup_opacity(settings_draft.window_opacity)) glfwSetWindowOpacity(window, settings_draft.window_opacity);
@@ -1528,10 +1698,10 @@ int run_desktop_runtime() {
                 }
             }
             if (ImGui::CollapsingHeader(tr(ui_language,UiTextKey::FastActions).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::TextUnformatted("Mermaid uses mmdc for an in-window image when available; offline HTML is the fallback.");
-                if (ImGui::SmallButton("Mermaid homepage")) platform->open_uri("https://mermaid.js.org/");
+                ImGui::TextUnformatted(tr(UiTextKey::MermaidRendererHelp).c_str());
+                if (ImGui::SmallButton(tr(UiTextKey::MermaidHomepage).c_str())) platform->open_uri("https://mermaid.js.org/");
                 auto mermaid_cli = path_to_utf8_string(settings_draft.renderers.mermaid_cli_path);
-                if (input_text_string("Mermaid CLI path (optional)", mermaid_cli)) {
+                if (input_text_string(tr(UiTextKey::MermaidCliPath).c_str(), mermaid_cli)) {
                     settings_draft.renderers.mermaid_cli_path = path_from_utf8_string(mermaid_cli);
                 }
                 std::string mermaid_args;
@@ -1539,28 +1709,28 @@ int run_desktop_runtime() {
                     if (!mermaid_args.empty()) mermaid_args += ' ';
                     mermaid_args += arg;
                 }
-                if (input_text_string("Mermaid CLI arguments", mermaid_args)) {
+                if (input_text_string(tr(UiTextKey::MermaidCliArguments).c_str(), mermaid_args)) {
                     std::istringstream args(mermaid_args);
                     settings_draft.renderers.mermaid_arguments.assign(
                         std::istream_iterator<std::string>{args}, std::istream_iterator<std::string>{});
                 }
-                ImGui::TextUnformatted("QR codes use the native Project Nayuki library.");
-                if (ImGui::SmallButton("QR library homepage")) platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
-                input_text_string("QR error correction (L/M/Q/H)", settings_draft.renderers.qr_error_correction);
-                ImGui::SliderInt("QR margin", &settings_draft.renderers.qr_margin, 0, 10);
-                ImGui::SliderInt("QR scale", &settings_draft.renderers.qr_scale, 1, 64);
+                ImGui::TextUnformatted(tr(UiTextKey::QrHelp).c_str());
+                if (ImGui::SmallButton(tr(UiTextKey::QrHomepage).c_str())) platform->open_uri("https://www.nayuki.io/page/qr-code-generator-library");
+                input_text_string(tr(UiTextKey::QrErrorCorrection).c_str(), settings_draft.renderers.qr_error_correction);
+                ImGui::SliderInt(tr(UiTextKey::QrMargin).c_str(), &settings_draft.renderers.qr_margin, 0, 10);
+                ImGui::SliderInt(tr(UiTextKey::QrScale).c_str(), &settings_draft.renderers.qr_scale, 1, 64);
 
                 auto download_dir = path_to_utf8_string(settings_draft.downloads.resume_directory);
-                if (input_text_string("Download resume directory", download_dir)) {
+                if (input_text_string(tr(UiTextKey::DownloadResumeDirectory).c_str(), download_dir)) {
                     settings_draft.downloads.resume_directory = path_from_utf8_string(download_dir);
                 }
-                ImGui::Checkbox("Keep .part files after cancel", &settings_draft.downloads.keep_part_files);
+                ImGui::Checkbox(tr(UiTextKey::KeepPartFiles).c_str(), &settings_draft.downloads.keep_part_files);
 
                 auto terminal_command = join_argv(settings_draft.terminal.command);
-                if (input_text_string("Terminal command", terminal_command)) {
+                if (input_text_string(tr(UiTextKey::TerminalCommand).c_str(), terminal_command)) {
                     settings_draft.terminal.command = split_argv_field(terminal_command);
                 }
-                input_text_string("Terminal profile (stored; launcher support pending)", settings_draft.terminal.profile);
+                input_text_string(tr(UiTextKey::TerminalProfile).c_str(), settings_draft.terminal.profile);
 
                 bool sha256 = std::find(settings_draft.hash.default_algorithms.begin(),
                                          settings_draft.hash.default_algorithms.end(), "sha256") !=
@@ -1568,8 +1738,8 @@ int run_desktop_runtime() {
                 bool sha512 = std::find(settings_draft.hash.default_algorithms.begin(),
                                          settings_draft.hash.default_algorithms.end(), "sha512") !=
                               settings_draft.hash.default_algorithms.end();
-                const bool hash_changed_256 = ImGui::Checkbox("Show SHA-256 hash action", &sha256);
-                const bool hash_changed_512 = ImGui::Checkbox("Show SHA-512 hash action", &sha512);
+                const bool hash_changed_256 = ImGui::Checkbox(tr(UiTextKey::ShowSha256).c_str(), &sha256);
+                const bool hash_changed_512 = ImGui::Checkbox(tr(UiTextKey::ShowSha512).c_str(), &sha512);
                 if (hash_changed_256 || hash_changed_512) {
                     settings_draft.hash.default_algorithms.clear();
                     if (sha256) settings_draft.hash.default_algorithms.push_back("sha256");
@@ -1851,8 +2021,8 @@ int run_desktop_runtime() {
                                  ImVec2(graph_dialog.texture.width * scale, graph_dialog.texture.height * scale));
                 }
                 if (graph_dialog.data) {
-                    ImGui::Text("%zu points", graph_dialog.data->points.size());
-                    if (graph_dialog.data->has_dates) ImGui::SameLine(), ImGui::TextUnformatted("Date spacing enabled");
+                    ImGui::Text("%zu %s", graph_dialog.data->points.size(), tr(UiTextKey::Points).c_str());
+                    if (graph_dialog.data->has_dates) ImGui::SameLine(), ImGui::TextUnformatted(tr(UiTextKey::DateSpacingEnabled).c_str());
                 }
                 input_text_string(tr(ui_language, UiTextKey::SavePngAs).c_str(), graph_dialog.save_path);
                 const bool has_image = !graph_dialog.png.empty();

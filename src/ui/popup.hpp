@@ -2,6 +2,7 @@
 
 #include "core/protocol.hpp"
 #include "djev/decision_session.hpp"
+#include "decision/action_category.hpp"
 #include "djev/decision_ranker.hpp"
 
 #include <string>
@@ -13,6 +14,9 @@ struct PopupRow {
     std::string action_id;
     std::string label;
     std::string target_path;
+    // Secondary line: shortened destination path, or the action description.
+    std::string detail;
+    ActionCategory category = ActionCategory::Convert;
     double probability = 0.0;
     bool selected = false;
     bool enabled = true;

@@ -72,6 +72,9 @@ struct ClipboardHistoryModel {
     std::optional<ClipboardHistoryDetail> detail;
 };
 
+// Local "YYYY-MM-DD HH:MM:SS", or "unknown" for 0.
+std::string timestamp_label(std::int64_t epoch_ms);
+
 ClipboardHistoryModel build_clipboard_history_model(const std::vector<ClipboardItem>& items,
                                                     ClipboardHistoryState& state,
                                                     std::size_t limit = 50);

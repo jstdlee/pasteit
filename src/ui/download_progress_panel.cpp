@@ -1,4 +1,5 @@
 #include "ui/download_progress_panel.hpp"
+#include "ui/localization.hpp"
 
 #include "ui/imgui_widgets.hpp"
 #include "util/path_utf8.hpp"
@@ -85,13 +86,13 @@ void draw_download_progress_panel(DownloadManager& manager,
             ImGui::SetWindowFocus();
             focus_pending = false;
         }
-        if (ImGui::Button("Pause")) manager.pause(job_id);
+        if (ImGui::Button(tr(UiTextKey::Pause).c_str())) manager.pause(job_id);
         ImGui::SameLine();
-        if (ImGui::Button("Resume")) manager.resume(job_id);
+        if (ImGui::Button(tr(UiTextKey::Resume).c_str())) manager.resume(job_id);
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) manager.cancel(job_id);
+        if (ImGui::Button(tr(UiTextKey::Cancel).c_str())) manager.cancel(job_id);
         ImGui::SameLine();
-        if (const auto job = manager.get(job_id); job.has_value() && ImGui::Button("Copy path")) {
+        if (const auto job = manager.get(job_id); job.has_value() && ImGui::Button(tr(UiTextKey::CopyPath).c_str())) {
             ImGui::SetClipboardText(path_to_utf8_string(job->final_path).c_str());
         }
         ImGui::BeginChild("download-progress-body", ImVec2(0.0F, 0.0F), true,

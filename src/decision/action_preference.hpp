@@ -15,6 +15,8 @@ struct ActionRankingContext {
     std::map<ActionKind, double> local_action_bonus;
     std::map<std::string, double> local_action_bonus_by_id;
     std::map<std::string, double> usage_bonus_by_id;
+    // Affects only which actions reach Djev, never the displayed ranking.
+    std::map<std::string, double> candidate_priority_by_id;
 };
 
 double action_ranking_bonus(const ActionInstance& action, const ActionRankingContext& context);

@@ -693,8 +693,13 @@ void add_text_utility_actions(ActionCatalog& catalog, const ClipboardItem& item,
     const auto lines = line_count(text);
 
     if (const auto color = parse_color(text)) {
-        add(catalog, item, ActionKind::CopyColorHex, "", "Copy as HEX  " + color_hex(*color),
-            "Convert this color to hexadecimal notation", "color", {{"color", color_hex(*color)}});
+        std::string lowered = text;
+        std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        if (lowered != color_hex(*color)) {
+            add(catalog, item, ActionKind::CopyColorHex, "", "Copy as HEX  " + color_hex(*color),
+                "Convert this color to hexadecimal notation", "color", {{"color", color_hex(*color)}});
+        }
         add(catalog, item, ActionKind::CopyColorRgb, "", "Copy as RGB  " + color_rgb(*color),
             "Convert this color to CSS rgb() notation", "color", {{"color", color_hex(*color)}});
         add(catalog, item, ActionKind::CopyColorHsl, "", "Copy as HSL  " + color_hsl(*color),

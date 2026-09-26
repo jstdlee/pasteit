@@ -1,4 +1,5 @@
 #include "ui/image_annotation_panel.hpp"
+#include "ui/localization.hpp"
 
 #include "ui/imgui_widgets.hpp"
 #include "util/path_utf8.hpp"
@@ -208,7 +209,7 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
         }
         ImGui::EndChild();
 
-        if (ImGui::CollapsingHeader("Fast annotation", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader(tr(UiTextKey::FastAnnotation).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
             for (const auto tool : {AnnotationTool::Pen, AnnotationTool::Line, AnnotationTool::Rectangle, AnnotationTool::Arrow}) {
                 if (tool != AnnotationTool::Pen) ImGui::SameLine();
                 const bool selected = state.active_tool == tool;
@@ -216,19 +217,19 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                 if (ImGui::Button(tool_label(tool).c_str())) state.active_tool = tool;
                 if (selected) ImGui::PopStyleColor();
             }
-            input_text_string("Comment", state.comment_text);
+            input_text_string((tr(UiTextKey::Comment) + "##comment-input").c_str(), state.comment_text);
             ImGui::SameLine();
-            if (ImGui::Button("Comment")) state.document.add_comment(state.comment_text, {24.0F, 24.0F});
+            if (ImGui::Button(tr(UiTextKey::Comment).c_str())) state.document.add_comment(state.comment_text, {24.0F, 24.0F});
             ImGui::SameLine();
-            if (ImGui::Button("Undo")) (void)state.document.undo();
+            if (ImGui::Button(tr(UiTextKey::Undo).c_str())) (void)state.document.undo();
             ImGui::SameLine();
-            if (ImGui::Button("Clear")) state.document.clear();
-            if (ImGui::Button("Save annotated SVG")) {
+            if (ImGui::Button(tr(UiTextKey::Clear).c_str())) state.document.clear();
+            if (ImGui::Button(tr(UiTextKey::SaveAnnotatedSvg).c_str())) {
                 const auto output = default_export_path(state);
                 state.start_export(output);
             }
             ImGui::SameLine();
-            if (ImGui::Button("Copy temporary image path")) {
+            if (ImGui::Button(tr(UiTextKey::CopyTemporaryImagePath).c_str())) {
                 ImGui::SetClipboardText(path_to_utf8_string(state.document.original_image()).c_str());
             }
             if (!state.status_text.empty()) copyable_text(state.status_text, true);

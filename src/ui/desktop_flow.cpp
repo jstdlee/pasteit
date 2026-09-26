@@ -127,7 +127,8 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
     if (!snapshot.clipboard_items.empty()) {
         const auto& item = snapshot.clipboard_items.front();
         batch.ranking_context.input_kind = item.kind;
-        const auto local_text = ranking_text(item);
+        // Image blobs are binary; text detectors would find nonsense in them.
+        const auto local_text = item.kind == ContentKind::Image ? std::string{} : ranking_text(item);
         const auto signals = detect_fast_content(item.kind, local_text);
         batch.usage_context = UsageContext{
             .kind = item.kind,
@@ -138,7 +139,7 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
         // Content shapes recognised by the catalog also describe the usage
         // context, e.g. a user who always converts colors to RGB.
         for (const auto& [kind, tag] : std::initializer_list<std::pair<ActionKind, const char*>>{
-                 {ActionKind::Graph, "numbers"}, {ActionKind::CopyColorHex, "color"}, {ActionKind::DecodeJwt, "jwt"},
+                 {ActionKind::Graph, "numbers"}, {ActionKind::CopyColorRgb, "color"}, {ActionKind::DecodeJwt, "jwt"},
                  {ActionKind::GenerateUuid, "uuid"}, {ActionKind::Base64Decode, "base64"},
                  {ActionKind::ToMarkdownTable, "table"}, {ActionKind::CleanUrl, "tracking_url"}}) {
             if (std::any_of(batch.catalog.actions.begin(), batch.catalog.actions.end(),
@@ -193,7 +194,7 @@ DesktopDecisionBatch build_desktop_decision(const DesktopDecisionInput& input) {
                     template_id->second == newest_prompt->id) {
                     // Keep the latest enabled template represented even when
                     // many prompt actions compete for the fixed Djev payload cap.
-                    batch.ranking_context.local_action_bonus_by_id[action.id] = 0.05;
+                    batch.ranking_context.candidate_priority_by_id[action.id] = 0.05;
                     break;
                 }
             }

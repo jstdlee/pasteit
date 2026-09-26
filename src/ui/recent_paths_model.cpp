@@ -1,4 +1,5 @@
 #include "ui/recent_paths_model.hpp"
+#include "ui/clipboard_history_model.hpp"
 #include "util/path_utf8.hpp"
 #include "util/utf8.hpp"
 
@@ -54,7 +55,7 @@ RecentPathRow row_from_path(const PathLocation& value, const ActionCatalog& cata
         .display_path = abbreviate_middle_impl(path_to_utf8_string(value.path), 72),
         .parent_path = path_to_utf8_string(value.path.parent_path()),
         .source = value.source,
-        .last_seen_label = std::to_string(value.last_seen_ms),
+        .last_seen_label = timestamp_label(value.last_seen_ms),
         .copy_here_action_id = copy_here_id,
         .move_here_action_id = move_here_id,
         .last_seen_ms = value.last_seen_ms,

@@ -1,7 +1,9 @@
 #include "actions/action_catalog.hpp"
 #include "detect/fast_content_detector.hpp"
 #include "detect/resume_detector.hpp"
+#include "decision/fallback_ranker.hpp"
 #include "executor/action_executor.hpp"
+#include "ui/theme.hpp"
 #include "transform/text_transforms.hpp"
 #include "util/json.hpp"
 
@@ -126,6 +128,8 @@ void catalog() {
     const auto rgb_label = std::find_if(color.actions.begin(), color.actions.end(),
                                         [](const ActionInstance& a) { return a.kind == ActionKind::CopyColorRgb; });
     assert(rgb_label->label == "Copy as RGB  rgb(51, 102, 255)");
+    assert(!has_kind(color, ActionKind::CopyColorHex));  // Already hex.
+    assert(has_kind(catalog_for(ContentKind::Text, "rgb(51, 102, 255)"), ActionKind::CopyColorHex));
 
     const auto table = catalog_for(ContentKind::Text, "name,qty\napple,3\npear,4");
     assert(has_kind(table, ActionKind::ToMarkdownTable) && has_kind(table, ActionKind::SortLines));
@@ -158,6 +162,27 @@ void catalog() {
     const auto path = catalog_for(ContentKind::Path, std::filesystem::temp_directory_path().string());
     assert(has_kind(path, ActionKind::OpenPath) && has_kind(path, ActionKind::RevealPath) &&
            has_kind(path, ActionKind::CopyFileName) && has_kind(path, ActionKind::CopyParentPath));
+}
+
+void ranking_and_display() {
+    // Without Djev, the fallback leads with what the content is.
+    const auto first_kind = [](ContentKind kind, std::string text) {
+        const auto catalog = catalog_for(kind, std::move(text));
+        DecisionSnapshot snapshot;
+        snapshot.clipboard_items = {{.ref = "clip", .kind = kind}};
+        return rank_fallback(catalog, snapshot, 1).front().action.kind;
+    };
+    const auto color_first = first_kind(ContentKind::Text, "rgb(1, 2, 3)");
+    assert(color_first == ActionKind::CopyColorHex || color_first == ActionKind::CopyColorHsl ||
+           color_first == ActionKind::CopyColorRgb);
+    const auto contact_first = first_kind(ContentKind::Text, "Name: Jane Doe\nEmail: jane@example.com");
+    assert(contact_first == ActionKind::ExtractContactInfo || contact_first == ActionKind::CopyContactVCard);
+    assert(first_kind(ContentKind::Text, "just a sentence") == ActionKind::PasteText);
+
+    const auto home = std::string{std::getenv("HOME") == nullptr ? "/home/user" : std::getenv("HOME")};
+    if (std::getenv("HOME") != nullptr) assert(display_path(home + "/notes") == "~/notes");
+    const auto elided = display_path("/very/long/path/with/many/segments/and/a/final/file-name.txt", 24);
+    assert(elided.size() <= 26 && elided.ends_with("file-name.txt"));
 }
 
 void execution() {
@@ -231,5 +256,6 @@ int main() {
     transforms();
     detectors();
     catalog();
+    ranking_and_display();
     execution();
 }

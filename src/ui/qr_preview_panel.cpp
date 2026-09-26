@@ -1,4 +1,5 @@
 #include "ui/qr_preview_panel.hpp"
+#include "ui/localization.hpp"
 
 #include "ui/imgui_widgets.hpp"
 
@@ -75,7 +76,7 @@ void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPane
             if (!command.enabled) ImGui::EndDisabled();
         }
         input_text_string("Destination", panel.destination);
-        ImGui::Checkbox("Confirm overwrite", &panel.confirm_overwrite);
+        ImGui::Checkbox(tr(UiTextKey::ConfirmOverwrite).c_str(), &panel.confirm_overwrite);
         if (!panel.status_text.empty()) copyable_text(panel.status_text, true);
         if (!model.preview_available) {
             copyable_text(model.status_text.empty() ? "QR renderer unavailable; payload is shown below." : model.status_text,
@@ -92,7 +93,7 @@ void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPane
             } else {
                 copyable_text("QR image could not be displayed here.", true);
             }
-            if (ImGui::SmallButton("Open PNG externally")) {
+            if (ImGui::SmallButton(tr(UiTextKey::OpenPngExternally).c_str())) {
                 panel.open_preview(state.active().output_path->string(), open_path);
             }
         }

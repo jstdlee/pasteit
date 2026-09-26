@@ -112,7 +112,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
         const auto window_class = independent_window_class();
         ImGui::SetNextWindowClass(&window_class);
         ImGui::SetNextWindowSize(ImVec2(700.0F, 360.0F), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Recent Path Detail", &detail_open, ImGuiWindowFlags_NoSavedSettings)) {
+        if (ImGui::Begin((tr(UiTextKey::RecentPathDetail) + "##recent-path-detail").c_str(), &detail_open, ImGuiWindowFlags_NoSavedSettings)) {
             if (ImGui::SmallButton(tr(language, UiTextKey::CopyPath).c_str())) {
                 command = copy_recent_path(model, model.detail->ref);
             }

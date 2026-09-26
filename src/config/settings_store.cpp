@@ -80,6 +80,7 @@ SettingsLoadResult SettingsStore::load() const {
     s.schema_version = static_cast<int>(number_value(root->get("schema_version"), s.schema_version));
     s.language = static_cast<UiLanguage>(static_cast<int>(number_value(root->get("language"), 0)));
     s.window_opacity = static_cast<float>(number_value(root->get("window_opacity"), s.window_opacity));
+    s.theme = number_value(root->get("theme"), 0) == 1 ? UiTheme::Light : UiTheme::Dark;
     s.default_image_directory = path_from_utf8_string(string_value(
         root->get("default_image_directory"), path_to_utf8_string(s.default_image_directory)));
     s.default_text_directory = path_from_utf8_string(string_value(
@@ -157,6 +158,7 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
     out << "{\n\"schema_version\":" << settings.schema_version
         << ",\n\"language\":" << static_cast<int>(settings.language)
         << ",\n\"window_opacity\":" << settings.window_opacity
+        << ",\n\"theme\":" << static_cast<int>(settings.theme)
         << ",\n\"default_image_directory\":" << json_quote(path_to_utf8_string(settings.default_image_directory))
         << ",\n\"default_text_directory\":" << json_quote(path_to_utf8_string(settings.default_text_directory))
         << ",\n\"djev\":"; write_provider(out, settings.djev);

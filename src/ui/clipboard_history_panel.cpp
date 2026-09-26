@@ -178,7 +178,7 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
         const auto rows = static_cast<float>(multiline_editor_visible_rows(model.detail->preview));
         const auto detail_height = std::clamp(250.0F + rows * ImGui::GetTextLineHeightWithSpacing(), 360.0F, 760.0F);
         ImGui::SetNextWindowSize(ImVec2(720.0F, detail_height), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Clipboard History Detail", &detail_open, ImGuiWindowFlags_NoSavedSettings)) {
+        if (ImGui::Begin((tr(UiTextKey::ClipboardHistoryDetail) + "##clipboard-history-detail").c_str(), &detail_open, ImGuiWindowFlags_NoSavedSettings)) {
             if (!model.detail->is_image) {
                 if (ImGui::Button(tr(language, UiTextKey::Copy).c_str())) {
                     command = copy_clipboard_history_item(model.detail->ref);

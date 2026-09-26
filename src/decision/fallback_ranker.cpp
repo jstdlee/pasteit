@@ -4,7 +4,9 @@
 namespace pastit {
 std::vector<RankedAction> rank_fallback(const ActionCatalog& catalog,const DecisionSnapshot& snapshot,std::size_t limit,
                                         const ActionRankingContext& context){
-    const auto ordered=select_djev_candidates(catalog,snapshot,catalog.actions.size(),context);
+    auto display_context=context;
+    display_context.candidate_priority_by_id.clear();
+    const auto ordered=select_djev_candidates(catalog,snapshot,catalog.actions.size(),display_context);
     std::vector<RankedAction> result;
     const auto count=std::min(limit,ordered.actions.size());
     result.reserve(count);

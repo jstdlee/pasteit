@@ -58,10 +58,13 @@ struct AnnotationSettings {
     std::filesystem::path save_directory;
 };
 
+enum class UiTheme { Dark = 0, Light = 1 };
+
 struct AppSettings {
     int schema_version = 1;
     UiLanguage language = UiLanguage::System;
     float window_opacity = 0.94F;
+    UiTheme theme = UiTheme::Dark;
     std::filesystem::path default_image_directory;
     std::filesystem::path default_text_directory;
     ProviderSettings djev;

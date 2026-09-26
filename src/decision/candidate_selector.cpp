@@ -1,4 +1,5 @@
 #include "decision/candidate_selector.hpp"
+#include "decision/action_category.hpp"
 
 #include <algorithm>
 #include <set>
@@ -34,7 +35,10 @@ ActionCatalog select_djev_candidates(const ActionCatalog& full,const DecisionSna
         const double source_prior = action.source_ref == current ? 0.01 : 0.0;
         const double target_prior = default_target(action, snapshot) ? 0.02 : 0.0;
         const double recency_prior = target_time(action, snapshot) > 0 ? 0.002 : 0.0;
-        return action_ranking_bonus(action, context) + source_prior + target_prior + recency_prior;
+        const auto candidate = context.candidate_priority_by_id.find(action.id);
+        return action_ranking_bonus(action, context) + action_specificity_prior(action.kind) + source_prior +
+               target_prior + recency_prior +
+               (candidate == context.candidate_priority_by_id.end() ? 0.0 : candidate->second);
     };
     std::stable_sort(ordered.begin(),ordered.end(),[&](const auto& a,const auto& b){
         return std::tuple{priority(a),source_time(a,snapshot),target_time(a,snapshot),std::string_view{a.id}} >

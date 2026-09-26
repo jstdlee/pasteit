@@ -1,6 +1,7 @@
 #include "ui/popup.hpp"
 
 #include "decision/candidate_selector.hpp"
+#include "ui/theme.hpp"
 #include "util/path_utf8.hpp"
 
 #include <algorithm>
@@ -40,10 +41,14 @@ PopupModel build_popup_model(const DecisionSnapshot& snapshot, const std::vector
         if (!is_current_source_action(ranked.action, snapshot)) {
             continue;
         }
+        auto target_path = target_path_for(snapshot, ranked.action.target_ref);
+        auto detail = target_path.empty() ? ranked.action.description : display_path(target_path);
         model.rows.push_back(PopupRow{
             .action_id = ranked.action.id,
             .label = ranked.action.label,
-            .target_path = target_path_for(snapshot, ranked.action.target_ref),
+            .target_path = std::move(target_path),
+            .detail = std::move(detail),
+            .category = action_category(ranked.action.kind),
             .probability = ranked.probability,
             .selected = ranked.selected,
             .enabled = ranked.action.enabled,

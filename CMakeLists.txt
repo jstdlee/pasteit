@@ -146,6 +146,7 @@ add_library(pastit_core
     src/config/app_settings.cpp
     src/config/settings_store.cpp
     src/config/prompt_template_service.cpp
+    src/decision/action_category.cpp
     src/decision/action_preference.cpp
     src/decision/candidate_selector.cpp
     src/decision/fallback_ranker.cpp
@@ -193,7 +194,7 @@ add_library(pastit_core
     src/ui/image_annotation_panel.cpp
     src/ui/ai_result_panel.cpp
     src/ui/imgui_widgets.cpp
-    src/ui/font_loader.cpp
+    src/ui/theme.cpp
     src/ui/localization.cpp
     src/ui/clipboard_history_model.cpp
     src/ui/clipboard_history_panel.cpp

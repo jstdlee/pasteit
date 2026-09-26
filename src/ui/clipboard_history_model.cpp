@@ -69,21 +69,6 @@ std::string byte_size_label(std::uint64_t bytes) {
     return out.str();
 }
 
-std::string timestamp_label(std::int64_t captured_at_ms) {
-    if (captured_at_ms <= 0) {
-        return "unknown";
-    }
-    const auto seconds = static_cast<std::time_t>(captured_at_ms / 1000);
-    std::tm local_time{};
-#if defined(_WIN32)
-    localtime_s(&local_time, &seconds);
-#else
-    localtime_r(&seconds, &local_time);
-#endif
-    std::ostringstream out;
-    out << std::put_time(&local_time, "%Y-%m-%d %H:%M:%S");
-    return out.str();
-}
 
 std::string mime_summary(const std::vector<std::string>& mime_types) {
     std::string out;
@@ -208,6 +193,22 @@ ClipboardHistoryCommand close_clipboard_history_detail(ClipboardHistoryState& st
     const auto ref = state.detail_ref;
     state.detail_ref.clear();
     return command(ClipboardHistoryCommandKind::CloseDetail, ref);
+}
+
+std::string timestamp_label(std::int64_t captured_at_ms) {
+    if (captured_at_ms <= 0) {
+        return "unknown";
+    }
+    const auto seconds = static_cast<std::time_t>(captured_at_ms / 1000);
+    std::tm local_time{};
+#if defined(_WIN32)
+    localtime_s(&local_time, &seconds);
+#else
+    localtime_r(&seconds, &local_time);
+#endif
+    std::ostringstream out;
+    out << std::put_time(&local_time, "%Y-%m-%d %H:%M:%S");
+    return out.str();
 }
 
 }  // namespace pastit

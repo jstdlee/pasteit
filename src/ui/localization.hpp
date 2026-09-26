@@ -19,8 +19,13 @@ enum class UiTextKey{
     UseAsDestination,OpenParent,Use,Seen,Parent,Reference,CopyHereAction,MoveHereAction,ConfirmFileOperation,
     GraphData,GraphPreview,ChartType,HeaderRow,ConvertDates,SavePngAs,CopyGraphImage,SaveGraphImage,
     CustomPrompt,PromptInstructions,Generate,AnnotateImage,
-    UsageInsights,UsageInsightsHelp,UsageInsightsEmpty,ResetUsage,UsageReset,FastActions
+    UsageInsights,UsageInsightsHelp,UsageInsightsEmpty,ResetUsage,UsageReset,FastActions,
+    StatusIdle,StatusRanking,StatusRanked,StatusFallback,ClickToCopy,Theme,ThemeDark,ThemeLight,
+    ConfirmOverwrite,FastAnnotation,Comment,Undo,Clear,SaveAnnotatedSvg,CopyTemporaryImagePath,OpenPngExternally,Pause,Resume,ClipboardHistoryDetail,RecentPathDetail,MermaidRendererHelp,MermaidHomepage,MermaidCliPath,MermaidCliArguments,QrHelp,QrHomepage,QrErrorCorrection,QrMargin,QrScale,DownloadResumeDirectory,KeepPartFiles,TerminalCommand,TerminalProfile,ShowSha256,ShowSha512,DateSpacingEnabled,Points
 };
 UiLanguage resolve_language(UiLanguage requested,std::string_view locale);
 std::string tr(UiLanguage language,UiTextKey key);
+// Language for panels that do not receive one explicitly; set once per frame.
+void set_active_language(UiLanguage language);
+std::string tr(UiTextKey key);
 }
