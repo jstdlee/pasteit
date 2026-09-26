@@ -161,5 +161,11 @@ int main() {
     const auto bounded_request=make_bounded_request();
     std::cout<<"bounded_catalog candidates="<<bounded_request.snapshot.available_actions.size()<<"\n";
     const bool bounded_ok=run_case("bounded_26_catalog",bounded_request,client);
-    return text_ok && json_ok && image_ok && path_ok && bounded_ok ? 0 : 1;
+    // A learned habit for a non-default action must be accepted by Djev.
+    auto habit_request = make_request("req_live_habit", pastit::ContentKind::Json, "clip_habit", "{\"a\":1}");
+    const auto& habit_actions = habit_request.snapshot.available_actions;
+    if (!habit_actions.empty()) habit_request.snapshot.usage_hints.push_back({habit_actions.back().id, 0.8, 12});
+    const bool habit_ok = run_case("usage_habits", habit_request, client);
+    if (habit_ok && !habit_actions.empty()) std::cout << "usage_habits hinted=" << habit_actions.back().id << "\n";
+    return text_ok && json_ok && image_ok && path_ok && bounded_ok && habit_ok ? 0 : 1;
 }
