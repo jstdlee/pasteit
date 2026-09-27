@@ -32,6 +32,8 @@ struct AnonymizeViewHost {
     PlaceholderVault* vault = nullptr;
     // Prompt templates offered for "Ask LLM"; names shown, ids passed back.
     std::vector<std::pair<std::string, std::string>> templates;  // id, name
+    // Draws the selected template's placeholder fields (e.g. target language).
+    std::function<void(const std::string& template_id)> draw_template_parameters;
     // Sends placeholder text; the answer is restored to real values.
     std::function<void(const std::string& template_id, const std::string& custom_prompt, const std::string& text)> ask_llm;
 };

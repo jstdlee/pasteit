@@ -41,6 +41,8 @@
 #include "ui/data_views.hpp"
 #include "ui/pipeline_view.hpp"
 #include "ui/privacy_view.hpp"
+#include "ui/prompt_parameters.hpp"
+#include "ai/prompt_optimizer.hpp"
 #include "privacy/anonymizer.hpp"
 #include "net/page_text.hpp"
 #include "net/http_client.hpp"
@@ -676,6 +678,12 @@ int run_desktop_runtime() {
     };
     std::map<std::string, std::map<std::string, std::string>> prompt_parameter_memory;
     std::optional<std::future<std::string>> pending_provider_test;
+    // Prompt editor "Optimize with LLM": the request, the template it belongs
+    // to, and the draft it replaced (for Revert).
+    std::optional<std::future<OptimizedPrompt>> pending_prompt_optimize;
+    std::string prompt_optimize_template_id;
+    std::string prompt_optimize_original;
+    std::string prompt_optimize_status;
     bool pending_provider_test_is_djev = false;
     std::string djev_test_status;
     std::string llm_test_status;
@@ -1493,19 +1501,10 @@ int run_desktop_runtime() {
                 prompt_parameter_dialog.template_id = prompt.id;
                 prompt_parameter_dialog.template_name = prompt.name;
                 prompt_parameter_dialog.names = variables;
-                const auto remembered = prompt_parameter_memory.find(prompt.id);
-                for (const auto& name : variables) {
-                    if (remembered != prompt_parameter_memory.end()) {
-                        const auto value = remembered->second.find(name);
-                        if (value != remembered->second.end()) {
-                            prompt_parameter_dialog.values[name] = value->second;
-                            continue;
-                        }
-                    }
-                    if (name == "source_language") prompt_parameter_dialog.values[name] = "auto";
-                    else if (name == "target_language") prompt_parameter_dialog.values[name] = "Simplified Chinese";
-                    else prompt_parameter_dialog.values[name] = {};
+                if (const auto remembered = prompt_parameter_memory.find(prompt.id); remembered != prompt_parameter_memory.end()) {
+                    prompt_parameter_dialog.values = remembered->second;
                 }
+                fill_prompt_parameter_defaults(variables, prompt_parameter_dialog.values);
                 return;
             }
             const auto [llm_text, protected_text] = protect_for_llm(source_text);
@@ -1670,6 +1669,26 @@ int run_desktop_runtime() {
             try { result_status = pending_provider_test->get(); }
             catch (const std::exception& error) { result_status = error.what(); }
             pending_provider_test.reset();
+        }
+        if (pending_prompt_optimize.has_value() &&
+            pending_prompt_optimize->wait_for(std::chrono::milliseconds{0}) == std::future_status::ready) {
+            OptimizedPrompt optimized;
+            try { optimized = pending_prompt_optimize->get(); }
+            catch (const std::exception& error) { optimized.error = error.what(); }
+            pending_prompt_optimize.reset();
+            auto& draft = prompt_panel_model.draft;
+            if (!optimized.error.empty()) {
+                prompt_optimize_status = optimized.error;
+            } else if (prompt_panel_model.modal == PromptTemplateModal::Edit && draft && draft->id == prompt_optimize_template_id) {
+                prompt_optimize_original = draft->system_prompt;
+                draft->system_prompt = optimized.prompt;
+                prompt_optimize_status = tr(UiTextKey::PromptOptimized);
+                if (!optimized.restored_placeholders.empty()) {
+                    prompt_optimize_status += "  (re-added:";
+                    for (const auto& name : optimized.restored_placeholders) prompt_optimize_status += " {" + name + "}";
+                    prompt_optimize_status += ")";
+                }
+            }
         }
         if (pending_model_list.has_value() &&
             pending_model_list->wait_for(std::chrono::milliseconds{0}) == std::future_status::ready) {
@@ -2403,8 +2422,59 @@ int run_desktop_runtime() {
                             if (ImGui::SliderFloat("##template-temperature", &temperature, 0.0F, 2.0F, "%.1f")) prompt_panel_model.draft->temperature = temperature;
                             end_form();
                         }
+                        auto& draft = *prompt_panel_model.draft;
+                        if (prompt_optimize_template_id != draft.id) {
+                            // A different template: forget the previous optimization.
+                            prompt_optimize_template_id = draft.id;
+                            prompt_optimize_original.clear();
+                            prompt_optimize_status.clear();
+                        }
+                        ImGui::AlignTextToFramePadding();
                         ImGui::TextColored(pal.text_muted, "%s", tr(ui_language,UiTextKey::SystemPrompt).c_str());
-                        input_text_string("##template-system-prompt", prompt_panel_model.draft->system_prompt, true, 0, -footer_height());
+                        // Optimize / Revert sit at the right of the label row.
+                        const auto optimize_label = with_icon(icon::kWand, tr(ui_language, UiTextKey::OptimizePrompt));
+                        const auto revert_label = with_icon(icon::kUndo, tr(ui_language, UiTextKey::RevertOptimization));
+                        const auto& style = ImGui::GetStyle();
+                        float buttons = ImGui::CalcTextSize(optimize_label.c_str()).x + style.FramePadding.x * 2.0F;
+                        if (!prompt_optimize_original.empty()) buttons += ImGui::CalcTextSize(revert_label.c_str()).x + style.FramePadding.x * 2.0F + style.ItemSpacing.x;
+                        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttons));
+                        const bool llm_ready = !settings_draft.general_llm.endpoint.empty() && !settings_draft.general_llm.model_id.empty();
+                        ImGui::BeginDisabled(pending_prompt_optimize.has_value() || !llm_ready || trim(draft.system_prompt).empty());
+                        if (ImGui::Button(optimize_label.c_str())) {
+                            prompt_optimize_template_id = draft.id;
+                            prompt_optimize_status = tr(ui_language, UiTextKey::OptimizingPrompt);
+                            const auto provider = settings_draft.general_llm;
+                            const auto raw = draft.system_prompt;
+                            pending_prompt_optimize.emplace(std::async(std::launch::async, [provider, raw] {
+                                const auto result = OpenAiCompatibleClient{}.generate({
+                                    .request_id = "prompt-optimize", .endpoint = provider.endpoint, .api_key = provider.api_key,
+                                    .model_id = provider.model_id, .system_message = prompt_optimizer_system(),
+                                    .user_message = prompt_optimizer_user_message(raw), .temperature = 0.3,
+                                    .timeout = std::chrono::milliseconds{60000}});
+                                if (!result.ok) return OptimizedPrompt{.prompt = {}, .restored_placeholders = {}, .error = result.error};
+                                return finish_optimized_prompt(result.content, raw);
+                            }));
+                        }
+                        ImGui::EndDisabled();
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                            ImGui::SetTooltip("%s", llm_ready ? tr(ui_language, UiTextKey::OptimizePromptHelp).c_str()
+                                                              : "Configure the General LLM in Settings first");
+                        }
+                        if (!prompt_optimize_original.empty()) {
+                            ImGui::SameLine();
+                            if (ImGui::Button(revert_label.c_str())) {
+                                draft.system_prompt = prompt_optimize_original;
+                                prompt_optimize_original.clear();
+                                prompt_optimize_status.clear();
+                            }
+                        }
+                        const float status_height = prompt_optimize_status.empty() ? 0.0F : ImGui::GetTextLineHeightWithSpacing() * 2.0F;
+                        input_text_string("##template-system-prompt", draft.system_prompt, true, 0, -footer_height() - status_height);
+                        if (!prompt_optimize_status.empty()) {
+                            ImGui::PushTextWrapPos(0.0F);
+                            ImGui::TextColored(pending_prompt_optimize ? pal.text_muted : pal.accent, "%s", prompt_optimize_status.c_str());
+                            ImGui::PopTextWrapPos();
+                        }
                         const int clicked = footer_buttons({{tr(ui_language,UiTextKey::Cancel)}, {tr(ui_language,UiTextKey::Save), true}});
                         if (clicked == 0) edit_open = false;
                         if (clicked == 1) { const auto result = save_prompt_template_edit(prompt_panel_model, service); if (result.error.empty()) edit_open = false; }
@@ -2574,14 +2644,8 @@ int run_desktop_runtime() {
             if (begin_tool_window(title, &open, ImVec2(520.0F, parameter_height), &prompt_parameter_dialog.focus_pending)) {
                 ImGui::TextColored(palette().text_muted, "%s", tr(ui_language, UiTextKey::PromptParametersHelp).c_str());
                 ImGui::BeginChild("prompt-parameters-body", ImVec2(0.0F, -footer_height()), false);
-                if (begin_form("prompt-parameters-form", 150.0F)) {
-                    for (const auto& name : prompt_parameter_dialog.names) {
-                        auto& value = prompt_parameter_dialog.values[name];
-                        form_row(name);
-                        input_text_string(("##param-" + name).c_str(), value);
-                    }
-                    end_form();
-                }
+                (void)draw_prompt_parameter_fields("prompt-parameters-form", prompt_parameter_dialog.names,
+                                                   prompt_parameter_dialog.values);
                 ImGui::EndChild();
                 const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Confirm), true}});
                 if (clicked == 0) prompt_parameter_dialog.open = false;
@@ -2623,6 +2687,14 @@ int run_desktop_runtime() {
                     ImGui::PushTextWrapPos(0.0F);
                     ImGui::TextColored(palette().text_muted, "%s", selected->system_prompt.c_str());
                     ImGui::PopTextWrapPos();
+                    // The template's placeholders (e.g. source/target language) are editable here too.
+                    const auto names = prompt_variable_names(selected->system_prompt);
+                    if (!names.empty()) {
+                        auto& values = prompt_parameter_memory[selected->id];
+                        fill_prompt_parameter_defaults(names, values);
+                        ImGui::Spacing();
+                        (void)draw_prompt_parameter_fields("ask-llm-parameters", names, values);
+                    }
                 }
                 const bool can_run = !custom || !trim(custom_prompt_dialog.prompt).empty();
                 const auto privacy_note = settings.privacy.anonymize_before_llm ? tr(ui_language, UiTextKey::AskLlmHelp) : std::string{};
@@ -2680,6 +2752,16 @@ int run_desktop_runtime() {
                 .replace_clipboard = [&](std::string_view text) { platform->publish_text(text); },
                 .vault = &privacy_vault,
                 .templates = {},
+                .draw_template_parameters = [&](const std::string& template_id) {
+                    const auto prompt = std::find_if(settings.prompt_templates.begin(), settings.prompt_templates.end(),
+                                                     [&](const PromptTemplate& value) { return value.id == template_id; });
+                    if (prompt == settings.prompt_templates.end()) return;
+                    const auto names = prompt_variable_names(prompt->system_prompt);
+                    if (names.empty()) return;
+                    auto& values = prompt_parameter_memory[prompt->id];
+                    fill_prompt_parameter_defaults(names, values);
+                    (void)draw_prompt_parameter_fields("anonymize-ask-parameters", names, values);
+                },
                 .ask_llm = [&](const std::string& template_id, const std::string& custom_prompt, const std::string& text) {
                     ActionInstance action{};
                     action.id = "anonymized_ask_" + std::to_string(++request_counter);

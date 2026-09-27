@@ -128,6 +128,7 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
             }
             ImGui::SameLine();
             const bool can_ask = !custom || !state.custom_prompt.empty();
+            const bool show_parameters = !custom && host.draw_template_parameters;
             if (!can_ask) ImGui::BeginDisabled();
             if (primary_button(ask_label)) {
                 // Always placeholders, whatever style is shown: only they can be restored.
@@ -141,6 +142,7 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
                 state.status = tr(language, UiTextKey::Generating);
             }
             if (!can_ask) ImGui::EndDisabled();
+            if (show_parameters) host.draw_template_parameters(host.templates[static_cast<std::size_t>(state.prompt_choice)].first);
         }
         std::size_t selected = 0;
         for (const bool value : state.selected) selected += value ? 1 : 0;

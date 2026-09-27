@@ -130,6 +130,7 @@ add_library(pasteit_core
     src/ai/mermaid_prompt.cpp
     src/ai/model_catalog.cpp
     src/ai/prompt_expander.cpp
+    src/ai/prompt_optimizer.cpp
     src/app/ai_result_state.cpp
     src/app/contact_result_state.cpp
     src/app/date_time_result_state.cpp
@@ -207,6 +208,7 @@ add_library(pasteit_core
     src/ui/data_views.cpp
     src/ui/pipeline_view.cpp
     src/ui/privacy_view.cpp
+    src/ui/prompt_parameters.cpp
     src/ui/localization.cpp
     src/ui/clipboard_history_model.cpp
     src/ui/clipboard_history_panel.cpp
@@ -368,6 +370,9 @@ if (PASTEIT_BUILD_TESTS)
     target_link_libraries(model_catalog_test PRIVATE pasteit_core)
     add_test(NAME model_catalog_test COMMAND model_catalog_test)
 
+    add_executable(prompt_optimizer_test tests/prompt_optimizer_test.cpp)
+    target_link_libraries(prompt_optimizer_test PRIVATE pasteit_core)
+    add_test(NAME prompt_optimizer_test COMMAND prompt_optimizer_test)
     add_executable(provider_test_request_test tests/provider_test_request_test.cpp)
     target_link_libraries(provider_test_request_test PRIVATE pasteit_core)
     add_test(NAME provider_test_request_test COMMAND provider_test_request_test)
