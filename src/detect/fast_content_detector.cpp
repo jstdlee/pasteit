@@ -1,4 +1,5 @@
 #include "detect/fast_content_detector.hpp"
+#include "detect/email_scan.hpp"
 #include "ai/mermaid_prompt.hpp"
 
 #include <algorithm>
@@ -85,9 +86,8 @@ std::vector<ContactField> detect_contact_fields(std::string_view text) {
     std::vector<ContactField> fields;
     const std::string value{text};
 
-    static const std::regex email_pattern(R"(([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}))");
-    for (std::sregex_iterator it(value.begin(), value.end(), email_pattern), end; it != end; ++it) {
-        add_field(fields, "email", "Email", (*it)[1].str());
+    for (const auto& email : find_emails(value)) {
+        add_field(fields, "email", "Email", email.value);
     }
 
     const auto lines = split_lines(text);
@@ -266,7 +266,19 @@ bool detect_diagram(std::string_view text) {
 
     static const std::regex compact_arrow(R"(^\s*[A-Za-z0-9_]+\s*(?:->|<-|-->|<--|--)\s*[A-Za-z0-9_]+\s*$)");
     static const std::regex arrow_chain(R"([A-Za-z0-9_]+\s*(?:->|<-|-->|<--|--)\s*[A-Za-z0-9_]+(?:\s*(?:->|<-|-->|<--|--)\s*[A-Za-z0-9_]+)+)");
-    return std::regex_search(value, compact_arrow) || std::regex_search(value, arrow_chain);
+    // Arrows only mean a diagram on short lines. Searching whole long texts
+    // backtracks quadratically (MSVC throws error_complexity), so the chain
+    // check runs per line and only on lines that contain an arrow.
+    constexpr std::size_t kMaxArrowLine = 400;
+    if (value.size() <= kMaxArrowLine && std::regex_search(value, compact_arrow)) return true;
+    for (const auto& line : split_lines(value)) {
+        if (line.size() > kMaxArrowLine || (line.find("->") == std::string::npos && line.find("<-") == std::string::npos &&
+                                            line.find("--") == std::string::npos)) {
+            continue;
+        }
+        if (std::regex_search(line, arrow_chain)) return true;
+    }
+    return false;
 }
 
 bool is_leap_year(int year) {

@@ -1,4 +1,5 @@
 #include "detect/resume_detector.hpp"
+#include "detect/email_scan.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -52,12 +53,11 @@ std::optional<ResumeField> ResumeExtraction::find(const std::string& kind) const
 
 ResumeExtraction detect_resume_fields(const std::string& text) {
     ResumeExtraction extraction;
-    static const std::regex email_pattern(R"([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})");
     static const std::regex phone_pattern(R"((\+?\d[\d ()\-]{6,}\d))");
 
     std::smatch match;
-    if (std::regex_search(text, match, email_pattern)) {
-        add_field(extraction, "email", match.str(0), static_cast<std::size_t>(match.position(0)));
+    if (const auto emails = find_emails(text, 1); !emails.empty()) {
+        add_field(extraction, "email", emails.front().value, emails.front().position);
     }
     if (std::regex_search(text, match, phone_pattern)) {
         add_field(extraction, "phone", trim_copy(match.str(0)), static_cast<std::size_t>(match.position(0)));
@@ -74,7 +74,7 @@ ResumeExtraction detect_resume_fields(const std::string& text) {
         const auto lowered = lower_copy(trimmed);
 
         if (!trimmed.empty() && !extraction.find("name").has_value() && lowered != "skills" &&
-            !std::regex_search(trimmed, email_pattern) && !std::regex_search(trimmed, phone_pattern) &&
+            !contains_email(trimmed) && !std::regex_search(trimmed, phone_pattern) &&
             trimmed.find("://") == std::string::npos) {
             add_field(extraction, "name", trimmed, value_start);
         }
