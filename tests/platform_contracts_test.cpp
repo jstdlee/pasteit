@@ -117,7 +117,7 @@ int main() {
     assert(pasteit::browser_open_path(rendered, home) == staged);
     const auto unrelated = root / "ordinary.html";
     assert(pasteit::browser_open_path(unrelated, home) == unrelated);
-    std::filesystem::remove(rendered);
+    pasteit_test::remove_tree(rendered);
     pasteit_test::remove_tree(root);
 #endif
 }

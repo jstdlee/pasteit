@@ -97,6 +97,18 @@ jobs:
           name: pasteit-windows-x64
           path: dist/pasteit-windows-x64.zip
 
+  regex-probe:
+    # Temporary diagnosis: which std::regex pattern MSVC rejects.
+    name: MSVC regex probe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run probe
+        run: |
+          cmake -S tools/regex_probe -B probe-build -A x64
+          cmake --build probe-build --config Release
+          probe-build/Release/regex_probe.exe
+
   release:
     name: Publish release
     needs: [linux, windows]

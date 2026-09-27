@@ -365,7 +365,7 @@ int main() {
         }
         assert(!panel.export_running());
         assert(panel.last_export_path == output);
-        std::filesystem::remove(output);
+        pasteit_test::remove_tree(output);
     }
 
     {
@@ -391,7 +391,7 @@ int main() {
         }
         assert(!panel.export_running());
         assert(panel.last_export_path == output);
-        std::filesystem::remove(output);
+        pasteit_test::remove_tree(output);
     }
 
     {
@@ -409,6 +409,6 @@ int main() {
         assert(svg.find("data:image/png;base64,") != std::string::npos);
         assert(svg.find("<line") != std::string::npos);
         assert(svg.find("note") != std::string::npos);
-        std::filesystem::remove(output);
+        pasteit_test::remove_tree(output);
     }
 }

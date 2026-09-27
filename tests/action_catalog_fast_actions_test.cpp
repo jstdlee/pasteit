@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "actions/action_catalog.hpp"
 #include "config/prompt_template_service.hpp"
 
@@ -217,7 +218,7 @@ int main() {
     assert(!has_kind(multi_uri_catalog, ActionKind::OpenTerminalAtPath));
     assert(!has_kind(multi_uri_catalog, ActionKind::HashSha256));
     assert(has_kind(multi_uri_catalog, ActionKind::CopyPathToDirectory));
-    std::filesystem::remove(file_path);
+    pasteit_test::remove_tree(file_path);
 
     const auto ip_catalog = build_catalog(snapshot_with(item("ip", ContentKind::Text, "Probe 192.0.2.10 now")),
                                           templates, llm);

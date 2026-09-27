@@ -90,6 +90,9 @@ int main() {
     assert(run("abc", "anonymize", anonymizing) == "***");
 
     // External tools run by argv with the text on stdin, only when allowed.
+    // These rely on Unix tools (awk, jq, printf); Windows runners only have
+    // them through Git/Cygwin shims, so they are checked on Linux/macOS.
+#if !defined(_WIN32)
     if (find_executable("awk")) {
         PipelineOptions options;
         options.allowed_tools = {"awk"};
@@ -106,12 +109,13 @@ int main() {
         options.allowed_tools = {"jq"};
         assert(run(R"({"b":1,"a":2})", "jq -c keys", options) == R"(["a","b"])");
     }
-    assert(!find_executable("../bin/sh"));
     if (find_executable("printf")) {
         PipelineOptions any;
         assert(!run_pipeline("", "printf hi", any).ok);
         any.allow_any_program = true;
         assert(run("", "printf hi", any) == "hi");
     }
+#endif
+    assert(!find_executable("../bin/sh"));
     std::cout << "pipeline ok\n";
 }
