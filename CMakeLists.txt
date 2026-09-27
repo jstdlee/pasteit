@@ -260,7 +260,7 @@ target_compile_definitions(pasteit_core PUBLIC PASTEIT_GIT_COMMIT="${PASTEIT_GIT
 
 if (WIN32)
     target_compile_definitions(pasteit_core PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(pasteit_core PUBLIC user32 shell32 ole32 uuid gdi32 bcrypt winhttp)
+    target_link_libraries(pasteit_core PUBLIC user32 shell32 ole32 oleaut32 uuid gdi32 bcrypt winhttp)
 endif()
 
 if (NOT WIN32 AND X11_FOUND)
@@ -370,6 +370,11 @@ if (PASTEIT_BUILD_TESTS)
     target_link_libraries(model_catalog_test PRIVATE pasteit_core)
     add_test(NAME model_catalog_test COMMAND model_catalog_test)
 
+    if (WIN32)
+        add_executable(windows_single_instance_test tests/windows_single_instance_test.cpp)
+        target_link_libraries(windows_single_instance_test PRIVATE pasteit_core)
+        add_test(NAME windows_single_instance_test COMMAND windows_single_instance_test)
+    endif()
     add_executable(prompt_optimizer_test tests/prompt_optimizer_test.cpp)
     target_link_libraries(prompt_optimizer_test PRIVATE pasteit_core)
     add_test(NAME prompt_optimizer_test COMMAND prompt_optimizer_test)

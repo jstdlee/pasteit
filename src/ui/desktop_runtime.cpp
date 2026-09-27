@@ -510,9 +510,7 @@ int run_desktop_runtime() {
     LinuxSingleInstance single_instance;
 #endif
     if (!single_instance.acquired()) {
-#if !defined(_WIN32)
         if (single_instance.request_show_existing_instance()) return 0;
-#endif
         std::cerr << "PasteIt is already running.\n";
         return 2;
     }
@@ -1568,10 +1566,7 @@ int run_desktop_runtime() {
         glfwPollEvents();
         platform->process_events();
         capture_clipboard(false);
-        bool show_requested = false;
-#if !defined(_WIN32)
-        show_requested = single_instance.take_show_request();
-#endif
+        const bool show_requested = single_instance.take_show_request();
         if (show_on_start || show_requested || platform->global_shortcut_activated()) {
             show_on_start = false;
             open_popup();

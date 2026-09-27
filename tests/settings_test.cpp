@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "config/settings_store.hpp"
 #include "djev/djev_client.hpp"
 #include "platform/app_paths.hpp"
@@ -17,7 +18,7 @@ public:
         if (const char* existing = std::getenv(name)) {
             previous_ = existing;
         }
-        setenv(name, value.string().c_str(), 1);
+        pasteit_test::set_env(name, value.string().c_str());
     }
 
     ScopedEnv(const ScopedEnv&) = delete;
@@ -25,9 +26,9 @@ public:
 
     ~ScopedEnv() {
         if (previous_.has_value()) {
-            setenv(name_.c_str(), previous_->c_str(), 1);
+            pasteit_test::set_env(name_.c_str(), previous_->c_str());
         } else {
-            unsetenv(name_.c_str());
+            pasteit_test::unset_env(name_.c_str());
         }
     }
 

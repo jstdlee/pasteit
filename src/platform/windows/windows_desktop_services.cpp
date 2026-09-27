@@ -10,6 +10,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <cmath>
 #include <functional>
 #include <optional>
@@ -24,6 +25,9 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <exdisp.h>
+#include <shlguid.h>
+#include <servprov.h>
 
 #if defined(PASTEIT_HAS_DESKTOP_DEPS)
 #include <stb_image.h>
@@ -302,6 +306,67 @@ std::string window_title(HWND window) {
     return wide_to_utf8(title);
 }
 
+// Folder shown by a File Explorer window, if `window` is one. Explorer is the
+// Windows counterpart of Linux's focused terminal/file-manager directory.
+std::optional<std::filesystem::path> explorer_folder(HWND window) {
+    if (window == nullptr) return std::nullopt;
+    wchar_t class_name[64]{};
+    GetClassNameW(window, class_name, 64);
+    if (std::wcscmp(class_name, L"CabinetWClass") != 0 && std::wcscmp(class_name, L"ExploreWClass") != 0) return std::nullopt;
+    const HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    std::optional<std::filesystem::path> result;
+    IShellWindows* windows = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&windows)))) {
+        long count = 0;
+        windows->get_Count(&count);
+        for (long index = 0; index < count && !result; ++index) {
+            VARIANT slot;
+            VariantInit(&slot);
+            slot.vt = VT_I4;
+            slot.lVal = index;
+            IDispatch* dispatch = nullptr;
+            if (FAILED(windows->Item(slot, &dispatch)) || dispatch == nullptr) continue;
+            IWebBrowserApp* browser = nullptr;
+            if (SUCCEEDED(dispatch->QueryInterface(IID_PPV_ARGS(&browser)))) {
+                SHANDLE_PTR handle = 0;
+                if (SUCCEEDED(browser->get_HWND(&handle)) && reinterpret_cast<HWND>(handle) == window) {
+                    IServiceProvider* provider = nullptr;
+                    if (SUCCEEDED(browser->QueryInterface(IID_PPV_ARGS(&provider)))) {
+                        IShellBrowser* shell_browser = nullptr;
+                        if (SUCCEEDED(provider->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&shell_browser)))) {
+                            IShellView* view = nullptr;
+                            if (SUCCEEDED(shell_browser->QueryActiveShellView(&view))) {
+                                IFolderView* folder_view = nullptr;
+                                if (SUCCEEDED(view->QueryInterface(IID_PPV_ARGS(&folder_view)))) {
+                                    IPersistFolder2* folder = nullptr;
+                                    if (SUCCEEDED(folder_view->GetFolder(IID_PPV_ARGS(&folder)))) {
+                                        PIDLIST_ABSOLUTE pidl = nullptr;
+                                        if (SUCCEEDED(folder->GetCurFolder(&pidl)) && pidl != nullptr) {
+                                            wchar_t path[MAX_PATH]{};
+                                            if (SHGetPathFromIDListW(pidl, path) && path[0] != L'\0') result = std::filesystem::path{path};
+                                            CoTaskMemFree(pidl);
+                                        }
+                                        folder->Release();
+                                    }
+                                    folder_view->Release();
+                                }
+                                view->Release();
+                            }
+                            shell_browser->Release();
+                        }
+                        provider->Release();
+                    }
+                }
+                browser->Release();
+            }
+            dispatch->Release();
+        }
+        windows->Release();
+    }
+    if (SUCCEEDED(init)) CoUninitialize();
+    return result;
+}
+
 std::string process_name(DWORD pid) {
     HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (process == nullptr) {
@@ -576,7 +641,7 @@ PlatformFocusContext WindowsDesktopServices::focused_context() {
                                 .window_title = title,
                                 .focused_target_hash = focus_hash(window, pid, title),
                                 .pid = pid,
-                                .current_directory = std::nullopt};
+                                .current_directory = explorer_folder(window)};
 }
 
 std::vector<PlatformRecentPath> WindowsDesktopServices::recent_paths() {

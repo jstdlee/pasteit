@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "actions/action_catalog.hpp"
 #include "djev/decision_ranker.hpp"
 #include "djev/djev_client.hpp"
@@ -41,7 +42,7 @@ void load_dotenv_if_present() {
         }
         if ((key == "DJEV_URL" || key == "DJEV_MODEL" || key == "DJEV_API_KEY" || key == "API_KEY" || key == "TYPESAFE_API_KEY") &&
             std::getenv(key.c_str()) == nullptr) {
-            setenv(key.c_str(), value.c_str(), 0);
+            pasteit_test::set_env(key.c_str(), value.c_str(), false);
         }
     }
 }

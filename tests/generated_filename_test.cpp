@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "app/generated_filename.hpp"
 
 #include "core/action.hpp"
@@ -64,7 +65,7 @@ std::chrono::system_clock::time_point fixed_time() {
     _putenv_s("TZ", "UTC");
     _tzset();
 #else
-    setenv("TZ", "UTC", 1);
+    pasteit_test::set_env("TZ", "UTC");
     tzset();
 #endif
     using namespace std::chrono;
