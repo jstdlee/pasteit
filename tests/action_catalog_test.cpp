@@ -104,7 +104,7 @@ int main() {
 
     assert(count_kind(text_catalog, ActionKind::PasteText, "clip_text") >= 1);
     assert(count_kind(text_catalog, ActionKind::SaveTextFile, "clip_text") >= 1);
-    assert(count_kind(image_catalog, ActionKind::PasteImage, "clip_image") >= 1);
+    assert(count_kind(image_catalog, ActionKind::PasteImage, "clip_image") == 0);
     assert(count_kind(image_catalog, ActionKind::SaveImageFile, "clip_image") >= 1);
     assert(count_kind(image_catalog, ActionKind::CopyTemporaryImagePath, "clip_image") == 1);
     assert(count_kind(url_catalog, ActionKind::PasteUrl, "clip_url") >= 1);

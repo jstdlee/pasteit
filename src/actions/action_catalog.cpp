@@ -1033,7 +1033,8 @@ ActionCatalog build_catalog(const DecisionSnapshot& snapshot, const std::vector<
                     "Enter a prompt and send this clipboard text to the configured general LLM", "ai");
                 break;
             case ContentKind::Image:
-                add(catalog, item, ActionKind::PasteImage, "", "Paste image", "Paste the image clipboard item", "raw");
+                // No Paste image: injecting Ctrl+V while serving a large image
+                // selection could stall the app; copy/save/annotate cover it.
                 add(catalog, item, ActionKind::CopyTemporaryImagePath, "temp", "Copy temporary image path",
                     "Write the original image bytes to a temporary file and copy its path", "temporary");
                 for (const auto& target : targets) {

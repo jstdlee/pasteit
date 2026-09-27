@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace pasteit {
@@ -19,7 +20,7 @@ struct AnnotationColor {
     std::uint8_t a = 255;
 };
 
-enum class AnnotationTool { Pen, Line, Rectangle, Arrow };
+enum class AnnotationTool { Pen, Line, Rectangle, Arrow, Circle };
 enum class AnnotationOverlayKind { Stroke, Comment };
 
 struct AnnotationStroke {
@@ -34,6 +35,7 @@ struct AnnotationComment {
     AnnotationPoint anchor;
     AnnotationColor foreground{0, 0, 0, 255};
     AnnotationColor background{255, 255, 255, 255};
+    float font_size = 18.0F;  // image pixels
 };
 
 struct AnnotationOverlay {
@@ -62,7 +64,10 @@ public:
     void add_line(AnnotationPoint start, AnnotationPoint end, float width = 3.0F);
     void add_rectangle(AnnotationPoint top_left, AnnotationPoint bottom_right, float width = 3.0F);
     void add_arrow(AnnotationPoint start, AnnotationPoint end, float width = 3.0F);
+    // Circle: an ellipse inscribed in the box from corner to corner.
+    void add_circle(AnnotationPoint corner, AnnotationPoint opposite, float width = 3.0F);
     void add_comment(std::string text, AnnotationPoint anchor);
+    void add_comment(std::string text, AnnotationPoint anchor, AnnotationColor color, float font_size);
 
     bool undo();
     void clear();
@@ -78,6 +83,9 @@ private:
 };
 
 AnnotationColor annotation_red();
+// Estimated rendered width of one line of comment text (CJK and other wide
+// characters count as a full em). Shared by the canvas and the SVG export.
+float annotation_text_width(std::string_view line, float font_size);
 AnnotationColor annotation_white();
 
 }  // namespace pasteit

@@ -19,7 +19,21 @@ std::string format_axis_number(double value) {
     return out.str();
 }
 
-ChartSpec chart_from_graph(const GraphData& data, ChartKind kind) {
+ChartSpec chart_from_graph(const GraphData& data, ChartKind kind, Aggregate aggregate) {
+    if (aggregate != Aggregate::None && kind != ChartKind::Histogram) {
+        // Reduce points sharing a label (e.g. "mon 3", "mon 5" -> sum 8) via the table path.
+        TableData table;
+        table.headers = {"label", data.title.empty() ? "value" : data.title};
+        for (const auto& point : data.points) table.rows.push_back({point.label, format_cell_number(point.value)});
+        compute_column_stats(table);
+        std::vector<std::size_t> rows(table.rows.size());
+        std::iota(rows.begin(), rows.end(), std::size_t{0});
+        auto spec = chart_from_table(table, rows, 0, {1}, kind, aggregate);
+        if (spec) return *spec;
+        ChartSpec empty;
+        empty.kind = kind;
+        return empty;
+    }
     ChartSpec spec;
     spec.kind = kind;
     spec.title = data.title;
@@ -41,15 +55,32 @@ std::optional<ChartSpec> chart_from_table(const TableData& table, const std::vec
     for (const auto column : y_columns) {
         if (column >= table.headers.size()) return std::nullopt;
     }
+    if (aggregate != Aggregate::None && kind != ChartKind::Histogram && x_column < 0) {
+        // No grouping column: reduce every row, one category per Y column
+        // (e.g. total sales vs total cost).
+        const auto totals = aggregate_table(table, rows, -1, y_columns, aggregate);
+        if (totals.rows.empty()) return std::nullopt;
+        ChartSpec spec;
+        spec.kind = kind == ChartKind::Line || kind == ChartKind::Scatter ? ChartKind::Bar : kind;
+        spec.title = aggregate_name(aggregate);
+        spec.series.push_back({aggregate_name(aggregate), {}});
+        for (std::size_t index = 0; index < y_columns.size(); ++index) {
+            const auto value = parse_cell_number(totals.rows[0][index + 1]);
+            if (!value) continue;
+            spec.labels.push_back(table.headers[y_columns[index]]);
+            spec.x.push_back(static_cast<double>(spec.x.size()));
+            spec.series[0].values.push_back(*value);
+        }
+        if (spec.labels.empty()) return std::nullopt;
+        return spec;
+    }
     if (aggregate != Aggregate::None && kind != ChartKind::Histogram) {
         const auto grouped = aggregate_table(table, rows, x_column, y_columns, aggregate);
         std::vector<std::size_t> grouped_rows(grouped.rows.size());
         std::iota(grouped_rows.begin(), grouped_rows.end(), std::size_t{0});
         std::vector<std::size_t> value_columns(y_columns.size());
         std::iota(value_columns.begin(), value_columns.end(), std::size_t{1});
-        auto spec = chart_from_table(grouped, grouped_rows, 0, value_columns, kind);
-        if (spec && x_column < 0) spec->title = aggregate_name(aggregate);
-        return spec;
+        return chart_from_table(grouped, grouped_rows, 0, value_columns, kind);
     }
     if (kind == ChartKind::Histogram) {
         std::vector<double> values;
@@ -86,7 +117,8 @@ std::optional<ChartSpec> chart_from_table(const TableData& table, const std::vec
         spec.x.push_back(x);
         for (std::size_t index = 0; index < values.size(); ++index) spec.series[index].values.push_back(values[index]);
     }
-    if (spec.labels.size() < 2) return std::nullopt;
+    // One bar or one pie slice is still a chart; lines and scatters need two.
+    if (spec.labels.empty() || (spec.labels.size() < 2 && kind != ChartKind::Bar && kind != ChartKind::Pie)) return std::nullopt;
     spec.title = has_x ? table.headers[static_cast<std::size_t>(x_column)] : "";
     return spec;
 }
@@ -123,7 +155,8 @@ ChartSpec make_histogram(const std::string& name, const std::vector<double>& val
 }
 
 std::string chart_problem(const ChartSpec& spec) {
-    if (spec.series.empty() || spec.labels.size() < (spec.kind == ChartKind::Histogram ? 1U : 2U)) {
+    const std::size_t minimum = spec.kind == ChartKind::Line || spec.kind == ChartKind::Scatter ? 2U : 1U;
+    if (spec.series.empty() || spec.labels.size() < minimum) {
         return "Not enough numeric values to plot.";
     }
     if (spec.kind == ChartKind::Pie) {

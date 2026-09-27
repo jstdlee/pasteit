@@ -139,6 +139,17 @@ void aggregates_and_formulas() {
     const auto chart = chart_from_table(*table, rows, 0, {2}, ChartKind::Bar, Aggregate::Sum);
     assert(chart && chart->labels.size() == 2 && chart->series[0].values[0] == 40.0);
     assert(chart->series[0].name == "sum(sales)");
+    // X = row number with an aggregate: one bar per Y column.
+    const auto totals = chart_from_table(*table, rows, -1, {2, 3}, ChartKind::Bar, Aggregate::Sum);
+    assert(totals && (totals->labels == std::vector<std::string>{"sales", "cost"}));
+    assert(totals->series[0].values[0] == 45.0 && totals->series[0].values[1] == 7.0 && chart_problem(*totals).empty());
+    const auto single = chart_from_table(*table, rows, -1, {2}, ChartKind::Pie, Aggregate::Max);
+    assert(single && single->labels.size() == 1 && chart_problem(*single).empty());
+    // Number series: points sharing a label are reduced.
+    const auto series = parse_graph_data("mon,3\ntue,4\nmon,5\n", false, false);
+    assert(series);
+    const auto summed = chart_from_graph(*series, ChartKind::Bar, Aggregate::Sum);
+    assert(summed.labels.size() == 2 && summed.series[0].values[0] == 8.0);
 }
 
 int main() {

@@ -9,21 +9,37 @@
 #include <future>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace pasteit {
+
+// Canvas tools; shortcuts (while the canvas window is focused and no text is
+// being typed): P pen, L line, A arrow, R rectangle, C circle, T text.
+enum class AnnotationPanelTool { Pen, Line, Arrow, Rectangle, Circle, Text };
 
 struct ImageAnnotationPanelState {
     bool open = false;
     bool focus_pending = false;
     AnnotationDocument document;
-    AnnotationTool active_tool = AnnotationTool::Pen;
-    std::string comment_text = "Comment";
+    AnnotationPanelTool active_tool = AnnotationPanelTool::Pen;
+    AnnotationColor color = annotation_red();
+    float stroke_width = 3.0F;  // image pixels
+    float font_size = 22.0F;    // image pixels
     std::string status_text;
     std::filesystem::path last_export_path;
+    std::string output_path;  // editable; empty until first shown
     bool drawing = false;
     AnnotationPoint drag_start;
     std::vector<AnnotationPoint> pending_pen;
+    // Text tool: a click opens a small editor at the anchor.
+    bool text_editing = false;
+    bool text_focus_pending = false;
+    AnnotationPoint text_anchor;
+    std::string text_draft;
+    // Shell hooks for the saved file.
+    std::function<bool(const std::filesystem::path&)> open_path;
+    std::function<void(std::string_view)> copy_text;
     std::optional<std::future<AnnotationExportResult>> pending_export;
     std::filesystem::path export_directory;
     std::string export_format = "svg";

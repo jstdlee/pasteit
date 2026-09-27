@@ -169,15 +169,28 @@ void write_stroke(std::ostream& output, const AnnotationStroke& stroke) {
                << "\" stroke-width=\"" << stroke.width << "\"/>\n";
         return;
     }
+    if (stroke.tool == AnnotationTool::Circle && stroke.points.size() >= 2) {
+        output << "<ellipse cx=\"" << (stroke.points[0].x + stroke.points[1].x) / 2.0F
+               << "\" cy=\"" << (stroke.points[0].y + stroke.points[1].y) / 2.0F
+               << "\" rx=\"" << std::abs(stroke.points[1].x - stroke.points[0].x) / 2.0F
+               << "\" ry=\"" << std::abs(stroke.points[1].y - stroke.points[0].y) / 2.0F
+               << "\" fill=\"none\" stroke=\"" << color << "\" stroke-width=\"" << stroke.width << "\"/>\n";
+        return;
+    }
     if ((stroke.tool == AnnotationTool::Line || stroke.tool == AnnotationTool::Arrow) && stroke.points.size() >= 2) {
-        output << "<line x1=\"" << stroke.points[0].x << "\" y1=\"" << stroke.points[0].y
-               << "\" x2=\"" << stroke.points[1].x << "\" y2=\"" << stroke.points[1].y
-               << "\" stroke=\"" << color << "\" stroke-width=\"" << stroke.width
-               << "\" stroke-linecap=\"round\"";
+        const auto& start = stroke.points[0];
+        const auto& end = stroke.points[1];
+        output << "<line x1=\"" << start.x << "\" y1=\"" << start.y << "\" x2=\"" << end.x << "\" y2=\"" << end.y
+               << "\" stroke=\"" << color << "\" stroke-width=\"" << stroke.width << "\" stroke-linecap=\"round\"/>\n";
         if (stroke.tool == AnnotationTool::Arrow) {
-            output << " marker-end=\"url(#pasteit-arrowhead)\"";
+            // Arrowhead as a polygon in the stroke's colour, sized with the line width.
+            const float angle = std::atan2(end.y - start.y, end.x - start.x);
+            const float size = std::max(12.0F, stroke.width * 4.0F);
+            output << "<polygon points=\"" << end.x << ',' << end.y << ' '
+                   << end.x - std::cos(angle - 0.45F) * size << ',' << end.y - std::sin(angle - 0.45F) * size << ' '
+                   << end.x - std::cos(angle + 0.45F) * size << ',' << end.y - std::sin(angle + 0.45F) * size
+                   << "\" fill=\"" << color << "\"/>\n";
         }
-        output << "/>\n";
         return;
     }
     output << "<polyline points=\"";
@@ -189,16 +202,32 @@ void write_stroke(std::ostream& output, const AnnotationStroke& stroke) {
 }
 
 void write_comment(std::ostream& output, const AnnotationComment& comment) {
-    const auto text = xml_escape(comment.text);
-    const auto width = std::max(96.0F, static_cast<float>(text.size()) * 7.0F + 20.0F);
-    constexpr float height = 30.0F;
-    output << "<rect x=\"" << comment.anchor.x << "\" y=\"" << comment.anchor.y
+    // A common UI font stack so the text looks the same in browsers and
+    // image viewers rather than falling back to a terminal/serif face.
+    constexpr const char* kFontStack = "'Noto Sans', 'Noto Sans CJK SC', 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', Helvetica, Arial, sans-serif";
+    std::vector<std::string> lines;
+    std::stringstream stream(comment.text);
+    for (std::string line; std::getline(stream, line);) lines.push_back(line);
+    if (lines.empty()) return;
+    const float size = comment.font_size;
+    const float padding = size * 0.45F;
+    const float line_height = size * 1.3F;
+    float width = 0.0F;
+    for (const auto& line : lines) width = std::max(width, annotation_text_width(line, size));
+    width += padding * 2.0F;
+    const float height = line_height * static_cast<float>(lines.size()) + padding * 2.0F - (line_height - size);
+    output << "<g>\n<rect x=\"" << comment.anchor.x << "\" y=\"" << comment.anchor.y
            << "\" width=\"" << width << "\" height=\"" << height
-           << "\" rx=\"4\" fill=\"" << color_hex(comment.background)
-           << "\" stroke=\"#FF0000\" stroke-width=\"1\"/>\n";
-    output << "<text x=\"" << comment.anchor.x + 10.0F << "\" y=\"" << comment.anchor.y + 20.0F
-           << "\" fill=\"" << color_hex(comment.foreground)
-           << "\" font-family=\"sans-serif\" font-size=\"14\">" << text << "</text>\n";
+           << "\" rx=\"" << size * 0.25F << "\" fill=\"" << color_hex(comment.background) << "\" fill-opacity=\"0.92\""
+           << " stroke=\"" << color_hex(comment.foreground) << "\" stroke-width=\"1.5\"/>\n";
+    output << "<text font-family=\"" << kFontStack << "\" font-size=\"" << size
+           << "\" fill=\"" << color_hex(comment.foreground) << "\">";
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        output << "<tspan x=\"" << comment.anchor.x + padding << "\" y=\""
+               << comment.anchor.y + padding + size * 0.85F + line_height * static_cast<float>(index) << "\">"
+               << xml_escape(lines[index]) << "</tspan>";
+    }
+    output << "</text>\n</g>\n";
 }
 
 }  // namespace
@@ -224,12 +253,10 @@ AnnotationExportResult export_annotation_svg(const AnnotationDocument& document,
         return {.success = false, .output_path = output_path, .format = "svg", .error = "failed to open export file"};
     }
 
-    output << "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" << size.width << "\" height=\""
+    output << "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"" << size.width << "\" height=\""
            << size.height << "\" viewBox=\"0 0 " << size.width << ' ' << size.height << "\">\n";
-    output << "<defs><marker id=\"pasteit-arrowhead\" markerWidth=\"10\" markerHeight=\"7\" refX=\"9\" refY=\"3.5\" orient=\"auto\">"
-              "<polygon points=\"0 0, 10 3.5, 0 7\" fill=\"#FF0000\"/></marker></defs>\n";
     output << "<image x=\"0\" y=\"0\" width=\"" << size.width << "\" height=\"" << size.height
-           << "\" href=\"data:" << mime_type_for(document.original_image()) << ";base64,"
+           << "\" xlink:href=\"data:" << mime_type_for(document.original_image()) << ";base64,"
            << base64_encode(bytes) << "\"/>\n";
     for (const auto& overlay : document.overlays()) {
         if (overlay.kind == AnnotationOverlayKind::Stroke) {

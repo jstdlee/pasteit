@@ -27,7 +27,7 @@ struct ChartSpec {
     std::vector<ChartSeries> series;
 };
 
-ChartSpec chart_from_graph(const GraphData& data, ChartKind kind);
+ChartSpec chart_from_graph(const GraphData& data, ChartKind kind, Aggregate aggregate = Aggregate::None);
 // x_column < 0 uses the row number. Rows are the table's visible rows. With an
 // aggregate, rows sharing an x value are reduced to one point per series
 // (x_column < 0 then reduces every row into a single point).

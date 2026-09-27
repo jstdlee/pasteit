@@ -760,7 +760,8 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
             state.spec = spec.value_or(ChartSpec{});
         } else {
             const auto data = parse_graph_data(state.series_source, state.header, state.convert_dates);
-            state.spec = data ? chart_from_graph(*data, kind) : ChartSpec{};
+            state.spec = data ? chart_from_graph(*data, kind, kAggregates[std::clamp(state.aggregate, 0, static_cast<int>(std::size(kAggregates)) - 1)])
+                              : ChartSpec{};
         }
         state.problem = chart_problem(state.spec);
     }
@@ -780,59 +781,74 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
             }
             if (active) ImGui::PopStyleColor();
         }
+        // Second row: X: [column]  Y: [series]  Agg: [operator].
+        const auto field_label = [&](const char* text, bool first) {
+            if (!first) ImGui::SameLine(0.0F, 16.0F);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(p.text_muted, "%s", text);
+            ImGui::SameLine(0.0F, 6.0F);
+        };
         if (state.table) {
             const auto& table = *state.table;
-            ImGui::SameLine(0.0F, 16.0F);
-            ImGui::SetNextItemWidth(160.0F);
+            field_label("X:", true);
+            ImGui::SetNextItemWidth(170.0F);
             const std::string x_preview = state.x_column < 0 ? tr(language, UiTextKey::RowNumber)
                                                              : table.headers[static_cast<std::size_t>(state.x_column)];
-            if (ImGui::BeginCombo((tr(language, UiTextKey::XAxis) + "##x").c_str(), x_preview.c_str())) {
+            if (ImGui::BeginCombo("##chart-x", x_preview.c_str())) {
                 if (ImGui::Selectable(tr(language, UiTextKey::RowNumber).c_str(), state.x_column < 0)) {
                     state.x_column = -1;
                     state.dirty = true;
                 }
                 for (std::size_t column = 0; column < table.headers.size(); ++column) {
-                    if (ImGui::Selectable(table.headers[column].c_str(), state.x_column == static_cast<int>(column))) {
+                    if (ImGui::Selectable((table.headers[column] + "##x" + std::to_string(column)).c_str(),
+                                          state.x_column == static_cast<int>(column))) {
                         state.x_column = static_cast<int>(column);
                         state.dirty = true;
                     }
                 }
                 ImGui::EndCombo();
             }
-            ImGui::SameLine();
-            if (ImGui::Button(tr(language, UiTextKey::YAxis).c_str())) ImGui::OpenPopup("chart-series");
-            if (ImGui::BeginPopup("chart-series")) {
+            field_label("Y:", false);
+            std::string y_preview;
+            for (std::size_t column = 0; column < state.y_columns.size(); ++column) {
+                if (!state.y_columns[column]) continue;
+                y_preview += (y_preview.empty() ? "" : ", ") + table.headers[column];
+            }
+            if (y_preview.empty()) y_preview = "(none)";
+            ImGui::SetNextItemWidth(200.0F);
+            if (ImGui::BeginCombo("##chart-y", y_preview.c_str())) {
                 for (std::size_t column = 0; column < table.headers.size(); ++column) {
                     if (table.stats[column].type != ColumnType::Number) continue;
                     bool selected = state.y_columns[column];
-                    if (ImGui::Checkbox(table.headers[column].c_str(), &selected)) {
+                    if (ImGui::Checkbox((table.headers[column] + "##y" + std::to_string(column)).c_str(), &selected)) {
                         state.y_columns[column] = selected;
                         state.dirty = true;
                     }
                 }
-                ImGui::EndPopup();
-            }
-            if (static_cast<ChartKind>(state.kind) != ChartKind::Histogram) {
-                // Y operator: reduce rows sharing an x value (sum, avg, min, max, count).
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(110.0F);
-                const auto current = kAggregates[std::clamp(state.aggregate, 0, static_cast<int>(std::size(kAggregates)) - 1)];
-                if (ImGui::BeginCombo("##chart-aggregate", ("Y: " + aggregate_label(current, language)).c_str())) {
-                    for (int index = 0; index < static_cast<int>(std::size(kAggregates)); ++index) {
-                        if (ImGui::Selectable(aggregate_label(kAggregates[index], language).c_str(), state.aggregate == index)) {
-                            state.aggregate = index;
-                            state.dirty = true;
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(language, UiTextKey::Operator).c_str());
+                ImGui::EndCombo();
             }
         } else {
-            ImGui::SameLine(0.0F, 16.0F);
             state.dirty |= ImGui::Checkbox(tr(language, UiTextKey::HeaderRow).c_str(), &state.header);
             ImGui::SameLine();
             state.dirty |= ImGui::Checkbox(tr(language, UiTextKey::ConvertDates).c_str(), &state.convert_dates);
+        }
+        if (static_cast<ChartKind>(state.kind) != ChartKind::Histogram) {
+            // Agg reduces rows sharing an X value; with X = row number it
+            // reduces all rows to one value per Y column.
+            field_label("Agg:", false);
+            ImGui::SetNextItemWidth(110.0F);
+            const int count = static_cast<int>(std::size(kAggregates));
+            state.aggregate = std::clamp(state.aggregate, 0, count - 1);
+            if (ImGui::BeginCombo("##chart-aggregate", aggregate_label(kAggregates[state.aggregate], language).c_str())) {
+                for (int index = 0; index < count; ++index) {
+                    if (ImGui::Selectable(aggregate_label(kAggregates[index], language).c_str(), state.aggregate == index)) {
+                        state.aggregate = index;
+                        state.dirty = true;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(language, UiTextKey::Operator).c_str());
         }
         const auto available = ImGui::GetContentRegionAvail();
         const float chart_height = std::max(160.0F, available.y - footer_height() - ImGui::GetFrameHeightWithSpacing() - 8.0F);

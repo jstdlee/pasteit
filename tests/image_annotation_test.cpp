@@ -1,4 +1,8 @@
+#include "annotation/annotation_export.hpp"
 #include "annotation/image_annotation.hpp"
+
+#include <fstream>
+#include <iterator>
 
 #include <cassert>
 #include <filesystem>
@@ -17,7 +21,40 @@ bool is_white(const pasteit::AnnotationColor& color) {
 
 }  // namespace
 
+void svg_export_draws_every_overlay() {
+    using namespace pasteit;
+    const auto dir = std::filesystem::temp_directory_path() / "pasteit-annotation-svg-test";
+    std::filesystem::create_directories(dir);
+    const auto image = dir / "shot.png";
+    // PNG signature + IHDR with a 40 x 30 size is all the exporter reads.
+    const unsigned char png[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n', 0, 0, 0, 13, 'I', 'H', 'D', 'R',
+                                 0, 0, 0, 40, 0, 0, 0, 30, 8, 6, 0, 0, 0};
+    std::ofstream(image, std::ios::binary).write(reinterpret_cast<const char*>(png), sizeof(png));
+    AnnotationDocument doc{image};
+    doc.add_circle({2, 2}, {12, 8});
+    doc.add_stroke({.tool = AnnotationTool::Arrow, .points = {{1, 1}, {20, 20}}, .width = 2, .color = {40, 110, 230, 255}});
+    doc.add_comment("Fix <this>\n\xE4\xBD\xA0\xE5\xA5\xBD", {5, 5}, {40, 170, 70, 255}, 20.0F);
+    doc.add_comment("", {0, 0}, {0, 0, 0, 255}, 20.0F);  // empty text is ignored
+    assert(doc.comments().size() == 1 && doc.comments().front().font_size == 20.0F);
+    const auto out = dir / "out.svg";
+    const auto result = export_annotation_svg(doc, out);
+    assert(result.success);
+    std::ifstream in(out);
+    const std::string svg{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    assert(svg.find("width=\"40\" height=\"30\"") != std::string::npos);
+    assert(svg.find("<ellipse cx=\"7\" cy=\"5\" rx=\"5\" ry=\"3\"") != std::string::npos);
+    assert(svg.find("<polygon") != std::string::npos && svg.find("#286EE6") != std::string::npos);  // arrowhead in stroke colour
+    assert(svg.find("Fix &lt;this&gt;</tspan>") != std::string::npos);
+    assert(svg.find("\xE4\xBD\xA0\xE5\xA5\xBD</tspan>") != std::string::npos);
+    assert(svg.find("'Noto Sans'") != std::string::npos && svg.find("sans-serif") != std::string::npos);
+    assert(svg.find("xlink:href=\"data:image/png;base64,") != std::string::npos);
+    // Wide characters count as a full em.
+    assert(annotation_text_width("\xE4\xBD\xA0\xE5\xA5\xBD", 10.0F) == 20.0F);
+    std::filesystem::remove_all(dir);
+}
+
 int main() {
+    svg_export_draws_every_overlay();
     using namespace pasteit;
 
     {

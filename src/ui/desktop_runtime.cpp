@@ -699,6 +699,8 @@ int run_desktop_runtime() {
     ImageAnnotationPanelState annotation_panel;
     annotation_panel.export_directory = settings.annotation.save_directory;
     annotation_panel.export_format = settings.annotation.export_format;
+    annotation_panel.open_path = [&platform](const std::filesystem::path& path) { return platform->open_path(path); };
+    annotation_panel.copy_text = [&platform](std::string_view text) { (void)platform->copy_text(text); };
     std::string active_download_panel_job_id;
     DesktopDecisionBatch active_batch;
     PopupModel popup_model;
@@ -1199,6 +1201,9 @@ int run_desktop_runtime() {
                 annotation_panel.export_directory = settings.annotation.save_directory;
                 annotation_panel.export_format = settings.annotation.export_format;
                 const auto source_ref = renderer.payload.empty() ? renderer.source : renderer.payload;
+                annotation_panel.output_path.clear();
+                annotation_panel.last_export_path.clear();
+                annotation_panel.text_editing = false;
                 if (const auto original = write_temporary_annotation_image(source_ref)) {
                     annotation_panel.document = AnnotationDocument{*original};
                 } else {

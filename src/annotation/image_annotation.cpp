@@ -1,5 +1,8 @@
 #include "annotation/image_annotation.hpp"
 
+#include <algorithm>
+#include <cctype>
+
 #include <utility>
 
 namespace pasteit {
@@ -61,6 +64,37 @@ void AnnotationDocument::add_rectangle(AnnotationPoint top_left, AnnotationPoint
 
 void AnnotationDocument::add_arrow(AnnotationPoint start, AnnotationPoint end, float width) {
     add_stroke(stroke_from(AnnotationTool::Arrow, {start, end}, width));
+}
+
+void AnnotationDocument::add_circle(AnnotationPoint corner, AnnotationPoint opposite, float width) {
+    add_stroke(stroke_from(AnnotationTool::Circle, {corner, opposite}, width));
+}
+
+void AnnotationDocument::add_comment(std::string text, AnnotationPoint anchor, AnnotationColor color, float font_size) {
+    if (text.empty()) return;
+    overlays_.push_back(AnnotationOverlay{
+        .kind = AnnotationOverlayKind::Comment,
+        .stroke = {},
+        .comment = AnnotationComment{
+            .text = std::move(text),
+            .anchor = anchor,
+            .foreground = color,
+            .background = annotation_white(),
+            .font_size = std::clamp(font_size, 8.0F, 96.0F),
+        },
+    });
+}
+
+float annotation_text_width(std::string_view line, float font_size) {
+    float ems = 0.0F;
+    for (std::size_t index = 0; index < line.size();) {
+        const auto byte = static_cast<unsigned char>(line[index]);
+        const std::size_t length = byte < 0x80 ? 1 : byte >= 0xF0 ? 4 : byte >= 0xE0 ? 3 : byte >= 0xC0 ? 2 : 1;
+        // Three- and four-byte UTF-8 sequences are mostly CJK or emoji: full width.
+        ems += length >= 3 ? 1.0F : std::isupper(byte) ? 0.66F : 0.56F;
+        index += length;
+    }
+    return ems * font_size;
 }
 
 void AnnotationDocument::add_comment(std::string text, AnnotationPoint anchor) {
