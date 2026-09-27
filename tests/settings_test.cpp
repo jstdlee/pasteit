@@ -123,6 +123,17 @@ int main() {
     assert(store.save(settings, error));
     assert(std::fabs(store.load().settings.window_opacity - 1.0F) < 0.001F);
 
+    // The retired autojev default (port 8000) moves to the systemone service.
+    settings.window_opacity = 1.0F;
+    settings.djev.endpoint = "http://127.0.0.1:8000/v1/systemone";
+    settings.djev.model_id = "autojev";
+    assert(store.save(settings, error));
+    const auto migrated = store.load().settings.djev;
+    assert(migrated.endpoint == "http://127.0.0.1:8011" && migrated.model_id == "typed-decisions");
+    settings.djev.endpoint = "http://10.0.0.5:8000/v1/systemone";
+    assert(store.save(settings, error));
+    assert(store.load().settings.djev.endpoint == "http://10.0.0.5:8000/v1/systemone");
+
     std::ofstream(root / "settings.json", std::ios::trunc) << "{broken";
     const auto malformed = store.load();
     assert(!malformed.warning.empty());

@@ -135,9 +135,8 @@ void configure_independent_viewports(ImGuiIO& io, ImGuiStyle& style) {
 ImGuiWindowClass independent_window_class() {
     ImGuiWindowClass window_class;
     window_class.ViewportFlagsOverrideSet |= ImGuiViewportFlags_NoAutoMerge;
-    // The root popup floats above other apps; sub-windows must float too or
-    // they open behind it.
-    window_class.ViewportFlagsOverrideSet |= ImGuiViewportFlags_TopMost;
+    // Sub-windows are not TopMost: the platform layer makes each one owned by
+    // (transient for) the popup, which keeps it in front of the popup only.
     return window_class;
 }
 

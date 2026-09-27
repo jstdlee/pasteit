@@ -520,6 +520,7 @@ int run_desktop_runtime() {
 #if defined(_WIN32)
     std::unique_ptr<PlatformServices> platform = std::make_unique<WindowsDesktopServices>();
 #else
+    install_nonfatal_x11_error_handler(std::getenv("PASTEIT_DIAGNOSTICS") != nullptr);
     std::unique_ptr<PlatformServices> platform = std::make_unique<LinuxDesktopServices>();
 #endif
     DownloadManager download_manager({}, {.keep_part_files_on_cancel = settings.downloads.keep_part_files});
@@ -712,6 +713,12 @@ int run_desktop_runtime() {
     PromptTemplatesPanelModel prompt_panel_model = build_prompt_templates_panel_model(settings.prompt_templates);
     std::string decision_status;
     std::string clipboard_preview_text;
+    // Editable copy of the newest text item shown in the preview card; an
+    // applied edit becomes a new clipboard item and the actions re-rank.
+    std::string preview_edit_text;
+    std::string preview_edit_source;
+    bool preview_editable = false;
+    bool preview_edit_apply_requested = false;
     DecisionState decision_state = DecisionState::Idle;
     SettingsPage settings_page = SettingsPage::General;
     bool fit_popup_pending = false;
@@ -908,6 +915,17 @@ int run_desktop_runtime() {
                });
     };
 
+    const auto persist_clipboard_history = [&] {
+        const auto saved = clipboard_history_store.save(clipboard_store.items_newest_first(50), clipboard_store.next_ref());
+        if (saved.success) {
+            std::string cleanup_error;
+            (void)clipboard_history_store.cleanup_orphan_blobs(saved, cleanup_error);
+            clipboard_store.restore(saved.retained_items, saved.next_ref);
+        } else if (diagnostics) {
+            std::cerr << "PasteIt clipboard history save failed: " << saved.error << '\n';
+        }
+    };
+
     const auto capture_clipboard = [&](bool force) {
         platform->process_events();
         const auto now = std::chrono::steady_clock::now();
@@ -940,14 +958,7 @@ int run_desktop_runtime() {
                 }
             }
         }
-        const auto saved = clipboard_history_store.save(clipboard_store.items_newest_first(50), clipboard_store.next_ref());
-        if (saved.success) {
-            std::string cleanup_error;
-            (void)clipboard_history_store.cleanup_orphan_blobs(saved, cleanup_error);
-            clipboard_store.restore(saved.retained_items, saved.next_ref);
-        } else if (diagnostics) {
-            std::cerr << "PasteIt clipboard history save failed: " << saved.error << '\n';
-        }
+        persist_clipboard_history();
     };
 
     const auto request_model_list = [&] {
@@ -1009,8 +1020,8 @@ int run_desktop_runtime() {
         return build_desktop_decision(input);
     };
 
-    const auto open_popup = [&] {
-        capture_clipboard(true);
+    const auto open_popup = [&](bool refresh_only = false) {
+        if (!refresh_only) capture_clipboard(true);
         target_context = platform->focused_context();
         if (!settings.default_text_directory.empty()) {
             std::error_code error;
@@ -1048,9 +1059,16 @@ int run_desktop_runtime() {
         if (!active_batch.request.snapshot.clipboard_items.empty() &&
             active_batch.request.snapshot.clipboard_items.front().kind != ContentKind::Image) {
             // The stored preview is flattened to one line; show real rows.
-            clipboard_preview_text = utf8_prefix_bytes(
-                clipboard_store.read_text(active_batch.request.snapshot.clipboard_items.front().ref), 4096);
+            auto full_text = clipboard_store.read_text(active_batch.request.snapshot.clipboard_items.front().ref);
+            clipboard_preview_text = utf8_prefix_bytes(full_text, 4096);
+            constexpr std::size_t kMaxEditableBytes = 256 * 1024;
+            preview_editable = full_text.size() <= kMaxEditableBytes;
+            preview_edit_text = preview_editable ? std::move(full_text) : std::string{};
+        } else {
+            preview_editable = false;
+            preview_edit_text.clear();
         }
+        preview_edit_source = preview_edit_text;
         prompt_parameter_dialog = {};
         execution_status.clear();
         last_execution.reset();
@@ -1078,13 +1096,32 @@ int run_desktop_runtime() {
             }));
         }
         fit_popup_pending = true;
-        glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_TRUE);
+        if (refresh_only) return;
+        // Normal stacking: the popup is raised and focused when shown but does
+        // not stay above other applications.
         glfwRestoreWindow(window);
         glfwShowWindow(window);
         glfwPollEvents();
         position_popup(window);
         glfwFocusWindow(window);
         popup_visible = true;
+    };
+
+    const auto apply_preview_edit = [&]() -> bool {
+        if (!preview_editable || preview_edit_text == preview_edit_source) return false;
+        ClipboardData edited;
+        edited.mime_types = {"text/plain;charset=utf-8", "text/plain"};
+        edited.bytes.resize(preview_edit_text.size());
+        std::transform(preview_edit_text.begin(), preview_edit_text.end(), edited.bytes.begin(),
+                       [](char ch) { return static_cast<std::byte>(ch); });
+        edited.kind = detect_content(edited.mime_types, preview_edit_text).kind;
+        edited.source_app = "PasteIt";
+        edited.captured_at_ms = current_time_ms();
+        (void)clipboard_store.put(edited);
+        persist_clipboard_history();
+        (void)platform->publish_text(preview_edit_text);
+        open_popup(true);
+        return true;
     };
 
     const auto publish_clipboard_result = [&](const ExecutionResult& result) {
@@ -1654,6 +1691,12 @@ int run_desktop_runtime() {
         ImGui::NewFrame();
         const char* locale_value=std::getenv("LANG");
         const auto ui_language=resolve_language(settings.language,locale_value==nullptr?std::string_view{}:std::string_view{locale_value});
+        // An applied preview edit rebuilds active_batch; do it before any UI
+        // holds pointers into the batch.
+        if (preview_edit_apply_requested) {
+            preview_edit_apply_requested = false;
+            if (apply_preview_edit()) execution_status = tr(ui_language, UiTextKey::PreviewEditApplied);
+        }
         set_active_language(ui_language);
         std::optional<std::string> activated_action;
         std::optional<PromptVariables> activated_prompt_variables;
@@ -1746,9 +1789,12 @@ int run_desktop_runtime() {
         const auto preview = current_item == nullptr ? std::string{}
             : preview_excerpt(clipboard_preview_text.empty() ? current_item->preview : clipboard_preview_text, 3);
         const float line_height = ImGui::GetTextLineHeight();
-        const float preview_lines_height = std::min(line_height * 3.0F + ImGui::GetStyle().ItemSpacing.y,
-            std::max(ImGui::GetFrameHeight(), ImGui::CalcTextSize(preview.c_str(), nullptr, false,
-                                                      ImGui::GetContentRegionAvail().x - 24.0F - 80.0F).y));
+        const float preview_lines_height = preview_editable && current_item != nullptr && preview_texture.id == 0
+            // The editable area keeps four rows so there is room to type; it scrolls beyond that.
+            ? line_height * 4.0F + ImGui::GetStyle().ItemSpacing.y
+            : std::min(line_height * 3.0F + ImGui::GetStyle().ItemSpacing.y,
+                  std::max(ImGui::GetFrameHeight(), ImGui::CalcTextSize(preview.c_str(), nullptr, false,
+                                                            ImGui::GetContentRegionAvail().x - 24.0F - 80.0F).y));
         const float preview_height = preview_texture.id != 0
             ? std::min(120.0F, static_cast<float>(preview_texture.height)) + 20.0F
             : preview_lines_height + 20.0F;
@@ -1781,26 +1827,48 @@ int run_desktop_runtime() {
                 }
             }
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + text_x);
-            // Leave room for the Copy / Ask LLM buttons at the right.
+            // Leave room for the Copy / Ask LLM (and Apply / Revert) buttons at the right.
+            const bool edited = preview_editable && preview_edit_text != preview_edit_source;
             const float button_room = (ImGui::GetFrameHeight() + 6.0F) * 2.0F + 8.0F;
-            ImGui::PushTextWrapPos(ImGui::GetWindowContentRegionMax().x - button_room);
-            ImGui::BeginGroup();
-            const ImVec2 clip_min = ImGui::GetCursorScreenPos();
-            ImGui::PushClipRect(clip_min, ImVec2(clip_min.x + ImGui::GetContentRegionAvail().x - button_room, clip_min.y + preview_lines_height), true);
-            ImGui::TextUnformatted(preview.c_str());
-            ImGui::PopClipRect();
-            ImGui::EndGroup();
-            ImGui::PopTextWrapPos();
+            if (preview_editable) {
+                // The preview is an editable textarea; Ctrl+Enter (or leaving
+                // the field) applies the edit as a new clipboard item.
+                ImGui::PushStyleColor(ImGuiCol_FrameBg, theme_palette.surface);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0F, 0.0F));
+                // Multiline ImGui input: Enter adds a line, Ctrl+Enter validates.
+                (void)input_text_string("##preview-edit", preview_edit_text, true, 0, preview_lines_height, -button_room);
+                const bool left_after_edit = ImGui::IsItemDeactivatedAfterEdit();
+                if (ImGui::IsItemHovered() && !ImGui::IsItemActive()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::EditHint).c_str());
+                ImGui::PopStyleVar();
+                ImGui::PopStyleColor();
+                if (left_after_edit) preview_edit_apply_requested = true;
+            } else {
+                ImGui::PushTextWrapPos(ImGui::GetWindowContentRegionMax().x - button_room);
+                ImGui::BeginGroup();
+                const ImVec2 clip_min = ImGui::GetCursorScreenPos();
+                ImGui::PushClipRect(clip_min, ImVec2(clip_min.x + ImGui::GetContentRegionAvail().x - button_room, clip_min.y + preview_lines_height), true);
+                ImGui::TextUnformatted(preview.c_str());
+                ImGui::PopClipRect();
+                ImGui::EndGroup();
+                ImGui::PopTextWrapPos();
+            }
             // Copy and Ask LLM live in the preview's top-right corner.
             const auto custom_action = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
                 [](const ActionInstance& action) { return action.kind == ActionKind::CustomPrompt && action.enabled; });
             const float buttons_width = (ImGui::GetFrameHeight() + 6.0F) * (custom_action != active_batch.catalog.actions.end() ? 2.0F : 1.0F);
             ImGui::SetCursorPos(ImVec2(ImGui::GetWindowContentRegionMax().x - buttons_width, ImGui::GetStyle().WindowPadding.y));
-            if (icon_button("preview-copy", icon::kCopy, tr(ui_language, UiTextKey::CopyClipboardText))) {
+            if (edited) {
+                // While an edit is pending the corner offers Apply / Revert instead.
+                ImGui::SetCursorPos(ImVec2(ImGui::GetWindowContentRegionMax().x - (ImGui::GetFrameHeight() + 6.0F) * 2.0F,
+                                           ImGui::GetStyle().WindowPadding.y));
+                if (icon_button("preview-apply", icon::kCheck, tr(ui_language, UiTextKey::ApplyEdit))) preview_edit_apply_requested = true;
+                ImGui::SameLine(0.0F, 6.0F);
+                if (icon_button("preview-revert", icon::kUndo, tr(ui_language, UiTextKey::RevertEdit))) preview_edit_text = preview_edit_source;
+            } else if (icon_button("preview-copy", icon::kCopy, tr(ui_language, UiTextKey::CopyClipboardText))) {
                 platform->copy_text(clipboard_store.read_text(current_item->ref));
                 execution_status = tr(ui_language, UiTextKey::Copied);
             }
-            if (custom_action != active_batch.catalog.actions.end()) {
+            if (!edited && custom_action != active_batch.catalog.actions.end()) {
                 ImGui::SameLine(0.0F, 6.0F);
                 if (icon_button("preview-ask", icon::kAi, tr(ui_language, UiTextKey::AskLlmTitle))) activated_action = custom_action->id;
             }
@@ -1841,10 +1909,10 @@ int run_desktop_runtime() {
                                                            : tr(ui_language,UiTextKey::NoRankedActions)).c_str());
         } else {
             const bool typing = ImGui::GetIO().WantTextInput;
-            if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
+            if (!typing && ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
                 selected_row = std::max(0, selected_row - 1);
             }
-            if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
+            if (!typing && ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
                 selected_row = std::min(static_cast<int>(popup_model.rows.size()) - 1, selected_row + 1);
             }
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0F, 4.0F));
@@ -2131,7 +2199,7 @@ int run_desktop_runtime() {
                     const auto language_copy = ui_language;
                     pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
                         OpenAiCompatibleClient client;
-                        const auto result = client.generate({.request_id="settings-test",.endpoint=provider.endpoint,.api_key=provider.api_key,.model_id=provider.model_id,.system_message="Return OK.",.user_message="OK",.temperature=0.0,.timeout=std::chrono::milliseconds{5000}});
+                        const auto result = client.generate({.request_id="settings-test",.endpoint=provider.endpoint,.api_key=provider.api_key,.model_id=provider.model_id,.system_message="Return OK.",.user_message="OK",.temperature=0.0,.timeout=std::chrono::milliseconds{20000}});
                         return result.ok ? tr(language_copy,UiTextKey::GeneralLlmTestSucceeded) : tr(language_copy,UiTextKey::GeneralLlmTestFailed) + result.error;
                     }));
                 }
@@ -2645,6 +2713,8 @@ int run_desktop_runtime() {
                 }
             }
             ImGui::End();
+            if (diagnostics && (!open || close_confirmation)) {
+            }
             if (!open || close_confirmation) file_confirmation.reset();
         }
 

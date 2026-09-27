@@ -485,7 +485,7 @@ std::optional<std::string> recv_all(int fd, std::string& error) {
 
     if (fd < 0) {
         response.valid = false;
-        response.error = std::string{"Djev connection failed: "} + std::strerror(errno);
+        response.error = "Djev connection to " + parsed->host + ":" + parsed->port + " failed: " + std::strerror(errno);
         return response;
     }
 

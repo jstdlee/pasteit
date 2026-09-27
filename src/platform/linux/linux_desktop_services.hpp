@@ -11,6 +11,11 @@ namespace pasteit {
 std::optional<std::filesystem::path> browser_open_path(const std::filesystem::path& path,
                                                       const std::filesystem::path& home_directory);
 
+// Xlib's default error handler exits the process; windows can disappear
+// between a query and its reply (e.g. a closing dialog that had focus), so
+// PasteIt logs X errors instead. Scoped traps still override it locally.
+void install_nonfatal_x11_error_handler(bool log_errors);
+
 // _NET_WM_WINDOW_OPACITY value for 0..1; never wraps to 0 at full opacity.
 unsigned long x11_opacity_cardinal(float opacity);
 

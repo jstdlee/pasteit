@@ -13,6 +13,7 @@
 #include <cstdint>
 #else
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -255,21 +256,56 @@ bool write_pipe(int fd, std::string_view value) {
     return true;
 }
 
+bool has_header(const HttpRequest& request, std::string_view name) {
+    for (const auto& [key, value] : request.headers) {
+        if (key.size() == name.size() &&
+            std::equal(key.begin(), key.end(), name.begin(),
+                       [](char a, char b) { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string make_temp_file(const char* prefix) {
+    std::string path = std::string{"/tmp/"} + prefix + "-XXXXXX";
+    const int fd = ::mkstemp(path.data());
+    if (fd < 0) return {};
+    ::close(fd);
+    return path;
+}
+
+std::string read_whole_file(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+}
+
 HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_view method = "POST") {
     HttpResponse response;
-    char body_template[] = "/tmp/pasteit-http-body-XXXXXX";
-    const int body_fd = ::mkstemp(body_template);
-    if (body_fd < 0) {
-        response.transport_error = "could not create temporary HTTP request body";
+    // Request body, response body and curl's stderr each get their own file:
+    // sharing one would let --output truncate the upload.
+    const std::string body_path = request.body.empty() ? std::string{} : make_temp_file("pasteit-http-request");
+    const std::string output_path = make_temp_file("pasteit-http-response");
+    const std::string error_path = make_temp_file("pasteit-http-error");
+    const auto cleanup = [&] {
+        for (const auto* path : {&body_path, &output_path, &error_path}) {
+            if (!path->empty()) ::unlink(path->c_str());
+        }
+    };
+    if ((!request.body.empty() && body_path.empty()) || output_path.empty() || error_path.empty()) {
+        cleanup();
+        response.transport_error = "could not create temporary HTTP files";
         return response;
     }
-    const std::string body_path = body_template;
-    bool body_ok = write_pipe(body_fd, request.body);
-    ::close(body_fd);
-    if (!body_ok) {
-        ::unlink(body_path.c_str());
-        response.transport_error = "could not write temporary HTTP request body";
-        return response;
+    if (!body_path.empty()) {
+        const int body_fd = ::open(body_path.c_str(), O_WRONLY | O_TRUNC);
+        const bool body_ok = body_fd >= 0 && write_pipe(body_fd, request.body);
+        if (body_fd >= 0) ::close(body_fd);
+        if (!body_ok) {
+            cleanup();
+            response.transport_error = "could not write temporary HTTP request body";
+            return response;
+        }
     }
 
     int input_pipe[2]{-1, -1};
@@ -277,23 +313,31 @@ HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_vie
     if (::pipe(input_pipe) != 0 || ::pipe(output_pipe) != 0) {
         for (const int fd : input_pipe) if (fd >= 0) ::close(fd);
         for (const int fd : output_pipe) if (fd >= 0) ::close(fd);
-        ::unlink(body_path.c_str());
+        cleanup();
         response.transport_error = "could not create curl adapter pipes";
         return response;
     }
 
     const auto timeout_seconds = std::max<std::int64_t>(1, (request.timeout.count() + 999) / 1000);
     std::vector<std::string> arguments{
-        "curl", "--silent", "--show-error", "--location", "--max-time", std::to_string(timeout_seconds),
-        "--output", body_path, "--write-out", "%{http_code}", "--proto", "=http,https,file", "--config", "-",
-        "--proto-redir", "=http,https", request.url,
+        "curl", "--silent", "--show-error", "--max-time", std::to_string(timeout_seconds),
+        "--output", output_path, "--stderr", error_path,
+        "--write-out", "%{http_code}\\n%{content_type}", "--proto", "=http,https,file", "--config", "-",
     };
+    if (request.follow_redirects || method == "GET") {
+        arguments.insert(arguments.end(), {"--location", "--proto-redir", "=http,https"});
+    }
+    arguments.push_back(request.url);
     std::string config = "request = \"" + std::string{method} + "\"\n";
+    if (!has_header(request, "Accept")) config += "header = \"Accept: application/json\"\n";
+    if (!request.body.empty() && !has_header(request, "Content-Type")) {
+        config += "header = \"Content-Type: application/json\"\n";
+    }
     for (const auto& [name, value] : request.headers) {
         config += "header = \"" + curl_config_quote(name + ": " + value) + "\"\n";
     }
-    if (!request.body.empty()) {
-        config += "data-binary = @" + curl_config_quote(body_path) + "\n";
+    if (!body_path.empty()) {
+        config += "data-binary = \"@" + curl_config_quote(body_path) + "\"\n";
     }
 
     posix_spawn_file_actions_t actions;
@@ -314,36 +358,41 @@ HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_vie
     if (spawn_error != 0) {
         ::close(input_pipe[1]);
         ::close(output_pipe[0]);
-        ::unlink(body_path.c_str());
+        cleanup();
         response.transport_error = "HTTPS transport requires libcurl or the curl executable";
         return response;
     }
 
     const bool request_written = write_pipe(input_pipe[1], config);
     ::close(input_pipe[1]);
-    std::string status_text;
-    char buffer[64]{};
+    std::string write_out;
+    char buffer[256]{};
     for (;;) {
         const auto count = ::read(output_pipe[0], buffer, sizeof(buffer));
         if (count == 0) break;
         if (count < 0) {
-            status_text.clear();
+            if (errno == EINTR) continue;
             break;
         }
-        status_text.append(buffer, static_cast<std::size_t>(count));
+        write_out.append(buffer, static_cast<std::size_t>(count));
     }
     ::close(output_pipe[0]);
     int status = 0;
-    (void)::waitpid(pid, &status, 0);
+    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
     if (!request_written || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        ::unlink(body_path.c_str());
-        response.transport_error = "curl HTTPS request failed";
+        std::string detail = read_whole_file(error_path);
+        while (!detail.empty() && (detail.back() == '\n' || detail.back() == '\r')) detail.pop_back();
+        cleanup();
+        response.transport_error = detail.empty()
+            ? "curl request failed (exit " + std::to_string(WIFEXITED(status) ? WEXITSTATUS(status) : -1) + ")"
+            : detail;
         return response;
     }
-    if (status_text.size() >= 3) response.status = std::atoi(status_text.substr(status_text.size() - 3).c_str());
-    std::ifstream body(body_path, std::ios::binary);
-    response.body.assign(std::istreambuf_iterator<char>{body}, std::istreambuf_iterator<char>{});
-    ::unlink(body_path.c_str());
+    const auto newline = write_out.find('\n');
+    response.status = std::atoi(write_out.substr(0, newline).c_str());
+    if (newline != std::string::npos) response.content_type = write_out.substr(newline + 1);
+    response.body = read_whole_file(output_path);
+    cleanup();
     if (request.max_body_bytes > 0 && response.body.size() > request.max_body_bytes) {
         response.body.resize(request.max_body_bytes);
         response.truncated = true;

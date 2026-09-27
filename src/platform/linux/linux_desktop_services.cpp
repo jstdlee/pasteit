@@ -2,6 +2,7 @@
 #include "platform/linux/linux_recent_paths.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <cmath>
 #include <cerrno>
 #include <chrono>
@@ -312,6 +313,30 @@ void LinuxDesktopServices::keep_above_popup(std::uint64_t window_id) {
     XCloseDisplay(display);
 #else
     (void)window_id;
+#endif
+}
+
+#if defined(PASTEIT_HAS_X11)
+namespace {
+bool log_x11_errors = false;
+int nonfatal_x11_error(Display* display, XErrorEvent* event) {
+    if (log_x11_errors && event != nullptr) {
+        char text[128]{};
+        XGetErrorText(display, event->error_code, text, sizeof(text));
+        std::cerr << "PasteIt ignored X error: " << text << " (request " << static_cast<int>(event->request_code)
+                  << ", resource 0x" << std::hex << event->resourceid << std::dec << ")\n";
+    }
+    return 0;
+}
+}  // namespace
+#endif
+
+void install_nonfatal_x11_error_handler(bool log_errors) {
+#if defined(PASTEIT_HAS_X11)
+    log_x11_errors = log_errors;
+    XSetErrorHandler(nonfatal_x11_error);
+#else
+    (void)log_errors;
 #endif
 }
 

@@ -102,6 +102,15 @@ void normalize_settings(AppSettings& settings) {
         }
     }
     for (auto& prompt : settings.prompt_templates) prompt.temperature = std::clamp(prompt.temperature, 0.0, 2.0);
+    // The retired autojev service (port 8000) was the saved default before the
+    // structured systemone endpoint; move untouched old defaults forward.
+    if ((settings.djev.endpoint == "http://127.0.0.1:8000/v1/systemone" ||
+         settings.djev.endpoint == "http://127.0.0.1:8000/v1/autojev" ||
+         settings.djev.endpoint == "http://127.0.0.1:8000") &&
+        (settings.djev.model_id == "autojev" || settings.djev.model_id == "jev-latest")) {
+        settings.djev.endpoint = "http://127.0.0.1:8011";
+        settings.djev.model_id = "typed-decisions";
+    }
     if (settings.schema_version < 1) settings.schema_version = 1;
     if (!is_qr_error_correction(settings.renderers.qr_error_correction)) {
         settings.renderers.qr_error_correction = "M";
