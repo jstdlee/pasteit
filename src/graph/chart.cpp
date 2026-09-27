@@ -1,6 +1,7 @@
 #include "graph/chart.hpp"
 
 #include <algorithm>
+#include <numeric>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -35,10 +36,20 @@ ChartSpec chart_from_graph(const GraphData& data, ChartKind kind) {
 }
 
 std::optional<ChartSpec> chart_from_table(const TableData& table, const std::vector<std::size_t>& rows, int x_column,
-                                          const std::vector<std::size_t>& y_columns, ChartKind kind) {
+                                          const std::vector<std::size_t>& y_columns, ChartKind kind, Aggregate aggregate) {
     if (rows.empty() || y_columns.empty()) return std::nullopt;
     for (const auto column : y_columns) {
         if (column >= table.headers.size()) return std::nullopt;
+    }
+    if (aggregate != Aggregate::None && kind != ChartKind::Histogram) {
+        const auto grouped = aggregate_table(table, rows, x_column, y_columns, aggregate);
+        std::vector<std::size_t> grouped_rows(grouped.rows.size());
+        std::iota(grouped_rows.begin(), grouped_rows.end(), std::size_t{0});
+        std::vector<std::size_t> value_columns(y_columns.size());
+        std::iota(value_columns.begin(), value_columns.end(), std::size_t{1});
+        auto spec = chart_from_table(grouped, grouped_rows, 0, value_columns, kind);
+        if (spec && x_column < 0) spec->title = aggregate_name(aggregate);
+        return spec;
     }
     if (kind == ChartKind::Histogram) {
         std::vector<double> values;

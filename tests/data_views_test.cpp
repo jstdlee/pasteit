@@ -104,7 +104,45 @@ void markdown() {
 
 }  // namespace
 
+void aggregates_and_formulas() {
+    using namespace pasteit;
+    auto table = parse_delimited_table("region,month,sales,cost\nnorth,2,10,4\nsouth,1,5,1\nnorth,1,30,x\nsouth,2,,2\n", ',', true);
+    assert(table);
+    const std::vector<std::size_t> rows{0, 1, 2, 3};
+
+    auto sum = aggregate_table(*table, rows, 0, {2, 3}, Aggregate::Sum);
+    assert((sum.headers == std::vector<std::string>{"region", "sum(sales)", "sum(cost)"}));
+    assert(sum.rows.size() == 2);
+    assert((sum.rows[0] == std::vector<std::string>{"north", "40", "4"}));  // "x" skipped
+    assert((sum.rows[1] == std::vector<std::string>{"south", "5", "3"}));
+    assert(aggregate_table(*table, rows, 0, {2}, Aggregate::Avg).rows[0][1] == "20");
+    assert(aggregate_table(*table, rows, 0, {2}, Aggregate::Min).rows[0][1] == "10");
+    assert(aggregate_table(*table, rows, 0, {2}, Aggregate::Max).rows[0][1] == "30");
+    assert(aggregate_table(*table, rows, 0, {3}, Aggregate::Count).rows[0][1] == "2");  // filled cells, text included
+    // Numeric group keys sort ascending; missing group column means one group.
+    const auto by_month = aggregate_table(*table, rows, 1, {2}, Aggregate::Sum);
+    assert(by_month.rows[0][0] == "1" && by_month.rows[0][1] == "35" && by_month.rows[1][1] == "10");
+    const auto all = aggregate_table(*table, rows, -1, {2}, Aggregate::Avg);
+    assert(all.rows.size() == 1 && all.rows[0][1] == "15");
+
+    std::string error;
+    assert(add_formula_column(*table, {.left = 2, .op = FormulaOp::Subtract, .right_column = 3}, error));
+    assert(table->headers.back() == "sales - cost");
+    assert(table->rows[0].back() == "6" && table->rows[2].back().empty() && table->rows[3].back().empty());
+    assert(add_formula_column(*table, {.left = 2, .op = FormulaOp::Divide, .constant = 4.0, .name = "quarter"}, error));
+    assert(table->headers.back() == "quarter" && table->rows[0].back() == "2.5");
+    assert(add_formula_column(*table, {.left = 2, .op = FormulaOp::Divide, .right_column = 2}, error));
+    assert(table->rows[3].back().empty());  // empty operand
+    assert(table->stats.back().type == ColumnType::Number);
+    assert(!add_formula_column(*table, {.left = 99}, error) && !error.empty());
+
+    const auto chart = chart_from_table(*table, rows, 0, {2}, ChartKind::Bar, Aggregate::Sum);
+    assert(chart && chart->labels.size() == 2 && chart->series[0].values[0] == 40.0);
+    assert(chart->series[0].name == "sum(sales)");
+}
+
 int main() {
+    aggregates_and_formulas();
     tables();
     charts();
     markdown();

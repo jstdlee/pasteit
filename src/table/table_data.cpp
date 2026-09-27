@@ -6,6 +6,7 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <map>
 #include <numeric>
 #include <regex>
@@ -397,6 +398,127 @@ std::string column_type_name(ColumnType type) {
         case ColumnType::Empty: return "empty";
     }
     return "text";
+}
+
+std::string aggregate_name(Aggregate aggregate) {
+    switch (aggregate) {
+        case Aggregate::None: return "none";
+        case Aggregate::Sum: return "sum";
+        case Aggregate::Avg: return "avg";
+        case Aggregate::Min: return "min";
+        case Aggregate::Max: return "max";
+        case Aggregate::Count: return "count";
+    }
+    return "none";
+}
+
+std::string format_cell_number(double value) {
+    if (!std::isfinite(value)) return {};
+    if (std::fabs(value) < 1e15 && value == std::floor(value)) {
+        return std::to_string(static_cast<long long>(value));
+    }
+    char buffer[64]{};
+    std::snprintf(buffer, sizeof(buffer), "%.10g", value);
+    return buffer;
+}
+
+TableData aggregate_table(const TableData& table, const std::vector<std::size_t>& rows, int group_column,
+                          const std::vector<std::size_t>& value_columns, Aggregate aggregate) {
+    const bool grouped = group_column >= 0 && static_cast<std::size_t>(group_column) < table.headers.size();
+    struct Accumulator {
+        double sum = 0.0, min = 0.0, max = 0.0;
+        std::size_t numbers = 0, filled = 0;
+    };
+    std::vector<std::string> keys;
+    std::map<std::string, std::vector<Accumulator>> groups;
+    for (const auto row : rows) {
+        if (row >= table.rows.size()) continue;
+        const auto& cells = table.rows[row];
+        const std::string key = grouped ? cells[static_cast<std::size_t>(group_column)] : "all";
+        auto [it, inserted] = groups.try_emplace(key, value_columns.size());
+        if (inserted) keys.push_back(key);
+        for (std::size_t index = 0; index < value_columns.size(); ++index) {
+            const auto column = value_columns[index];
+            if (column >= cells.size()) continue;
+            auto& acc = it->second[index];
+            if (!trim(cells[column]).empty()) ++acc.filled;
+            const auto number = parse_cell_number(cells[column]);
+            if (!number) continue;
+            if (acc.numbers == 0) acc.min = acc.max = *number;
+            acc.min = std::min(acc.min, *number);
+            acc.max = std::max(acc.max, *number);
+            acc.sum += *number;
+            ++acc.numbers;
+        }
+    }
+    if (grouped && !keys.empty() &&
+        std::all_of(keys.begin(), keys.end(), [](const std::string& key) { return parse_cell_number(key).has_value(); })) {
+        std::stable_sort(keys.begin(), keys.end(), [](const std::string& a, const std::string& b) {
+            return *parse_cell_number(a) < *parse_cell_number(b);
+        });
+    }
+    const auto op = aggregate == Aggregate::None ? Aggregate::Sum : aggregate;
+    TableData result;
+    result.headers.push_back(grouped ? table.headers[static_cast<std::size_t>(group_column)] : "group");
+    for (const auto column : value_columns) {
+        result.headers.push_back(aggregate_name(op) + "(" + (column < table.headers.size() ? table.headers[column] : "?") + ")");
+    }
+    for (const auto& key : keys) {
+        std::vector<std::string> cells{key};
+        for (const auto& acc : groups[key]) {
+            double value = 0.0;
+            bool has_value = acc.numbers > 0;
+            switch (op) {
+                case Aggregate::Sum: value = acc.sum; break;
+                case Aggregate::Avg: value = has_value ? acc.sum / static_cast<double>(acc.numbers) : 0.0; break;
+                case Aggregate::Min: value = acc.min; break;
+                case Aggregate::Max: value = acc.max; break;
+                case Aggregate::Count: value = static_cast<double>(acc.filled); has_value = true; break;
+                case Aggregate::None: break;
+            }
+            cells.push_back(has_value ? format_cell_number(value) : std::string{});
+        }
+        result.rows.push_back(std::move(cells));
+    }
+    compute_column_stats(result);
+    return result;
+}
+
+std::string formula_label(const TableData& table, const FormulaColumn& formula) {
+    if (!formula.name.empty()) return formula.name;
+    const auto header = [&](std::size_t column) { return column < table.headers.size() ? table.headers[column] : std::string{"?"}; };
+    const char* symbol = formula.op == FormulaOp::Add ? " + " : formula.op == FormulaOp::Subtract ? " - "
+                       : formula.op == FormulaOp::Multiply ? " * " : " / ";
+    return header(formula.left) + symbol + (formula.right_column ? header(*formula.right_column) : format_cell_number(formula.constant));
+}
+
+bool add_formula_column(TableData& table, const FormulaColumn& formula, std::string& error) {
+    if (formula.left >= table.headers.size() || (formula.right_column && *formula.right_column >= table.headers.size())) {
+        error = "formula column is out of range";
+        return false;
+    }
+    if (!formula.right_column && !std::isfinite(formula.constant)) {
+        error = "formula constant is not a number";
+        return false;
+    }
+    const auto name = formula_label(table, formula);
+    for (auto& row : table.rows) {
+        const auto left = parse_cell_number(row[formula.left]);
+        const auto right = formula.right_column ? parse_cell_number(row[*formula.right_column]) : std::optional<double>{formula.constant};
+        std::string cell;
+        if (left && right) {
+            switch (formula.op) {
+                case FormulaOp::Add: cell = format_cell_number(*left + *right); break;
+                case FormulaOp::Subtract: cell = format_cell_number(*left - *right); break;
+                case FormulaOp::Multiply: cell = format_cell_number(*left * *right); break;
+                case FormulaOp::Divide: if (*right != 0.0) cell = format_cell_number(*left / *right); break;
+            }
+        }
+        row.push_back(std::move(cell));
+    }
+    table.headers.push_back(name);
+    compute_column_stats(table);
+    return true;
 }
 
 }  // namespace pasteit

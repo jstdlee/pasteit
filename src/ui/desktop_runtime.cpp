@@ -436,7 +436,7 @@ void glfw_error_callback(int error, const char* description) {
 }
 
 enum class DecisionState { Idle, Pending, Ranked, Fallback };
-enum class SettingsPage { General, Ranking, Llm, Prompts, FastActions, Pipelines, Privacy, Usage };
+enum class SettingsPage { Home, General, Ranking, Llm, Prompts, FastActions, Pipelines, Privacy, Usage };
 
 std::string content_kind_label(ContentKind kind) {
     switch (kind) {
@@ -720,7 +720,7 @@ int run_desktop_runtime() {
     bool preview_editable = false;
     bool preview_edit_apply_requested = false;
     DecisionState decision_state = DecisionState::Idle;
-    SettingsPage settings_page = SettingsPage::General;
+    SettingsPage settings_page = SettingsPage::Home;
     bool fit_popup_pending = false;
     bool popup_drag_armed = false;
     std::set<std::uint64_t> owned_sub_windows;
@@ -2054,6 +2054,7 @@ int run_desktop_runtime() {
             const auto& pal = palette();
             struct SettingsSectionEntry { SettingsPage page; const char* glyph; UiTextKey label; };
             static constexpr SettingsSectionEntry sections[] = {
+                {SettingsPage::Home, icon::kBook, UiTextKey::Home},
                 {SettingsPage::General, icon::kSliders, UiTextKey::General},
                 {SettingsPage::Ranking, icon::kGauge, UiTextKey::Djev},
                 {SettingsPage::Llm, icon::kAi, UiTextKey::GeneralLlm},
@@ -2086,7 +2087,130 @@ int run_desktop_runtime() {
                 auto text = path_to_utf8_string(value);
                 if (input_text_string(id, text)) value = path_from_utf8_string(text);
             };
+            // Provider checks shared by the Home page and the provider pages.
+            const auto start_djev_test = [&] {
+                if (pending_provider_test) return;
+                pending_provider_test_is_djev = true;
+                djev_test_status = tr(ui_language, UiTextKey::Testing);
+                const auto provider = settings_draft.djev;
+                const auto language_copy = ui_language;
+                pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
+                    const auto result = DjevClient(provider.endpoint, provider.model_id, DjevClient::kDefaultTimeout, {}, provider.api_key).decide(provider_test_request());
+                    return result.valid ? tr(language_copy,UiTextKey::DjevTestSucceeded) : tr(language_copy,UiTextKey::DjevTestFailed) + result.error;
+                }));
+            };
+            const auto start_llm_test = [&] {
+                if (pending_provider_test) return;
+                pending_provider_test_is_djev = false;
+                llm_test_status = tr(ui_language, UiTextKey::Testing);
+                const auto provider = settings_draft.general_llm;
+                const auto language_copy = ui_language;
+                pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
+                    OpenAiCompatibleClient client;
+                    // Remote HTTPS models can take several seconds for a first token.
+                    const auto result = client.generate({.request_id="settings-test",.endpoint=provider.endpoint,.api_key=provider.api_key,.model_id=provider.model_id,.system_message="Return OK.",.user_message="OK",.temperature=0.0,.timeout=std::chrono::milliseconds{20000}});
+                    return result.ok ? tr(language_copy,UiTextKey::GeneralLlmTestSucceeded) : tr(language_copy,UiTextKey::GeneralLlmTestFailed) + result.error;
+                }));
+            };
             switch (settings_page) {
+            case SettingsPage::Home: {
+                ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.6F);
+                ImGui::TextColored(pal.accent, "%s", with_icon(icon::kPaste, "PasteIt").c_str());
+                ImGui::PopFont();
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextUnformatted(tr(ui_language, UiTextKey::HomeTagline).c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::Spacing();
+                // Principles as a 2 x 2 grid of cards.
+                struct Principle { const char* glyph; UiTextKey title; UiTextKey body; };
+                static constexpr Principle principles[] = {
+                    {icon::kZap, UiTextKey::PrincipleHandy, UiTextKey::PrincipleHandyBody},
+                    {icon::kGauge, UiTextKey::PrincipleFast, UiTextKey::PrincipleFastBody},
+                    {icon::kPipeline, UiTextKey::PrinciplePipeline, UiTextKey::PrinciplePipelineBody},
+                    {icon::kGlobe, UiTextKey::PrincipleCrossPlatform, UiTextKey::PrincipleCrossPlatformBody},
+                };
+                if (ImGui::BeginTable("home-principles", 2, ImGuiTableFlags_SizingStretchSame)) {
+                    for (const auto& principle : principles) {
+                        ImGui::TableNextColumn();
+                        ImGui::PushStyleColor(ImGuiCol_ChildBg, pal.background);
+                        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0F);
+                        ImGui::BeginChild(tr(ui_language, principle.title).c_str(), ImVec2(0.0F, ImGui::GetTextLineHeightWithSpacing() * 4.3F),
+                                          ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar);
+                        ImGui::TextColored(pal.accent, "%s", with_icon(principle.glyph, tr(ui_language, principle.title)).c_str());
+                        ImGui::PushTextWrapPos(0.0F);
+                        ImGui::TextColored(pal.text_muted, "%s", tr(ui_language, principle.body).c_str());
+                        ImGui::PopTextWrapPos();
+                        ImGui::EndChild();
+                        ImGui::PopStyleVar();
+                        ImGui::PopStyleColor();
+                    }
+                    ImGui::EndTable();
+                }
+                ImGui::SeparatorText(tr(ui_language, UiTextKey::HowToUse).c_str());
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextUnformatted(tr(ui_language, UiTextKey::HowToUseBody).c_str());
+                ImGui::PopTextWrapPos();
+
+                ImGui::SeparatorText(tr(ui_language, UiTextKey::Providers).c_str());
+                const auto provider_row = [&](const char* id, const char* glyph, UiTextKey name, const ProviderSettings& provider,
+                                              const std::string& status, const auto& start_test, SettingsPage page) {
+                    ImGui::PushID(id);
+                    if (ImGui::Selectable(with_icon(glyph, tr(ui_language, name)).c_str(), false, 0,
+                                          ImVec2(170.0F * ImGui::GetStyle().FontScaleDpi, 0.0F))) settings_page = page;
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(provider.endpoint.empty() || pending_provider_test.has_value());
+                    if (ImGui::SmallButton(with_icon(icon::kPlay, tr(ui_language, UiTextKey::Test)).c_str())) start_test();
+                    ImGui::EndDisabled();
+                    if (!status.empty()) {
+                        ImGui::SameLine();
+                        ImGui::PushTextWrapPos(0.0F);
+                        ImGui::TextColored(pal.text_muted, "%s", status.c_str());
+                        ImGui::PopTextWrapPos();
+                    }
+                    // Model and endpoint on their own line so a long URL never hides the button.
+                    const auto where = provider.endpoint.empty() ? tr(ui_language, UiTextKey::NotConfigured)
+                                                                 : provider.model_id + "  \xC2\xB7  " + provider.endpoint;
+                    ImGui::Indent(ImGui::GetFrameHeight());
+                    ImGui::PushTextWrapPos(0.0F);
+                    ImGui::TextColored(pal.text_muted, "%s", where.c_str());
+                    ImGui::PopTextWrapPos();
+                    ImGui::Unindent(ImGui::GetFrameHeight());
+                    ImGui::PopID();
+                };
+                provider_row("home-djev", icon::kGauge, UiTextKey::Djev, settings_draft.djev, djev_test_status, start_djev_test, SettingsPage::Ranking);
+                provider_row("home-llm", icon::kAi, UiTextKey::GeneralLlm, settings_draft.general_llm, llm_test_status, start_llm_test, SettingsPage::Llm);
+
+                ImGui::SeparatorText(tr(ui_language, UiTextKey::AtAGlance).c_str());
+                std::size_t learned = 0;
+                for (const auto& [context, actions] : usage_model.contexts) learned += actions.size();
+                const std::pair<std::size_t, UiTextKey> stats[] = {
+                    {clipboard_store.items().size(), UiTextKey::ClipboardItemsStat},
+                    {path_history.recent(1000).size(), UiTextKey::RecentPathsStat},
+                    {learned, UiTextKey::LearnedActionsStat},
+                    {settings_draft.prompt_templates.size(), UiTextKey::PromptsStat},
+                    {settings_draft.pipelines.recipes.size(), UiTextKey::RecipesStat},
+                };
+                if (ImGui::BeginTable("home-stats", 5, ImGuiTableFlags_SizingStretchSame)) {
+                    for (const auto& [value, label] : stats) {
+                        ImGui::TableNextColumn();
+                        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.35F);
+                        ImGui::TextColored(pal.accent, "%zu", value);
+                        ImGui::PopFont();
+                        ImGui::PushTextWrapPos(0.0F);
+                        ImGui::TextColored(pal.text_muted, "%s", tr(ui_language, label).c_str());
+                        ImGui::PopTextWrapPos();
+                    }
+                    ImGui::EndTable();
+                }
+                ImGui::Spacing();
+                if (ImGui::Button(with_icon(icon::kLink, tr(ui_language, UiTextKey::OpenRepository)).c_str())) {
+                    (void)platform->open_uri("https://github.com/jstdlee/pasteit");
+                }
+                ImGui::SameLine();
+                ImGui::TextColored(pal.text_muted, "%s %s \xC2\xB7 C++20 \xC2\xB7 Dear ImGui %s",
+                                   tr(ui_language, UiTextKey::BuildInfo).c_str(), PASTEIT_GIT_COMMIT, IMGUI_VERSION);
+                break;
+            }
             case SettingsPage::General: {
                 section_heading(icon::kSliders, tr(ui_language, UiTextKey::General));
                 if (begin_form("settings-general")) {
@@ -2129,16 +2253,7 @@ int run_desktop_runtime() {
                     input_text_string("##djev-key", settings_draft.djev.api_key, false, ImGuiInputTextFlags_Password);
                     end_form();
                 }
-                if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestDjev)).c_str()) && !pending_provider_test) {
-                    pending_provider_test_is_djev = true;
-                    djev_test_status = tr(ui_language, UiTextKey::Testing);
-                    const auto provider = settings_draft.djev;
-                    const auto language_copy = ui_language;
-                    pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
-                        const auto result = DjevClient(provider.endpoint, provider.model_id, DjevClient::kDefaultTimeout, {}, provider.api_key).decide(provider_test_request());
-                        return result.valid ? tr(language_copy,UiTextKey::DjevTestSucceeded) : tr(language_copy,UiTextKey::DjevTestFailed) + result.error;
-                    }));
-                }
+                if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestDjev)).c_str())) start_djev_test();
                 ImGui::SameLine();
                 if (!djev_test_status.empty()) ImGui::TextColored(pal.text_muted, "%s", djev_test_status.c_str());
                 ImGui::Spacing();
@@ -2192,17 +2307,7 @@ int run_desktop_runtime() {
                     ImGui::TextColored(pal.warning, "%s", (tr(ui_language,UiTextKey::ModelListFailed) + model_list_status).c_str());
                     ImGui::PopTextWrapPos();
                 }
-                if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestGeneralLlm)).c_str()) && !pending_provider_test) {
-                    pending_provider_test_is_djev = false;
-                    llm_test_status = tr(ui_language, UiTextKey::Testing);
-                    const auto provider = settings_draft.general_llm;
-                    const auto language_copy = ui_language;
-                    pending_provider_test.emplace(std::async(std::launch::async, [provider,language_copy] {
-                        OpenAiCompatibleClient client;
-                        const auto result = client.generate({.request_id="settings-test",.endpoint=provider.endpoint,.api_key=provider.api_key,.model_id=provider.model_id,.system_message="Return OK.",.user_message="OK",.temperature=0.0,.timeout=std::chrono::milliseconds{20000}});
-                        return result.ok ? tr(language_copy,UiTextKey::GeneralLlmTestSucceeded) : tr(language_copy,UiTextKey::GeneralLlmTestFailed) + result.error;
-                    }));
-                }
+                if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestGeneralLlm)).c_str())) start_llm_test();
                 ImGui::SameLine();
                 if (!llm_test_status.empty()) ImGui::TextColored(pal.text_muted, "%s", llm_test_status.c_str());
                 break;

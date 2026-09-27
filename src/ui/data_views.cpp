@@ -430,11 +430,165 @@ void draw_chart(const ChartSpec& spec, float width, float height) {
     }
 }
 
+namespace {
+
+const char* formula_op_symbol(int op) {
+    static const char* symbols[] = {"+", "\xE2\x88\x92", "\xC3\x97", "\xC3\xB7"};
+    return symbols[std::clamp(op, 0, 3)];
+}
+
+std::string aggregate_label(Aggregate aggregate, UiLanguage language) {
+    return aggregate == Aggregate::None ? tr(language, UiTextKey::NoAggregate) : aggregate_name(aggregate);
+}
+
+bool column_combo(const char* id, const TableData& table, int& column, bool numbers_only, const char* extra = nullptr) {
+    const std::string preview = column < 0 ? std::string{extra ? extra : ""}
+        : static_cast<std::size_t>(column) < table.headers.size() ? table.headers[static_cast<std::size_t>(column)] : std::string{};
+    bool changed = false;
+    if (ImGui::BeginCombo(id, preview.c_str())) {
+        if (extra != nullptr && ImGui::Selectable(extra, column < 0)) {
+            column = -1;
+            changed = true;
+        }
+        for (std::size_t index = 0; index < table.headers.size(); ++index) {
+            if (numbers_only && table.stats[index].type != ColumnType::Number) continue;
+            if (ImGui::Selectable((table.headers[index] + "##" + std::to_string(index)).c_str(), column == static_cast<int>(index))) {
+                column = static_cast<int>(index);
+                changed = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    return changed;
+}
+
+// Returns true when the table was replaced by its summary.
+bool draw_summarize_popup(TableViewState& state, const std::vector<std::size_t>& rows, UiLanguage language) {
+    if (!ImGui::BeginPopup("table-summarize")) return false;
+    const auto& table = state.table;
+    if (state.group_values.size() != table.headers.size()) {
+        state.group_values.assign(table.headers.size(), false);
+        for (std::size_t column = 0; column < table.headers.size(); ++column) {
+            state.group_values[column] = table.stats[column].type == ColumnType::Number;
+        }
+    }
+    if (state.group_column >= static_cast<int>(table.headers.size())) state.group_column = -1;
+    ImGui::TextColored(palette().text_muted, "%s", tr(language, UiTextKey::SummarizeHelp).c_str());
+    ImGui::SetNextItemWidth(200.0F);
+    (void)column_combo((tr(language, UiTextKey::GroupBy) + "##group").c_str(), table, state.group_column, false, "(all rows)");
+    ImGui::TextUnformatted(tr(language, UiTextKey::Operator).c_str());
+    for (int index = 1; index < static_cast<int>(std::size(kAggregates)); ++index) {
+        ImGui::SameLine();
+        if (ImGui::RadioButton(aggregate_name(kAggregates[index]).c_str(), state.group_aggregate == index)) state.group_aggregate = index;
+    }
+    ImGui::TextUnformatted(tr(language, UiTextKey::Values).c_str());
+    std::vector<std::size_t> values;
+    for (std::size_t column = 0; column < table.headers.size(); ++column) {
+        const bool count = kAggregates[state.group_aggregate] == Aggregate::Count;
+        if (!count && table.stats[column].type != ColumnType::Number) continue;
+        if (static_cast<int>(column) == state.group_column) continue;
+        bool selected = state.group_values[column];
+        if (ImGui::Checkbox((table.headers[column] + "##sum" + std::to_string(column)).c_str(), &selected)) state.group_values[column] = selected;
+        if (selected) values.push_back(column);
+    }
+    bool replaced = false;
+    ImGui::BeginDisabled(values.empty());
+    if (ImGui::Button(with_icon(icon::kCheck, tr(language, UiTextKey::Summarize)).c_str())) {
+        auto summary = aggregate_table(table, rows, state.group_column, values, kAggregates[state.group_aggregate]);
+        const auto group_name = state.group_column >= 0 ? table.headers[static_cast<std::size_t>(state.group_column)] : std::string{"all"};
+        if (!state.original) {
+            state.original = table;
+            state.original_title = state.title;
+        }
+        state.title = aggregate_name(kAggregates[state.group_aggregate]) + " by " + group_name;
+        state.table = std::move(summary);
+        state.visible.assign(state.table.headers.size(), true);
+        state.group_values.clear();
+        state.sort_column = -1;
+        state.filter.clear();
+        replaced = true;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::EndPopup();
+    return replaced;
+}
+
+// Returns true when a formula column was added.
+bool draw_formula_popup(TableViewState& state, UiLanguage language) {
+    if (!ImGui::BeginPopup("table-formula")) return false;
+    auto& table = state.table;
+    ImGui::TextColored(palette().text_muted, "%s", tr(language, UiTextKey::FormulaHelp).c_str());
+    const auto first_number = [&] {
+        for (std::size_t column = 0; column < table.headers.size(); ++column) {
+            if (table.stats[column].type == ColumnType::Number) return static_cast<int>(column);
+        }
+        return -1;
+    };
+    const auto is_number_column = [&](int column) {
+        return column >= 0 && static_cast<std::size_t>(column) < table.headers.size() &&
+               table.stats[static_cast<std::size_t>(column)].type == ColumnType::Number;
+    };
+    if (!is_number_column(state.formula_left)) state.formula_left = first_number();
+    if (state.formula_right >= 0 && !is_number_column(state.formula_right)) state.formula_right = -1;
+    bool added = false;
+    if (state.formula_left < 0) {
+        ImGui::TextColored(palette().warning, "No number columns.");
+    } else {
+        ImGui::SetNextItemWidth(160.0F);
+        (void)column_combo("##formula-a", table, state.formula_left, true);
+        for (int op = 0; op < 4; ++op) {
+            ImGui::SameLine(0.0F, op == 0 ? 8.0F : 2.0F);
+            const bool active = state.formula_op == op;
+            if (active) ImGui::PushStyleColor(ImGuiCol_Button, palette().accent_soft);
+            if (ImGui::Button((std::string{formula_op_symbol(op)} + "##op" + std::to_string(op)).c_str(), ImVec2(ImGui::GetFrameHeight(), 0.0F))) state.formula_op = op;
+            if (active) ImGui::PopStyleColor();
+        }
+        ImGui::SameLine(0.0F, 8.0F);
+        ImGui::SetNextItemWidth(160.0F);
+        (void)column_combo("##formula-b", table, state.formula_right, true, tr(language, UiTextKey::Constant).c_str());
+        if (state.formula_right < 0) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(110.0F);
+            ImGui::InputDouble("##formula-constant", &state.formula_constant, 0.0, 0.0, "%.6g");
+        }
+        FormulaColumn formula{.left = static_cast<std::size_t>(state.formula_left),
+                              .op = static_cast<FormulaOp>(state.formula_op),
+                              .right_column = state.formula_right >= 0 ? std::optional<std::size_t>{static_cast<std::size_t>(state.formula_right)} : std::nullopt,
+                              .constant = state.formula_constant,
+                              .name = state.formula_name};
+        ImGui::SetNextItemWidth(260.0F);
+        input_text_hint("##formula-name", formula_label(table, {formula.left, formula.op, formula.right_column, formula.constant, {}}).c_str(),
+                        state.formula_name);
+        ImGui::SameLine();
+        if (ImGui::Button(with_icon(icon::kPlus, tr(language, UiTextKey::AddColumn)).c_str())) {
+            std::string error;
+            if (add_formula_column(table, formula, error)) {
+                state.visible.push_back(true);
+                state.group_values.clear();
+                state.formula_name.clear();
+                state.status = formula_label(table, formula);
+                added = true;
+                ImGui::CloseCurrentPopup();
+            } else {
+                state.status = error;
+            }
+        }
+    }
+    ImGui::EndPopup();
+    return added;
+}
+
+}  // namespace
+
 void draw_table_view(TableViewState& state, ChartViewState& chart, const DataViewHost& host, UiLanguage language,
                      const std::string& default_chart_path) {
     if (!state.open) return;
     const auto title = with_icon(icon::kTable, state.title.empty() ? tr(language, UiTextKey::ViewTable) : state.title) + "###table-view";
     const float width = std::clamp(140.0F * static_cast<float>(state.table.headers.size()), 560.0F, 1100.0F);
+    // Summarize / formula replace the table mid-frame; finish the window
+    // without drawing the stale grid.
+    const auto end_table_view = [] { ImGui::End(); };
     if (begin_tool_window(title, &state.open, ImVec2(width, 560.0F), &state.focus_pending)) {
         const auto& p = palette();
         auto& table = state.table;
@@ -444,12 +598,17 @@ void draw_table_view(TableViewState& state, ChartViewState& chart, const DataVie
         }
         const auto rows = table_view_rows(table, state.filter, state.sort_column, state.descending);
 
-        // Toolbar: filter, columns, stats, chart, export.
-        const float toolbar_right = 330.0F * ImGui::GetStyle().FontScaleDpi;
-        ImGui::SetNextItemWidth(std::max(160.0F, ImGui::GetContentRegionAvail().x - toolbar_right));
+        // Toolbar: filter, columns, stats, chart, summarize, formula. Buttons
+        // wrap to a second line when the window is narrow.
+        const auto toolbar_button = [](const std::string& label) {
+            const float width = ImGui::CalcTextSize(label.c_str(), nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0F;
+            ImGui::SameLine();
+            if (ImGui::GetContentRegionAvail().x < width) ImGui::NewLine();
+            return ImGui::Button(label.c_str());
+        };
+        ImGui::SetNextItemWidth(std::clamp(ImGui::GetContentRegionAvail().x * 0.3F, 140.0F, 260.0F));
         input_text_hint("##table-filter", (std::string{ui_fonts().icons ? icon::kSearch : ""} + " " + tr(language, UiTextKey::Filter)).c_str(), state.filter);
-        ImGui::SameLine();
-        if (ImGui::Button(with_icon(icon::kLayers, tr(language, UiTextKey::Columns)).c_str())) ImGui::OpenPopup("table-columns");
+        if (toolbar_button(with_icon(icon::kLayers, tr(language, UiTextKey::Columns)))) ImGui::OpenPopup("table-columns");
         if (ImGui::BeginPopup("table-columns")) {
             for (std::size_t column = 0; column < table.headers.size(); ++column) {
                 bool visible = state.visible[column];
@@ -459,11 +618,21 @@ void draw_table_view(TableViewState& state, ChartViewState& chart, const DataVie
             }
             ImGui::EndPopup();
         }
-        ImGui::SameLine();
-        if (ImGui::Button(with_icon(icon::kInfo, tr(language, UiTextKey::Statistics)).c_str())) state.show_stats = !state.show_stats;
-        ImGui::SameLine();
-        if (ImGui::Button(with_icon(icon::kChart, tr(language, UiTextKey::Chart)).c_str())) {
+        if (toolbar_button(with_icon(icon::kInfo, tr(language, UiTextKey::Statistics)))) state.show_stats = !state.show_stats;
+        if (toolbar_button(with_icon(icon::kChart, tr(language, UiTextKey::Chart)))) {
             open_chart_from_table(chart, table, rows, default_chart_path);
+        }
+        if (toolbar_button(with_icon(icon::kListOrdered, tr(language, UiTextKey::Summarize)))) ImGui::OpenPopup("table-summarize");
+        if (draw_summarize_popup(state, rows, language)) return end_table_view();
+        if (toolbar_button(with_icon(icon::kPlus, tr(language, UiTextKey::FormulaColumn)))) ImGui::OpenPopup("table-formula");
+        if (draw_formula_popup(state, language)) return end_table_view();
+        if (state.original && toolbar_button(with_icon(icon::kUndo, tr(language, UiTextKey::ResetTable)))) {
+            state.table = std::move(*state.original);
+            state.title = state.original_title;
+            state.original.reset();
+            state.visible.assign(state.table.headers.size(), true);
+            state.sort_column = -1;
+            return end_table_view();
         }
 
         const float footer = footer_height();
@@ -586,7 +755,8 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
                 if (state.y_columns[column]) y_columns.push_back(column);
             }
             if (kind == ChartKind::Pie || kind == ChartKind::Histogram) y_columns.resize(std::min<std::size_t>(y_columns.size(), 1));
-            const auto spec = chart_from_table(*state.table, state.rows, state.x_column, y_columns, kind);
+            const auto spec = chart_from_table(*state.table, state.rows, state.x_column, y_columns, kind,
+                                               kAggregates[std::clamp(state.aggregate, 0, static_cast<int>(std::size(kAggregates)) - 1)]);
             state.spec = spec.value_or(ChartSpec{});
         } else {
             const auto data = parse_graph_data(state.series_source, state.header, state.convert_dates);
@@ -641,6 +811,22 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
                     }
                 }
                 ImGui::EndPopup();
+            }
+            if (static_cast<ChartKind>(state.kind) != ChartKind::Histogram) {
+                // Y operator: reduce rows sharing an x value (sum, avg, min, max, count).
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(110.0F);
+                const auto current = kAggregates[std::clamp(state.aggregate, 0, static_cast<int>(std::size(kAggregates)) - 1)];
+                if (ImGui::BeginCombo("##chart-aggregate", ("Y: " + aggregate_label(current, language)).c_str())) {
+                    for (int index = 0; index < static_cast<int>(std::size(kAggregates)); ++index) {
+                        if (ImGui::Selectable(aggregate_label(kAggregates[index], language).c_str(), state.aggregate == index)) {
+                            state.aggregate = index;
+                            state.dirty = true;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(language, UiTextKey::Operator).c_str());
             }
         } else {
             ImGui::SameLine(0.0F, 16.0F);

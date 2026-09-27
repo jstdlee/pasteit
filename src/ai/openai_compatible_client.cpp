@@ -15,6 +15,7 @@ std::string normalize_chat_completions_endpoint(std::string endpoint){
 }
 TextGenerationResult OpenAiCompatibleClient::generate(const TextGenerationRequest& request)const{
     TextGenerationResult result{.request_id=request.request_id};
+    if(request.endpoint.find_first_not_of(" \t")==std::string::npos){result.error="LLM endpoint is not configured (Settings > General LLM)";return result;}
     // Some servers (e.g. diffusion LLMs) reject sampling parameters; remember
     // such endpoints and send them requests without temperature.
     static std::mutex no_temperature_mutex;

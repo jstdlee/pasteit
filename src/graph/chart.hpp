@@ -28,9 +28,12 @@ struct ChartSpec {
 };
 
 ChartSpec chart_from_graph(const GraphData& data, ChartKind kind);
-// x_column < 0 uses the row number. Rows are the table's visible rows.
+// x_column < 0 uses the row number. Rows are the table's visible rows. With an
+// aggregate, rows sharing an x value are reduced to one point per series
+// (x_column < 0 then reduces every row into a single point).
 std::optional<ChartSpec> chart_from_table(const TableData& table, const std::vector<std::size_t>& rows, int x_column,
-                                          const std::vector<std::size_t>& y_columns, ChartKind kind);
+                                          const std::vector<std::size_t>& y_columns, ChartKind kind,
+                                          Aggregate aggregate = Aggregate::None);
 // Equal-width bins; bins == 0 picks Sturges' rule.
 ChartSpec make_histogram(const std::string& name, const std::vector<double>& values, std::size_t bins = 0);
 

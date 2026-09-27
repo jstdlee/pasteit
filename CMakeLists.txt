@@ -248,6 +248,14 @@ endif()
 
 target_compile_definitions(pasteit_core PUBLIC PASTEIT_DESKTOP_MISSING="${PASTEIT_DESKTOP_MISSING_TEXT}")
 
+# Build identity shown on the Settings home page.
+execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                OUTPUT_VARIABLE PASTEIT_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if (NOT PASTEIT_GIT_COMMIT)
+    set(PASTEIT_GIT_COMMIT "unknown")
+endif()
+target_compile_definitions(pasteit_core PUBLIC PASTEIT_GIT_COMMIT="${PASTEIT_GIT_COMMIT}")
+
 if (WIN32)
     target_compile_definitions(pasteit_core PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(pasteit_core PUBLIC user32 shell32 ole32 uuid gdi32 bcrypt winhttp)

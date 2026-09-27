@@ -36,6 +36,7 @@ struct ChartViewState {
     std::string series_source;
     bool header = false;
     bool convert_dates = false;
+    int aggregate = 0;  // Aggregate applied to the Y series per x value
     bool dirty = true;
     ChartSpec spec;
     std::string problem;
@@ -54,6 +55,18 @@ struct TableViewState {
     std::vector<bool> visible;
     bool show_stats = false;
     std::string status;
+    // Summarize / formula tools. The table before the first summarize is kept
+    // so Reset can go back to it.
+    std::optional<TableData> original;
+    std::string original_title;
+    int group_column = 0;
+    int group_aggregate = 1;
+    std::vector<bool> group_values;
+    int formula_left = 0;
+    int formula_op = 0;
+    int formula_right = 0;  // column index, or -1 for the constant
+    double formula_constant = 1.0;
+    std::string formula_name;
 };
 
 struct MarkdownViewState {

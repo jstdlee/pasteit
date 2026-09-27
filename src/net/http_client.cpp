@@ -401,7 +401,7 @@ HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_vie
 }
 
 std::optional<PlainUrl> parse_http(std::string_view url,std::string& error){
- constexpr std::string_view prefix="http://";if(!url.starts_with(prefix)){error="HTTPS requires libcurl in this build";return std::nullopt;}
+ constexpr std::string_view prefix="http://";if(!url.starts_with(prefix)){error=url.empty()?"endpoint URL is empty":"unsupported URL scheme (use http:// or https://)";return std::nullopt;}
  std::string rest{url.substr(prefix.size())};const auto slash=rest.find('/');const auto authority=slash==std::string::npos?rest:rest.substr(0,slash);PlainUrl parsed;parsed.path=slash==std::string::npos?"/":rest.substr(slash);const auto colon=authority.rfind(':');if(colon==std::string::npos)parsed.host=authority;else{parsed.host=authority.substr(0,colon);parsed.port=authority.substr(colon+1);}if(parsed.host.empty()||parsed.port.empty()){error="HTTP endpoint host or port is empty";return std::nullopt;}return parsed;
 }
 bool write_all(int fd,std::string_view value){while(!value.empty()){const auto sent=send(fd,value.data(),value.size(),0);if(sent<=0)return false;value.remove_prefix(static_cast<std::size_t>(sent));}return true;}
