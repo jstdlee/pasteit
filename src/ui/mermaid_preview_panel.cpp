@@ -102,10 +102,13 @@ void draw_mermaid_preview_panel(const RendererResultState& state, RendererPrevie
         }
         std::string editable = model.primary_text;
         input_text_string("##mermaid-source", editable, true, ImGuiInputTextFlags_ReadOnly);
-        for (const auto& row : model.rows) {
+        for (std::size_t index = 0; index < model.rows.size(); ++index) {
+            const auto& row = model.rows[index];
+            ImGui::PushID(static_cast<int>(index));
             copyable_text(row.label, true);
             std::string original = row.value;
             input_text_string("##mermaid-original-source", original, true, ImGuiInputTextFlags_ReadOnly);
+            ImGui::PopID();
         }
     }
     ImGui::End();

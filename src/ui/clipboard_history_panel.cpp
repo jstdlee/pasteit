@@ -133,7 +133,11 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
         ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 96.0F);
         ImGui::TableHeadersRow();
 
-        for (const auto& row : model.rows) {
+        for (std::size_t index = 0; index < model.rows.size(); ++index) {
+            const auto& row = model.rows[index];
+            // Scope every cell to the row: source, size and time cells are
+            // click-to-copy widgets keyed by their text, which repeats across rows.
+            ImGui::PushID(static_cast<int>(index));
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             draw_content_type_icon(row.kind);
@@ -155,7 +159,6 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
             ImGui::TableNextColumn();
             copyable_text(row.captured_label);
             ImGui::TableNextColumn();
-            ImGui::PushID(row.ref.c_str());
             if (icon_button("view", icon::kEye, tr(language, UiTextKey::View))) {
                 command = view_clipboard_history_item(state, row.ref);
             }
