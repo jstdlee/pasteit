@@ -14,6 +14,11 @@ def git(*args):
     return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
 
 
+def escape(text):
+    """GitHub renders notes as HTML-capable Markdown: keep <n> and the like literal."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def main():
     sha = git("rev-parse", sys.argv[1] if len(sys.argv) > 1 else "HEAD").strip()
     artifacts = sys.argv[2] if len(sys.argv) > 2 else "artifacts"
@@ -27,11 +32,11 @@ def main():
     lines = [f"Automated build of `{sha[:7]}` on `main`.", "", f"## Changes {since}", ""]
     for record in filter(None, log.split("\x1e")):
         short, subject, body = (record.split("\x1f") + ["", ""])[:3]
-        lines.append(f"- **{subject.strip()}** ({short.strip()})")
+        lines.append(f"- **{escape(subject.strip())}** ({short.strip()})")
         for body_line in body.splitlines():
             if not body_line.strip() or body_line.startswith(("Co-Authored-By:", "Signed-off-by:")):
                 continue
-            lines.append(f"  {body_line.rstrip()}")
+            lines.append(f"  {escape(body_line.rstrip())}")
     if len(lines) == 4:
         lines.append("- No new commits.")
     lines += ["", "## Downloads", "",
