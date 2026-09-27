@@ -1,11 +1,12 @@
 name: Build and release
 
-# Every push to main is compiled, tested and published as a GitHub release
-# with downloadable zips. The release notes list the commits since the
-# previous build release.
+# Every push to main is compiled, tested (Linux and Windows) and published as
+# a GitHub release with downloadable zips; the release notes list the commits
+# since the previous build release. Pushes to ci/** branches build and test
+# only, without a release.
 on:
   push:
-    branches: [main]
+    branches: [main, 'ci/**']
   workflow_dispatch:
 
 permissions:
@@ -67,17 +68,20 @@ jobs:
   windows:
     name: Windows x64
     runs-on: windows-latest
-    # The Windows port is built on a best-effort basis; a failure here does
-    # not block the Linux release.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure
-        run: cmake -S . -B build -A x64 -DPASTEIT_BUILD_TESTS=OFF -DPASTEIT_BUILD_DESKTOP=ON
+        # /O2 without /DNDEBUG so the tests' asserts stay active.
+        run: >-
+          cmake -S . -B build -A x64 "-DCMAKE_CXX_FLAGS_RELEASE=/MD /O2 /Ob2"
+          -DPASTEIT_BUILD_TESTS=ON -DPASTEIT_BUILD_DESKTOP=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure --timeout 120
 
       - name: Package
         shell: pwsh
@@ -96,7 +100,7 @@ jobs:
   release:
     name: Publish release
     needs: [linux, windows]
-    if: ${{ always() && needs.linux.result == 'success' && github.ref == 'refs/heads/main' }}
+    if: ${{ always() && needs.linux.result == 'success' && needs.windows.result == 'success' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
