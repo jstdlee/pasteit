@@ -51,7 +51,13 @@ void assert_candidate(const pasteit::DestinationCandidate& candidate,
                       const std::filesystem::path& path,
                       pasteit::DestinationRole role,
                       bool exists) {
-    assert(candidate.path == path);
+    // Compare canonical forms: Windows temp paths may be 8.3 short names
+    // (C:\Users\RUNNER~1) on one side and long names on the other.
+    std::error_code left_error;
+    std::error_code right_error;
+    assert(candidate.path == path ||
+           std::filesystem::weakly_canonical(candidate.path, left_error) ==
+               std::filesystem::weakly_canonical(path, right_error));
     assert(candidate.role == role);
     assert(candidate.exists == exists);
 }

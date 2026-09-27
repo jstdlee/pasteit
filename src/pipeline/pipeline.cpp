@@ -722,6 +722,8 @@ PipelineResult run_pipeline(std::string_view input, std::string_view command, co
             }
             result.truncated |= run.truncated;
             data = run.output;
+            // Windows programs end lines with CRLF; stages and the clipboard use LF.
+            data.erase(std::remove(data.begin(), data.end(), '\r'), data.end());
             if (!data.empty() && data.back() == '\n') data.pop_back();
         }
         if (data.size() > options.max_output) {

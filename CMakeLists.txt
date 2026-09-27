@@ -3,6 +3,15 @@ cmake_minimum_required(VERSION 3.20)
 project(pasteit LANGUAGES CXX)
 
 option(PASTEIT_BUILD_TESTS "Build PasteIt tests" ON)
+
+# One output folder for every configuration (MSBuild would otherwise use
+# build/Release/), so programs sit next to the copied lucide.ttf and
+# mermaid.min.js exactly as on Linux.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+foreach(config Debug Release RelWithDebInfo MinSizeRel)
+    string(TOUPPER ${config} config_upper)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper} ${CMAKE_BINARY_DIR})
+endforeach()
 option(PASTEIT_BUILD_DESKTOP "Build the native Dear ImGui desktop shell when dependencies are available" ON)
 option(PASTEIT_FETCH_DESKTOP_DEPS "Fetch pinned GLFW, Dear ImGui, and stb sources like the prior ImGui demo" ON)
 
@@ -571,3 +580,15 @@ if (PASTEIT_BUILD_TESTS)
     endif()
 endif()
 
+
+# Windows: force-include a terminate handler into every test so an uncaught
+# exception prints its message instead of a bare 0xc0000409 abort.
+if (PASTEIT_BUILD_TESTS AND MSVC)
+    get_property(pasteit_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS pasteit_targets)
+        get_target_property(target_sources ${target} SOURCES)
+        if (target_sources MATCHES "tests/")
+            target_compile_options(${target} PRIVATE "/FI${CMAKE_SOURCE_DIR}/tests/terminate_reporter.hpp")
+        endif()
+    endforeach()
+endif()
