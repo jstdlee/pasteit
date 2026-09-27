@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "annotation/annotation_export.hpp"
 #include "annotation/image_annotation.hpp"
 
@@ -50,7 +51,7 @@ void svg_export_draws_every_overlay() {
     assert(svg.find("xlink:href=\"data:image/png;base64,") != std::string::npos);
     // Wide characters count as a full em.
     assert(annotation_text_width("\xE4\xBD\xA0\xE5\xA5\xBD", 10.0F) == 20.0F);
-    std::filesystem::remove_all(dir);
+    pasteit_test::remove_tree(dir);
 }
 
 void select_tool_edits() {

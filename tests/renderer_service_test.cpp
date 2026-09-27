@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "config/settings_store.hpp"
 #include "app/renderer_result_state.hpp"
 #include "platform/fast_action_services.hpp"
@@ -94,7 +95,7 @@ int main() {
         assert(std::string_view(signature, 8) == std::string_view("\x89PNG\r\n\x1a\n", 8));
         assert(services.argv_calls.size() == 1);
         assert(services.argv_calls.front().front() == "mmdc");
-        std::filesystem::remove_all(root);
+        pasteit_test::remove_tree(root);
     }
 
     {
@@ -118,7 +119,7 @@ int main() {
         assert(!renderer.render_qr("", root / "empty.png").success);
         assert(!renderer.render_qr(std::string(4000, 'x'), root / "too-big.png").success);
         assert(services.argv_calls.empty());
-        std::filesystem::remove_all(root);
+        pasteit_test::remove_tree(root);
     }
 
     {
@@ -133,7 +134,7 @@ int main() {
         assert(result.output.extension() == ".png");
         assert(rendered_output_decodes(RendererResultKind::Mermaid, result.output));
         assert(services.mermaid_inputs.front() == "flowchart LR\nA-->B\n");
-        std::filesystem::remove_all(root);
+        pasteit_test::remove_tree(root);
     }
 
     {
@@ -155,7 +156,7 @@ int main() {
         const std::string html((std::istreambuf_iterator<char>(input)), {});
         assert(html.find("flowchart LR\nA--&gt;B") != std::string::npos);
         assert(html.find("extra prose") == std::string::npos);
-        std::filesystem::remove_all(root);
+        pasteit_test::remove_tree(root);
     }
 
     {
@@ -184,7 +185,7 @@ int main() {
             assert(result.success);
             assert(ExternalRendererService::normalize_mermaid_source(entry.source) == entry.expected);
         }
-        std::filesystem::remove_all(root);
+        pasteit_test::remove_tree(root);
         assert(ExternalRendererService::normalize_mermaid_source(
                    "An unfenced diagram follows:\nflowchart LR\nA-->B\n") ==
                "flowchart LR\nA-->B\n");
@@ -231,6 +232,6 @@ int main() {
         assert(!loaded.settings.date_time.use_24_hour_clock);
         assert(loaded.settings.annotation.export_format == "svg");
         assert(loaded.settings.annotation.save_directory == root / "annotations");
-        std::filesystem::remove_all(root);
+        pasteit_test::remove_tree(root);
     }
 }

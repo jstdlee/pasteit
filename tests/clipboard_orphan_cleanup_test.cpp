@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "history/clipboard_history_store.hpp"
 #include "storage/clipboard_store.hpp"
 
@@ -37,7 +38,7 @@ int main() {
     using namespace pasteit;
 
     const auto root = std::filesystem::temp_directory_path() / "pasteit_clipboard_orphan_cleanup_test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     std::filesystem::create_directories(root / "blobs");
 
     const auto malformed_root = root / "malformed";
@@ -123,5 +124,5 @@ int main() {
     assert(std::filesystem::exists(root / "blobs" / (first_shared.content_hash + ".bin")));
     assert(std::filesystem::exists(root / "blobs" / (middle.content_hash + ".bin")));
 
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

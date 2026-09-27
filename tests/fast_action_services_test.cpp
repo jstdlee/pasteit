@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "platform/fast_action_services.hpp"
 #include "platform/linux/linux_fast_action_services.hpp"
 
@@ -163,5 +164,5 @@ int main() {
     assert(bounded_error.exit_code == 0);
     assert(bounded_error.stderr_text == "1234567890123456");
 
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

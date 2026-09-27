@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "actions/action_catalog.hpp"
 #include "detect/fast_content_detector.hpp"
 #include "detect/resume_detector.hpp"
@@ -243,7 +244,7 @@ void ranking_and_display() {
 
 void execution() {
     const auto root = std::filesystem::temp_directory_path() / "pasteit_utility_actions_test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     std::filesystem::create_directories(root / "out");
     ClipboardStore store(root / "store");
     PathHistory history;
@@ -313,7 +314,7 @@ void execution() {
     // Content that no longer matches fails instead of copying garbage.
     const auto prose = put("not a color", ContentKind::Text);
     assert(run(ActionKind::CopyColorHex, prose).status == ExecutionStatus::Failed);
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }
 
 }  // namespace

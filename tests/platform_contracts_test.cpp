@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "platform/platform_services.hpp"
 #if !defined(_WIN32)
 #include "platform/linux/linux_desktop_services.hpp"
@@ -117,6 +118,6 @@ int main() {
     const auto unrelated = root / "ordinary.html";
     assert(pasteit::browser_open_path(unrelated, home) == unrelated);
     std::filesystem::remove(rendered);
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 #endif
 }

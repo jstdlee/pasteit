@@ -1,9 +1,10 @@
+#include "test_env.hpp"
 #include "storage/path_history.hpp"
 #include "history/path_history_store.hpp"
 #include <cassert>
 #include <fstream>
 int main(){
- const auto root=std::filesystem::temp_directory_path()/"pasteit-path-history-test";std::filesystem::remove_all(root);std::filesystem::create_directories(root/"folder");
+ const auto root=std::filesystem::temp_directory_path()/"pasteit-path-history-test";pasteit_test::remove_tree(root);std::filesystem::create_directories(root/"folder");
  std::ofstream(root/"folder/a b.txt")<<"x";
  std::ofstream(root/"folder/proc-only.txt")<<"y";
  pasteit::PathHistory history;
@@ -25,5 +26,5 @@ int main(){
  assert(store.save(history,error));
  const auto reloaded=store.load();const auto top=reloaded.history.recent(10).front();
  assert(top.path==root/"folder"&&top.use_count==2&&top.last_used_ms==46&&top.use_weight>1.9);
- std::filesystem::remove_all(root);
+ pasteit_test::remove_tree(root);
 }

@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "actions/action_catalog.hpp"
 #include "storage/clipboard_store.hpp"
 
@@ -151,7 +152,7 @@ int main() {
     }
 
     const auto store_root = std::filesystem::temp_directory_path() / "pasteit_long_catalog_test";
-    std::filesystem::remove_all(store_root);
+    pasteit_test::remove_tree(store_root);
     ClipboardStore store(store_root);
     const std::string long_json = "{\"padding\":\"" + std::string(300, 'x') + "\",\"answer\":42}";
     const auto long_json_item = store.put(ClipboardData{
@@ -181,5 +182,5 @@ int main() {
     const auto long_resume_catalog = build_catalog(with_current_item(long_snapshot, 1));
     assert(count_kind(long_json_catalog, ActionKind::PrettyJson, long_json_item.ref) == 1);
     assert(count_kind(long_resume_catalog, ActionKind::CopyResumeField, long_resume_item.ref) >= 4);
-    std::filesystem::remove_all(store_root);
+    pasteit_test::remove_tree(store_root);
 }

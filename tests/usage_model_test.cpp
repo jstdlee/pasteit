@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "decision/usage_model.hpp"
 #include "history/usage_store.hpp"
 
@@ -65,12 +66,12 @@ int main() {
     assert(summary.contains("text"));
 
     const auto root = std::filesystem::temp_directory_path() / "pasteit-usage-test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     UsageStore store(root / "usage.json");
     std::string error;
     assert(store.save(model, error));
     const auto loaded = store.load();
     assert(loaded.warning.empty());
     assert(std::fabs(usage_share(loaded.model, code, "explain_code") - usage_share(model, code, "explain_code")) < 1e-6);
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

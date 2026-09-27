@@ -271,6 +271,11 @@ if (WIN32)
     target_compile_definitions(pasteit_core PUBLIC UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(pasteit_core PUBLIC user32 shell32 ole32 oleaut32 uuid gdi32 bcrypt winhttp)
 endif()
+if (MSVC)
+    # MSVC's std::regex throws error_complexity after ~10M steps; GCC has no
+    # such limit. 0 disables it so detection behaves the same on both.
+    target_compile_definitions(pasteit_core PUBLIC _REGEX_MAX_COMPLEXITY_COUNT=0)
+endif()
 
 if (NOT WIN32 AND X11_FOUND)
     target_include_directories(pasteit_core SYSTEM PUBLIC ${X11_INCLUDE_DIR})

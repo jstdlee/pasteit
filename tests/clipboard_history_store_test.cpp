@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "history/clipboard_history_store.hpp"
 #include "storage/clipboard_store.hpp"
 #include "util/json.hpp"
@@ -75,7 +76,7 @@ int main() {
     using namespace pasteit;
 
     const auto root = std::filesystem::temp_directory_path() / "pasteit_clipboard_history_store_test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     std::filesystem::create_directories(root);
 
     const auto utf8_root = root / "utf8-preview";
@@ -326,5 +327,5 @@ int main() {
     assert(!incomplete_blob_save.success);
     assert(!std::filesystem::exists(blob_check_root / "clipboard-history.json"));
 
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

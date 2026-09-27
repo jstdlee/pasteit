@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "executor/action_executor.hpp"
 #include "app/download_job.hpp"
 #include "util/json.hpp"
@@ -108,7 +109,7 @@ int main() {
     using namespace pasteit;
 
     const auto root = std::filesystem::temp_directory_path() / "pasteit_executor_test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     std::filesystem::create_directories(root / "target");
     std::filesystem::create_directories(root / "other_target");
 
@@ -367,5 +368,5 @@ int main() {
     assert(resume_json_result.output_clipboard_ref.has_value());
     assert(is_valid_json(store.read_text(*resume_json_result.output_clipboard_ref)));
 
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

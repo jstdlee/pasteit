@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "ui/settings_model.hpp"
 #include "config/settings_store.hpp"
 
@@ -47,7 +48,7 @@ int main(){
     assert(model.working().annotation.export_format=="svg");
 
     const auto root = std::filesystem::temp_directory_path() / "pasteit-settings-exit-test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     std::filesystem::create_directories(root);
     pasteit::SettingsStore store(root / "settings.json");
     auto applied = pasteit::default_settings();
@@ -66,5 +67,5 @@ int main(){
     assert(!error.empty());
     const auto fallback = store.load();
     assert(fallback.settings.language == applied.language);
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

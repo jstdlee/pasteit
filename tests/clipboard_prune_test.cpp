@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "history/clipboard_history_store.hpp"
 #include "storage/clipboard_store.hpp"
 
@@ -7,7 +8,7 @@
 int main() {
     using namespace pasteit;
     const auto root = std::filesystem::temp_directory_path() / "pasteit-clipboard-prune-test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     ClipboardStore store(root);
     for (int index = 0; index < 12; ++index) {
         store.put({.mime_types={"text/plain"},
@@ -18,5 +19,5 @@ int main() {
     assert(store.items_newest_first(50).size() == 10);
     store.clear();
     assert(store.items_newest_first(50).empty());
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

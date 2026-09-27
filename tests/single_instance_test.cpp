@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "platform/linux/linux_single_instance.hpp"
 #include <cassert>
 int main(){
@@ -16,5 +17,5 @@ int main(){
         pasteit::LinuxSingleInstance third(root);
         assert(third.acquired());
     }
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

@@ -41,7 +41,7 @@ private:
 
 int main() {
     const auto root = std::filesystem::temp_directory_path() / "pasteit-settings-test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     pasteit::SettingsStore store(root / "settings.json");
 
     const auto missing = store.load();
@@ -141,5 +141,5 @@ int main() {
     assert(malformed.settings.schema_version == pasteit::default_settings().schema_version);
     assert(pasteit::DjevClient::normalize_endpoint("http://localhost:8011") == "http://localhost:8011/v1/systemone");
     assert(pasteit::DjevClient::normalize_endpoint("http://localhost:8011/v1/systemone") == "http://localhost:8011/v1/systemone");
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

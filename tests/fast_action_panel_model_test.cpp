@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "annotation/annotation_export.hpp"
 #include "app/contact_result_state.hpp"
 #include "app/download_job.hpp"
@@ -230,7 +231,7 @@ int main() {
             panel.poll();
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        std::filesystem::remove_all(root);
+        pasteit_test::remove_tree(root);
     }
 
     {

@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "executor/fast_action_executor.hpp"
 
 #include "ai/mermaid_prompt.hpp"
@@ -256,7 +257,7 @@ int main() {
     using namespace pasteit;
 
     const auto root = std::filesystem::temp_directory_path() / "pasteit-fast-action-executor-test";
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
     std::filesystem::create_directories(root / "target");
 
     ClipboardStore store(root / "store");
@@ -581,5 +582,5 @@ int main() {
         assert(async_executor.renderer_result()->copy_text() == "graph TD\n  A --> B\n");
     }
 
-    std::filesystem::remove_all(root);
+    pasteit_test::remove_tree(root);
 }

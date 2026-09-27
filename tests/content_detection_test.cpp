@@ -1,3 +1,4 @@
+#include "test_env.hpp"
 #include "detect/content_detector.hpp"
 #include "detect/resume_detector.hpp"
 #include "storage/clipboard_store.hpp"
@@ -37,7 +38,7 @@ int main() {
     using namespace pasteit;
 
     auto temp_root = std::filesystem::temp_directory_path() / "pasteit_content_detection_test";
-    std::filesystem::remove_all(temp_root);
+    pasteit_test::remove_tree(temp_root);
     std::filesystem::create_directories(temp_root);
 
     ClipboardStore store(temp_root / "store");
@@ -116,5 +117,5 @@ int main() {
     assert(resume.find("skills")->value == "C++, Linux, SQLite");
     assert(resume.find("email")->source_range.first == resume_text.find("jane@example.com"));
 
-    std::filesystem::remove_all(temp_root);
+    pasteit_test::remove_tree(temp_root);
 }
