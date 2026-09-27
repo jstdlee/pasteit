@@ -15,7 +15,7 @@
 namespace pasteit {
 
 // Canvas tools; shortcuts (while the canvas window is focused and no text is
-// being typed): S select/move, P pen, L line, A arrow, R rectangle, C circle, T text.
+// being typed): S select/move, F pen, W line, A arrow, R rectangle, C circle, T text.
 enum class AnnotationPanelTool { Select, Pen, Line, Arrow, Rectangle, Circle, Text };
 
 struct ImageAnnotationPanelState {

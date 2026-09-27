@@ -79,12 +79,16 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             draw_path_type_icon(row);
             ImGui::TableNextColumn();
             const auto selectable_id = row.display_path + "##recent-row-" + row.ref;
-            if (ImGui::Selectable(selectable_id.c_str(), row.selected, ImGuiSelectableFlags_SpanAllColumns)) {
-                command = view_recent_path(state, row.ref);
+            // AllowOverlap lets the row's icon buttons take their own clicks;
+            // otherwise the full-width row swallowed Open and showed the view.
+            if (ImGui::Selectable(selectable_id.c_str(), row.selected,
+                                  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
+                                      ImGuiSelectableFlags_AllowDoubleClick)) {
+                // Double-click opens the file or folder itself; a single click shows details.
+                command = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ? open_recent_path(model, row.ref)
+                                                                            : view_recent_path(state, row.ref);
             }
-            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                command = view_recent_path(state, row.ref);
-            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click for details \xC2\xB7 double-click to open");
             ImGui::TableNextColumn();
             copyable_text(row.source);
             ImGui::TableNextColumn();

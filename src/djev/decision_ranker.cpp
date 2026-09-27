@@ -24,9 +24,26 @@ std::vector<RankedAction> rank_top_actions(const DecisionResponse& response, con
         });
     }
 
+    // Actions Jev did not score (it may answer with a subset) stay listed
+    // after the scored ones, ordered by the usage bonus, instead of vanishing.
+    std::vector<RankedAction> unscored;
+    for (const auto& action : catalog.actions) {
+        if (response.probabilities.contains(action.id) || !action.enabled) continue;
+        unscored.push_back(RankedAction{
+            .action = action,
+            .probability = 0.0,
+            .selected = false,
+            .confidence = response.confidence,
+        });
+    }
+    std::stable_sort(unscored.begin(), unscored.end(), [&](const RankedAction& left, const RankedAction& right) {
+        return action_ranking_bonus(left.action, context) > action_ranking_bonus(right.action, context);
+    });
+
     std::sort(ranked.begin(), ranked.end(), [](const RankedAction& left, const RankedAction& right) {
         return left.probability > right.probability;
     });
+    ranked.insert(ranked.end(), unscored.begin(), unscored.end());
     if (ranked.size() > limit) {
         const auto chosen = std::find_if(ranked.begin(), ranked.end(), [](const RankedAction& action) {
             return action.selected;

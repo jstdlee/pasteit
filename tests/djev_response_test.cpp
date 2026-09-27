@@ -83,10 +83,13 @@ int main() {
     assert(parsed.probabilities.at("a2") == 0.7);
 
     const auto ranked = rank_top_actions(parsed, catalog);
-    assert(ranked.size() == 2);
+    // Scored actions first; the ones Jev left out follow instead of vanishing.
+    assert(ranked.size() == 5);
     assert(ranked.front().action.id == "a2");
     assert(ranked.front().selected);
     assert(ranked.front().probability == 0.7);
+    assert(ranked[1].action.id == "a1");
+    assert(ranked[2].probability == 0.0 && !ranked[2].selected);
 
     const std::string flat_response =
         R"({"request_id":"req_184","choice":"a3","confidence":0.6,"probabilities":{"a6":0.1,"a5":0.2,"a4":0.3,"a3":0.4,"a2":0.5,"a1":0.6}})";

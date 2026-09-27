@@ -6,6 +6,8 @@
 
 #include <algorithm>
 
+#include <filesystem>
+
 namespace pasteit {
 namespace {
 
@@ -14,7 +16,9 @@ std::string target_path_for(const DecisionSnapshot& snapshot, const std::string&
         return {};
     }
     if (ref == "temp") {
-        return "temp";
+        std::error_code error;
+        const auto temp = std::filesystem::temp_directory_path(error);
+        return error ? std::string{"temp"} : path_to_utf8_string(temp);
     }
     for (const auto& path : snapshot.recent_paths) {
         if (path.ref == ref) {

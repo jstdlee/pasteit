@@ -30,8 +30,8 @@ std::filesystem::path svg_export_path(std::filesystem::path output) {
 struct ToolInfo { AnnotationPanelTool tool; const char* label; ImGuiKey key; const char* hint; };
 constexpr ToolInfo kTools[] = {
     {AnnotationPanelTool::Select, "Select", ImGuiKey_S, "S"},
-    {AnnotationPanelTool::Pen, "Pen", ImGuiKey_P, "P"},
-    {AnnotationPanelTool::Line, "Line", ImGuiKey_L, "L"},
+    {AnnotationPanelTool::Pen, "Pen", ImGuiKey_F, "F"},
+    {AnnotationPanelTool::Line, "Line", ImGuiKey_W, "W"},
     {AnnotationPanelTool::Arrow, "Arrow", ImGuiKey_A, "A"},
     {AnnotationPanelTool::Rectangle, "Rectangle", ImGuiKey_R, "R"},
     {AnnotationPanelTool::Circle, "Circle", ImGuiKey_C, "C"},
@@ -332,7 +332,7 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
         if (state.selected >= static_cast<int>(state.document.overlays().size())) state.selected = -1;
 
         const float row = ImGui::GetFrameHeightWithSpacing();
-        const float bottom_height = row * 3.0F + ImGui::GetTextLineHeightWithSpacing() + 12.0F;
+        const float bottom_height = row * 4.0F + ImGui::GetTextLineHeightWithSpacing() + 12.0F;
         ImGui::BeginChild("annotation-canvas", ImVec2(0.0F, -bottom_height), ImGuiChildFlags_Borders,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove);
         const auto available = ImGui::GetContentRegionAvail();
@@ -445,7 +445,7 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
 
         // Row 1: tools, colour, size.
         for (const auto& info : kTools) {
-            if (info.tool != AnnotationPanelTool::Pen) ImGui::SameLine(0.0F, 4.0F);
+            if (info.tool != kTools[0].tool) ImGui::SameLine(0.0F, 4.0F);
             const bool selected = state.active_tool == info.tool;
             if (selected) ImGui::PushStyleColor(ImGuiCol_Button, palette().accent_soft);
             if (ImGui::Button(info.label)) state.active_tool = info.tool;
@@ -470,15 +470,15 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                                                 selected ? 2.0F : 1.0F);
             ImGui::PopID();
         }
-        ImGui::SameLine(0.0F, 14.0F);
-        ImGui::SetNextItemWidth(110.0F);
+
+        // Row 2: size, edit.
+        ImGui::SetNextItemWidth(130.0F);
         if (state.active_tool == AnnotationPanelTool::Text) {
             ImGui::SliderFloat("##annotation-font", &state.font_size, 10.0F, 72.0F, "text %.0f px");
         } else {
             ImGui::SliderFloat("##annotation-width", &state.stroke_width, 1.0F, 16.0F, "width %.0f");
         }
-
-        // Row 2: edit.
+        ImGui::SameLine();
         if (ImGui::Button(with_icon(icon::kUndo, tr(UiTextKey::Undo)).c_str())) (void)state.document.undo();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Ctrl+Z");
         ImGui::SameLine();
@@ -489,21 +489,15 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                 ? "Drag to move \xC2\xB7 Delete removes \xC2\xB7 a colour recolours"
                 : "Click an object to select it, then drag to move");
         } else {
-            ImGui::TextColored(palette().text_muted, "%zu marks \xC2\xB7 S P L A R C T switch tools", state.document.overlays().size());
+            ImGui::TextColored(palette().text_muted, "%zu marks \xC2\xB7 S F W A R C T switch tools", state.document.overlays().size());
         }
 
-        // Row 3: output file, then Save / Open / Folder / Copy path sized to their labels.
+        // Row 3: output file and Save; row 4: what to do with the saved file.
         const auto save_label = with_icon(icon::kSave, tr(UiTextKey::SaveAnnotatedSvg));
-        const auto open_label = with_icon(icon::kOpen, "Open");
-        const auto folder_label = with_icon(icon::kFolderOpen, "Folder");
-        const auto path_label = with_icon(icon::kCopy, "Path");
         const auto& style = ImGui::GetStyle();
-        float buttons = 0.0F;
-        for (const auto* label : {&save_label, &open_label, &folder_label, &path_label}) {
-            buttons += ImGui::CalcTextSize(label->c_str(), nullptr, true).x + style.FramePadding.x * 2.0F + style.ItemSpacing.x;
-        }
-        ImGui::SetNextItemWidth(std::max(140.0F, ImGui::GetContentRegionAvail().x - buttons));
-        input_text_string("##annotation-output", state.output_path);
+        const float save_width = ImGui::CalcTextSize(save_label.c_str(), nullptr, true).x + style.FramePadding.x * 2.0F;
+        input_text_string("##annotation-output", state.output_path, false, 0, 0.0F,
+                          std::max(140.0F, ImGui::GetContentRegionAvail().x - save_width - style.ItemSpacing.x));
         ImGui::SameLine();
         ImGui::BeginDisabled(state.export_running() || state.document.original_image().empty());
         if (ImGui::Button(save_label.c_str())) {
@@ -511,18 +505,18 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
             state.start_export(path_from_utf8_string(state.output_path));
         }
         ImGui::EndDisabled();
-        const bool saved = !state.last_export_path.empty();
-        ImGui::BeginDisabled(!saved);
+        ImGui::BeginDisabled(state.last_export_path.empty());
+        if (ImGui::Button(with_icon(icon::kOpen, "Open").c_str()) && state.open_path) (void)state.open_path(state.last_export_path);
         ImGui::SameLine();
-        if (ImGui::Button(open_label.c_str()) && state.open_path) (void)state.open_path(state.last_export_path);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Open the saved SVG");
+        if (ImGui::Button(with_icon(icon::kFolderOpen, "Folder").c_str()) && state.open_path) {
+            (void)state.open_path(state.last_export_path.parent_path());
+        }
         ImGui::SameLine();
-        if (ImGui::Button(folder_label.c_str()) && state.open_path) (void)state.open_path(state.last_export_path.parent_path());
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Show the folder");
-        ImGui::SameLine();
-        if (ImGui::Button(path_label.c_str()) && state.copy_text) state.copy_text(path_to_utf8_string(state.last_export_path));
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Copy the saved path");
+        if (ImGui::Button(with_icon(icon::kCopy, "Copy path").c_str()) && state.copy_text) {
+            state.copy_text(path_to_utf8_string(state.last_export_path));
+        }
         ImGui::EndDisabled();
+        ImGui::SameLine();
         if (!state.status_text.empty()) copyable_text(state.status_text, true);
     }
     ImGui::End();

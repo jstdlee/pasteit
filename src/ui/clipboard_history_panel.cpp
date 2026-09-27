@@ -142,7 +142,7 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
             }
             ImGui::TableNextColumn();
             const auto selectable_id = row.preview + "##clipboard-row-" + row.ref;
-            if (ImGui::Selectable(selectable_id.c_str(), row.selected, ImGuiSelectableFlags_SpanAllColumns)) {
+            if (ImGui::Selectable(selectable_id.c_str(), row.selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap)) {
                 command = view_clipboard_history_item(state, row.ref);
             }
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
