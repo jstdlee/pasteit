@@ -7,6 +7,9 @@
 
 int main(){
     auto saved=pasteit::default_settings();
+    // Save validates that the default folders exist; CI runners have no ~/Pictures.
+    saved.default_image_directory=std::filesystem::temp_directory_path();
+    saved.default_text_directory=std::filesystem::temp_directory_path();
     pasteit::SettingsModel model(saved);
     model.working().window_opacity=0.7F;
     model.cancel();
