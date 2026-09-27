@@ -53,7 +53,21 @@ void svg_export_draws_every_overlay() {
     std::filesystem::remove_all(dir);
 }
 
+void select_tool_edits() {
+    using namespace pasteit;
+    AnnotationDocument doc;
+    doc.add_rectangle({10, 10}, {30, 20});
+    doc.add_comment("note", {5, 5}, annotation_red(), 18.0F);
+    assert(doc.move_overlay(0, 5, -2));
+    assert(doc.overlays()[0].stroke.points[0].x == 15 && doc.overlays()[0].stroke.points[1].y == 18);
+    assert(doc.move_overlay(1, 1, 1) && doc.overlays()[1].comment.anchor.x == 6);
+    assert(doc.set_overlay_color(1, {0, 0, 255, 255}) && doc.overlays()[1].comment.foreground.b == 255);
+    assert(!doc.move_overlay(5, 1, 1) && !doc.erase_overlay(5));
+    assert(doc.erase_overlay(0) && doc.overlays().size() == 1 && doc.overlays()[0].kind == AnnotationOverlayKind::Comment);
+}
+
 int main() {
+    select_tool_edits();
     svg_export_draws_every_overlay();
     using namespace pasteit;
 

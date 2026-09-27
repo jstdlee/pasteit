@@ -71,6 +71,10 @@ public:
 
     bool undo();
     void clear();
+    // Select tool: shift one overlay by (dx, dy) image pixels, or remove it.
+    bool move_overlay(std::size_t index, float dx, float dy);
+    bool erase_overlay(std::size_t index);
+    bool set_overlay_color(std::size_t index, AnnotationColor color);
 
     const std::vector<AnnotationOverlay>& overlays() const { return overlays_; }
     std::vector<AnnotationStroke> strokes() const;

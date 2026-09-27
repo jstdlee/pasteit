@@ -110,6 +110,35 @@ void AnnotationDocument::add_comment(std::string text, AnnotationPoint anchor) {
     });
 }
 
+bool AnnotationDocument::move_overlay(std::size_t index, float dx, float dy) {
+    if (index >= overlays_.size()) return false;
+    auto& overlay = overlays_[index];
+    if (overlay.kind == AnnotationOverlayKind::Comment) {
+        overlay.comment.anchor.x += dx;
+        overlay.comment.anchor.y += dy;
+    } else {
+        for (auto& point : overlay.stroke.points) {
+            point.x += dx;
+            point.y += dy;
+        }
+    }
+    return true;
+}
+
+bool AnnotationDocument::erase_overlay(std::size_t index) {
+    if (index >= overlays_.size()) return false;
+    overlays_.erase(overlays_.begin() + static_cast<std::ptrdiff_t>(index));
+    return true;
+}
+
+bool AnnotationDocument::set_overlay_color(std::size_t index, AnnotationColor color) {
+    if (index >= overlays_.size()) return false;
+    auto& overlay = overlays_[index];
+    if (overlay.kind == AnnotationOverlayKind::Comment) overlay.comment.foreground = color;
+    else overlay.stroke.color = color;
+    return true;
+}
+
 bool AnnotationDocument::undo() {
     if (overlays_.empty()) {
         return false;

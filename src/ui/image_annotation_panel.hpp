@@ -15,8 +15,8 @@
 namespace pasteit {
 
 // Canvas tools; shortcuts (while the canvas window is focused and no text is
-// being typed): P pen, L line, A arrow, R rectangle, C circle, T text.
-enum class AnnotationPanelTool { Pen, Line, Arrow, Rectangle, Circle, Text };
+// being typed): S select/move, P pen, L line, A arrow, R rectangle, C circle, T text.
+enum class AnnotationPanelTool { Select, Pen, Line, Arrow, Rectangle, Circle, Text };
 
 struct ImageAnnotationPanelState {
     bool open = false;
@@ -33,7 +33,12 @@ struct ImageAnnotationPanelState {
     AnnotationPoint drag_start;
     std::vector<AnnotationPoint> pending_pen;
     // Text tool: a click opens a small editor at the anchor.
+    // Select tool: the picked overlay and the last drag position.
+    int selected = -1;
+    bool moving = false;
+    AnnotationPoint move_last;
     bool text_editing = false;
+    int text_session = 0;  // new widget ID per edit so a stale input cannot re-commit
     bool text_focus_pending = false;
     AnnotationPoint text_anchor;
     std::string text_draft;

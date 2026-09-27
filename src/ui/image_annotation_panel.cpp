@@ -29,6 +29,7 @@ std::filesystem::path svg_export_path(std::filesystem::path output) {
 #if defined(PASTEIT_HAS_DESKTOP_DEPS)
 struct ToolInfo { AnnotationPanelTool tool; const char* label; ImGuiKey key; const char* hint; };
 constexpr ToolInfo kTools[] = {
+    {AnnotationPanelTool::Select, "Select", ImGuiKey_S, "S"},
     {AnnotationPanelTool::Pen, "Pen", ImGuiKey_P, "P"},
     {AnnotationPanelTool::Line, "Line", ImGuiKey_L, "L"},
     {AnnotationPanelTool::Arrow, "Arrow", ImGuiKey_A, "A"},
@@ -79,7 +80,8 @@ std::vector<std::string> split_lines(const std::string& text) {
     return lines;
 }
 
-void draw_comment(ImDrawList* draw_list, const AnnotationComment& comment, const ImVec2& origin, float scale) {
+// Screen-space box of a comment label, shared by drawing and hit-testing.
+std::pair<ImVec2, ImVec2> comment_rect(const AnnotationComment& comment, const ImVec2& origin, float scale) {
     ImFont* font = ImGui::GetFont();
     const float size = comment.font_size * scale;
     const float padding = size * 0.45F;
@@ -88,8 +90,17 @@ void draw_comment(ImDrawList* draw_list, const AnnotationComment& comment, const
     float width = 0.0F;
     for (const auto& line : lines) width = std::max(width, font->CalcTextSizeA(size, FLT_MAX, 0.0F, line.c_str()).x);
     const auto top_left = to_imvec2(comment.anchor, origin, scale);
-    const ImVec2 bottom_right(top_left.x + width + padding * 2.0F,
-                              top_left.y + line_height * static_cast<float>(lines.size()) + padding * 2.0F - (line_height - size));
+    return {top_left, ImVec2(top_left.x + width + padding * 2.0F,
+                             top_left.y + line_height * static_cast<float>(lines.size()) + padding * 2.0F - (line_height - size))};
+}
+
+void draw_comment(ImDrawList* draw_list, const AnnotationComment& comment, const ImVec2& origin, float scale) {
+    ImFont* font = ImGui::GetFont();
+    const float size = comment.font_size * scale;
+    const float padding = size * 0.45F;
+    const float line_height = size * 1.3F;
+    const auto lines = split_lines(comment.text);
+    const auto [top_left, bottom_right] = comment_rect(comment, origin, scale);
     draw_list->AddRectFilled(top_left, bottom_right, color_u32(comment.background, 0.92F), size * 0.25F);
     draw_list->AddRect(top_left, bottom_right, color_u32(comment.foreground), size * 0.25F, 0, 1.5F);
     for (std::size_t index = 0; index < lines.size(); ++index) {
@@ -145,6 +156,72 @@ void draw_overlay(ImDrawList* draw_list, const AnnotationOverlay& overlay, const
     }
 }
 
+float segment_distance(ImVec2 p, ImVec2 a, ImVec2 b) {
+    const float dx = b.x - a.x, dy = b.y - a.y;
+    const float length = dx * dx + dy * dy;
+    const float t = length > 0.0F ? std::clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / length, 0.0F, 1.0F) : 0.0F;
+    return std::hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+// Screen-space bounds of an overlay (for the selection outline).
+std::pair<ImVec2, ImVec2> overlay_bounds(const AnnotationOverlay& overlay, const ImVec2& origin, float scale) {
+    if (overlay.kind == AnnotationOverlayKind::Comment) return comment_rect(overlay.comment, origin, scale);
+    ImVec2 min(FLT_MAX, FLT_MAX), max(-FLT_MAX, -FLT_MAX);
+    for (const auto& point : overlay.stroke.points) {
+        const auto at = to_imvec2(point, origin, scale);
+        min = ImVec2(std::min(min.x, at.x), std::min(min.y, at.y));
+        max = ImVec2(std::max(max.x, at.x), std::max(max.y, at.y));
+    }
+    const float pad = std::max(4.0F, overlay.stroke.width * scale * 0.5F + 3.0F);
+    return {ImVec2(min.x - pad, min.y - pad), ImVec2(max.x + pad, max.y + pad)};
+}
+
+// Topmost overlay under the mouse, or -1. Shapes are picked near their
+// outline (or inside for small ones), lines and pen strokes near the path.
+int hit_test(const AnnotationDocument& document, ImVec2 mouse, const ImVec2& origin, float scale) {
+    const auto& overlays = document.overlays();
+    for (int index = static_cast<int>(overlays.size()) - 1; index >= 0; --index) {
+        const auto& overlay = overlays[static_cast<std::size_t>(index)];
+        const float tolerance = 6.0F + (overlay.kind == AnnotationOverlayKind::Stroke ? overlay.stroke.width * scale * 0.5F : 0.0F);
+        if (overlay.kind == AnnotationOverlayKind::Comment) {
+            const auto [min, max] = comment_rect(overlay.comment, origin, scale);
+            if (mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y) return index;
+            continue;
+        }
+        const auto& stroke = overlay.stroke;
+        if (stroke.points.empty()) continue;
+        if ((stroke.tool == AnnotationTool::Rectangle || stroke.tool == AnnotationTool::Circle) && stroke.points.size() >= 2) {
+            const auto a = to_imvec2(stroke.points[0], origin, scale);
+            const auto b = to_imvec2(stroke.points[1], origin, scale);
+            const ImVec2 min(std::min(a.x, b.x), std::min(a.y, b.y)), max(std::max(a.x, b.x), std::max(a.y, b.y));
+            const bool inside = mouse.x >= min.x - tolerance && mouse.x <= max.x + tolerance &&
+                                mouse.y >= min.y - tolerance && mouse.y <= max.y + tolerance;
+            if (!inside) continue;
+            if (stroke.tool == AnnotationTool::Rectangle) {
+                const bool near_edge = std::min({std::abs(mouse.x - min.x), std::abs(mouse.x - max.x),
+                                                 std::abs(mouse.y - min.y), std::abs(mouse.y - max.y)}) <= tolerance;
+                if (near_edge || (max.x - min.x) < 40.0F || (max.y - min.y) < 40.0F) return index;
+            } else {
+                const float rx = std::max(1.0F, (max.x - min.x) * 0.5F), ry = std::max(1.0F, (max.y - min.y) * 0.5F);
+                const float nx = (mouse.x - (min.x + rx)) / rx, ny = (mouse.y - (min.y + ry)) / ry;
+                const float radial = std::sqrt(nx * nx + ny * ny);
+                if (std::abs(radial - 1.0F) * std::min(rx, ry) <= tolerance || std::min(rx, ry) < 20.0F) return index;
+            }
+            continue;
+        }
+        if (stroke.points.size() == 1) {
+            if (std::hypot(mouse.x - to_imvec2(stroke.points[0], origin, scale).x,
+                           mouse.y - to_imvec2(stroke.points[0], origin, scale).y) <= tolerance) return index;
+            continue;
+        }
+        for (std::size_t point = 1; point < stroke.points.size(); ++point) {
+            if (segment_distance(mouse, to_imvec2(stroke.points[point - 1], origin, scale),
+                                 to_imvec2(stroke.points[point], origin, scale)) <= tolerance) return index;
+        }
+    }
+    return -1;
+}
+
 AnnotationTool stroke_tool(AnnotationPanelTool tool) {
     switch (tool) {
         case AnnotationPanelTool::Line: return AnnotationTool::Line;
@@ -155,12 +232,16 @@ AnnotationTool stroke_tool(AnnotationPanelTool tool) {
     }
 }
 
+// Places the draft once and ends the edit session; the next session gets a
+// new widget ID so the old input's buffer cannot be committed again.
 void commit_text(ImageAnnotationPanelState& state) {
-    if (state.text_editing && !state.text_draft.empty()) {
+    if (!state.text_editing) return;
+    if (!state.text_draft.empty()) {
         state.document.add_comment(state.text_draft, state.text_anchor, state.color, state.font_size);
     }
     state.text_editing = false;
     state.text_draft.clear();
+    ++state.text_session;
 }
 #endif
 
@@ -240,7 +321,15 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !io.WantTextInput &&
             io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
             (void)state.document.undo();
+            state.selected = -1;
         }
+        if (state.selected >= 0 && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !io.WantTextInput &&
+            (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false))) {
+            (void)state.document.erase_overlay(static_cast<std::size_t>(state.selected));
+            state.selected = -1;
+        }
+        if (state.active_tool != AnnotationPanelTool::Select) state.selected = -1;
+        if (state.selected >= static_cast<int>(state.document.overlays().size())) state.selected = -1;
 
         const float row = ImGui::GetFrameHeightWithSpacing();
         const float bottom_height = row * 3.0F + ImGui::GetTextLineHeightWithSpacing() + 12.0F;
@@ -262,7 +351,11 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
         const bool active = ImGui::IsItemActive();
         const bool released = ImGui::IsItemDeactivated();
         if (ImGui::IsItemHovered()) {
-            ImGui::SetMouseCursor(state.active_tool == AnnotationPanelTool::Text ? ImGuiMouseCursor_TextInput : ImGuiMouseCursor_Hand);
+            const bool over_object = state.active_tool == AnnotationPanelTool::Select &&
+                                     (state.moving || hit_test(state.document, io.MousePos, origin, scale) >= 0);
+            ImGui::SetMouseCursor(state.active_tool == AnnotationPanelTool::Text ? ImGuiMouseCursor_TextInput
+                                  : state.active_tool == AnnotationPanelTool::Select ? (over_object ? ImGuiMouseCursor_ResizeAll : ImGuiMouseCursor_Arrow)
+                                  : ImGuiMouseCursor_Hand);
         }
         auto* draw_list = ImGui::GetWindowDrawList();
         draw_list->AddImage((ImTextureID)(intptr_t)texture_id, origin, ImVec2(origin.x + size.x, origin.y + size.y));
@@ -270,7 +363,12 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
 
         const auto mouse = from_mouse(io.MousePos, origin, scale, image_width, image_height);
         if (activated) {
-            if (state.active_tool == AnnotationPanelTool::Text) {
+            if (state.active_tool == AnnotationPanelTool::Select) {
+                commit_text(state);
+                state.selected = hit_test(state.document, io.MousePos, origin, scale);
+                state.moving = state.selected >= 0;
+                state.move_last = {(io.MousePos.x - origin.x) / scale, (io.MousePos.y - origin.y) / scale};
+            } else if (state.active_tool == AnnotationPanelTool::Text) {
                 commit_text(state);
                 state.text_editing = true;
                 state.text_focus_pending = true;
@@ -280,6 +378,20 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                 state.drawing = true;
                 state.drag_start = mouse;
                 state.pending_pen = {mouse};
+            }
+        }
+        if (state.moving && active) {
+            // Unclamped delta so objects can be dragged to the image edge.
+            const AnnotationPoint now{(io.MousePos.x - origin.x) / scale, (io.MousePos.y - origin.y) / scale};
+            (void)state.document.move_overlay(static_cast<std::size_t>(state.selected), now.x - state.move_last.x, now.y - state.move_last.y);
+            state.move_last = now;
+        }
+        if (state.moving && released) state.moving = false;
+        if (state.selected >= 0) {
+            const auto [min, max] = overlay_bounds(state.document.overlays()[static_cast<std::size_t>(state.selected)], origin, scale);
+            draw_list->AddRect(ImVec2(min.x - 2, min.y - 2), ImVec2(max.x + 2, max.y + 2), ImGui::GetColorU32(palette().accent), 3.0F, 0, 1.5F);
+            for (const auto corner : {min, ImVec2(max.x, min.y), max, ImVec2(min.x, max.y)}) {
+                draw_list->AddRectFilled(ImVec2(corner.x - 4, corner.y - 4), ImVec2(corner.x + 4, corner.y + 4), ImGui::GetColorU32(palette().accent));
             }
         }
         if (state.drawing && active) {
@@ -316,13 +428,16 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
                 state.text_focus_pending = false;
             }
             const float field_width = std::clamp(origin.x + size.x - at.x, 160.0F, 320.0F);
+            ImGui::PushID(state.text_session);
             const bool entered = input_text_string("##annotation-text", state.text_draft, true,
                 ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine,
                 ImGui::GetTextLineHeightWithSpacing() * 2.2F, field_width);
-            if (ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-                state.text_editing = false;
+            const bool left = ImGui::IsItemDeactivated();
+            ImGui::PopID();
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !entered) {
                 state.text_draft.clear();
-            } else if (entered || ImGui::IsItemDeactivatedAfterEdit()) {
+                commit_text(state);  // nothing to place; just ends the session
+            } else if (entered || left) {
                 commit_text(state);
             }
         }
@@ -344,7 +459,10 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
             const bool selected = swatch.r == state.color.r && swatch.g == state.color.g && swatch.b == state.color.b;
             ImGui::PushID(static_cast<int>(index));
             const float side = ImGui::GetFrameHeight();
-            if (ImGui::InvisibleButton("swatch", ImVec2(side, side))) state.color = swatch;
+            if (ImGui::InvisibleButton("swatch", ImVec2(side, side))) {
+                state.color = swatch;
+                if (state.selected >= 0) (void)state.document.set_overlay_color(static_cast<std::size_t>(state.selected), swatch);
+            }
             const auto min = ImGui::GetItemRectMin();
             const auto max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(min.x + 3, min.y + 3), ImVec2(max.x - 3, max.y - 3), color_u32(swatch), 4.0F);
@@ -366,7 +484,13 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
         ImGui::SameLine();
         if (ImGui::Button(with_icon(icon::kTrash, tr(UiTextKey::Clear)).c_str())) state.document.clear();
         ImGui::SameLine();
-        ImGui::TextColored(palette().text_muted, "%zu marks \xC2\xB7 P L A R C T switch tools", state.document.overlays().size());
+        if (state.active_tool == AnnotationPanelTool::Select) {
+            ImGui::TextColored(palette().text_muted, "%s", state.selected >= 0
+                ? "Drag to move \xC2\xB7 Delete removes \xC2\xB7 a colour recolours"
+                : "Click an object to select it, then drag to move");
+        } else {
+            ImGui::TextColored(palette().text_muted, "%zu marks \xC2\xB7 S P L A R C T switch tools", state.document.overlays().size());
+        }
 
         // Row 3: output file, then Save / Open / Folder / Copy path sized to their labels.
         const auto save_label = with_icon(icon::kSave, tr(UiTextKey::SaveAnnotatedSvg));
