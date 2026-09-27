@@ -127,6 +127,8 @@ struct AppSettings {
     std::filesystem::path default_text_directory;
     ProviderSettings djev;
     ProviderSettings general_llm;
+    // Instructions for Prompt templates > Optimize with LLM (General LLM page).
+    std::string prompt_optimizer_system;
     RendererSettings renderers;
     DownloadSettings downloads;
     HashSettings hash;

@@ -7,11 +7,10 @@
 namespace pasteit {
 
 // Rewrites a rough prompt-template draft into a clear, precise, professional
-// one with the general LLM. The optimizer's own system prompt comes from
-// PASTEIT_PROMPT_OPTIMIZER_SYSTEM (.env; "\n" means a newline), falling back
-// to the built-in default below.
+// one with the general LLM. The optimizer's own instructions are a setting
+// (Settings > General LLM, saved in settings.json); empty means the default.
 std::string default_prompt_optimizer_system();
-std::string prompt_optimizer_system();
+std::string prompt_optimizer_system(std::string_view configured);
 std::string prompt_optimizer_user_message(std::string_view draft);
 
 struct OptimizedPrompt {

@@ -1,0 +1,126 @@
+name: Build and release
+
+# Every push to main is compiled, tested and published as a GitHub release
+# with downloadable zips. The release notes list the commits since the
+# previous build release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ xvfb \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libxtst-dev \
+            libgl-dev libcurl4-openssl-dev zlib1g-dev
+
+      - name: Configure
+        # Optimised, but without -DNDEBUG so the tests' asserts stay active.
+        run: >-
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE=-O2
+          -DPASTEIT_BUILD_TESTS=ON -DPASTEIT_BUILD_DESKTOP=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        # Offline suite; X11 probes run against a virtual display.
+        run: xvfb-run -a ctest --test-dir build --output-on-failure
+
+      - name: Package
+        run: |
+          test -x build/pasteit
+          mkdir -p dist/pasteit
+          cp build/pasteit build/lucide.ttf build/mermaid.min.js README.md dist/pasteit/
+          cat > dist/pasteit/pasteit.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=PasteIt
+          Comment=Clipboard action popup
+          Exec=env PASTEIT_SHOW_ON_START=1 ./pasteit
+          Terminal=false
+          Categories=Utility;
+          EOF
+          (cd dist && zip -r pasteit-linux-x86_64.zip pasteit)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pasteit-linux-x86_64
+          path: dist/pasteit-linux-x86_64.zip
+
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    # The Windows port is built on a best-effort basis; a failure here does
+    # not block the Linux release.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DPASTEIT_BUILD_TESTS=OFF -DPASTEIT_BUILD_DESKTOP=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem build -Recurse -Filter pasteit.exe | Select-Object -First 1
+          if (-not $exe) { throw "pasteit.exe was not built" }
+          New-Item -ItemType Directory -Force dist/pasteit | Out-Null
+          Copy-Item $exe.FullName, assets/lucide.ttf, assets/mermaid.min.js, README.md dist/pasteit/
+          Compress-Archive -Path dist/pasteit -DestinationPath dist/pasteit-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pasteit-windows-x64
+          path: dist/pasteit-windows-x64.zip
+
+  release:
+    name: Publish release
+    needs: [linux, windows]
+    if: ${{ always() && needs.linux.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history and tags for the incremental notes
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Write release notes
+        id: notes
+        run: |
+          python3 scripts/release_notes.py "${GITHUB_SHA}" artifacts > notes.md
+          echo "tag=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          cat notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.notes.outputs.tag }}" artifacts/*.zip \
+            --target "${GITHUB_SHA}" \
+            --title "PasteIt ${{ steps.notes.outputs.tag }} (${GITHUB_SHA::7})" \
+            --notes-file notes.md \
+            --latest

@@ -1,5 +1,7 @@
 #include "config/app_settings.hpp"
 
+#include "ai/prompt_optimizer.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -87,6 +89,7 @@ AppSettings default_settings() {
 #endif
     settings.annotation.save_directory = home_path("Pictures");
     settings.prompt_templates = default_prompt_templates();
+    settings.prompt_optimizer_system = default_prompt_optimizer_system();
     settings.pipelines.recipes = default_pipeline_recipes();
     return settings;
 }
@@ -110,6 +113,9 @@ void normalize_settings(AppSettings& settings) {
         (settings.djev.model_id == "autojev" || settings.djev.model_id == "jev-latest")) {
         settings.djev.endpoint = "http://127.0.0.1:8011";
         settings.djev.model_id = "typed-decisions";
+    }
+    if (settings.prompt_optimizer_system.find_first_not_of(" \t\r\n") == std::string::npos) {
+        settings.prompt_optimizer_system = default_prompt_optimizer_system();
     }
     if (settings.schema_version < 1) settings.schema_version = 1;
     if (!is_qr_error_correction(settings.renderers.qr_error_correction)) {

@@ -92,6 +92,7 @@ SettingsLoadResult SettingsStore::load() const {
     }
     s.djev = provider_from(root->get("djev"), s.djev);
     s.general_llm = provider_from(root->get("general_llm"), s.general_llm);
+    s.prompt_optimizer_system = string_value(root->get("prompt_optimizer_system"), s.prompt_optimizer_system);
     if (const auto* renderers = root->get("renderers"); renderers && renderers->object()) {
         s.renderers.mermaid_cli_path = path_from_utf8_string(string_value(
             renderers->get("mermaid_cli_path"), path_to_utf8_string(s.renderers.mermaid_cli_path)));
@@ -202,6 +203,7 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
         << ",\n\"default_text_directory\":" << json_quote(path_to_utf8_string(settings.default_text_directory))
         << ",\n\"djev\":"; write_provider(out, settings.djev);
     out << ",\n\"general_llm\":"; write_provider(out, settings.general_llm);
+    out << ",\n\"prompt_optimizer_system\":" << json_quote(settings.prompt_optimizer_system);
     out << ",\n\"renderers\":{\"mermaid_cli_path\":" << json_quote(path_to_utf8_string(settings.renderers.mermaid_cli_path))
         << ",\"mermaid_arguments\":";
     write_string_array(out, settings.renderers.mermaid_arguments);

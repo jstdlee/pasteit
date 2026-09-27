@@ -1,7 +1,6 @@
 #include "ai/prompt_optimizer.hpp"
 
 #include <cassert>
-#include <cstdlib>
 #include <string>
 
 int main() {
@@ -26,11 +25,9 @@ int main() {
     result = finish_optimized_prompt("Summarize {text} for {target_language} readers.\n\nInput:\n{text}", draft);
     assert(result.prompt == "Summarize the input below for {target_language} readers.\n\nInput:\n{text}");
 
-    // .env override with \n escapes; default otherwise.
-    unsetenv("PASTEIT_PROMPT_OPTIMIZER_SYSTEM");
-    assert(prompt_optimizer_system() == default_prompt_optimizer_system());
+    // The setting wins; blank falls back to the default.
+    assert(prompt_optimizer_system("  \n ") == default_prompt_optimizer_system());
     assert(default_prompt_optimizer_system().find("{text}") != std::string::npos);
-    setenv("PASTEIT_PROMPT_OPTIMIZER_SYSTEM", "Line one\\nLine two", 1);
-    assert(prompt_optimizer_system() == "Line one\nLine two");
+    assert(prompt_optimizer_system(" Be brief. ") == "Be brief.");
     assert(prompt_optimizer_user_message("x {text}").find("x {text}") != std::string::npos);
 }

@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdlib>
 
 namespace pasteit {
 namespace {
@@ -14,21 +13,6 @@ std::string trim(std::string_view value) {
     if (first == std::string_view::npos) return {};
     const auto last = value.find_last_not_of(" \t\r\n");
     return std::string{value.substr(first, last - first + 1)};
-}
-
-std::string unescape_newlines(std::string value) {
-    std::string out;
-    out.reserve(value.size());
-    for (std::size_t index = 0; index < value.size(); ++index) {
-        if (value[index] == '\\' && index + 1 < value.size()) {
-            const char next = value[index + 1];
-            if (next == 'n') { out.push_back('\n'); ++index; continue; }
-            if (next == 't') { out.push_back('\t'); ++index; continue; }
-            if (next == '\\') { out.push_back('\\'); ++index; continue; }
-        }
-        out.push_back(value[index]);
-    }
-    return out;
 }
 
 bool starts_with_icase(std::string_view text, std::string_view prefix) {
@@ -57,12 +41,9 @@ std::string default_prompt_optimizer_system() {
            "Return only the improved prompt text, with no title, quotes, code fences or commentary.";
 }
 
-std::string prompt_optimizer_system() {
-    if (const char* configured = std::getenv("PASTEIT_PROMPT_OPTIMIZER_SYSTEM")) {
-        auto value = trim(unescape_newlines(configured));
-        if (!value.empty()) return value;
-    }
-    return default_prompt_optimizer_system();
+std::string prompt_optimizer_system(std::string_view configured) {
+    auto value = trim(configured);
+    return value.empty() ? default_prompt_optimizer_system() : value;
 }
 
 std::string prompt_optimizer_user_message(std::string_view draft) {

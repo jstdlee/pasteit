@@ -2145,13 +2145,15 @@ int run_desktop_runtime() {
                 ImGui::TextUnformatted(tr(ui_language, UiTextKey::HomeTagline).c_str());
                 ImGui::PopTextWrapPos();
                 ImGui::Spacing();
-                // Principles as a 2 x 2 grid of cards.
+                // Principles as a 2-column grid of cards.
                 struct Principle { const char* glyph; UiTextKey title; UiTextKey body; };
                 static constexpr Principle principles[] = {
                     {icon::kZap, UiTextKey::PrincipleHandy, UiTextKey::PrincipleHandyBody},
                     {icon::kGauge, UiTextKey::PrincipleFast, UiTextKey::PrincipleFastBody},
                     {icon::kPipeline, UiTextKey::PrinciplePipeline, UiTextKey::PrinciplePipelineBody},
                     {icon::kGlobe, UiTextKey::PrincipleCrossPlatform, UiTextKey::PrincipleCrossPlatformBody},
+                    {icon::kBrain, UiTextKey::PrincipleLearns, UiTextKey::PrincipleLearnsBody},
+                    {icon::kShield, UiTextKey::PrinciplePrivate, UiTextKey::PrinciplePrivateBody},
                 };
                 if (ImGui::BeginTable("home-principles", 2, ImGuiTableFlags_SizingStretchSame)) {
                     for (const auto& principle : principles) {
@@ -2334,6 +2336,19 @@ int run_desktop_runtime() {
                 if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestGeneralLlm)).c_str())) start_llm_test();
                 ImGui::SameLine();
                 if (!llm_test_status.empty()) ImGui::TextColored(pal.text_muted, "%s", llm_test_status.c_str());
+                // Instructions used by Prompt templates > Optimize with LLM.
+                ImGui::Spacing();
+                ImGui::SeparatorText(tr(ui_language, UiTextKey::PromptOptimizerInstructions).c_str());
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextColored(pal.text_muted, "%s", tr(ui_language, UiTextKey::PromptOptimizerInstructionsHelp).c_str());
+                ImGui::PopTextWrapPos();
+                input_text_string("##prompt-optimizer-system", settings_draft.prompt_optimizer_system, true, 0,
+                                  ImGui::GetTextLineHeightWithSpacing() * 9.0F);
+                ImGui::BeginDisabled(settings_draft.prompt_optimizer_system == default_prompt_optimizer_system());
+                if (ImGui::Button(with_icon(icon::kUndo, tr(ui_language, UiTextKey::RestoreDefaults)).c_str())) {
+                    settings_draft.prompt_optimizer_system = default_prompt_optimizer_system();
+                }
+                ImGui::EndDisabled();
                 break;
             }
             case SettingsPage::Prompts: {
@@ -2445,10 +2460,11 @@ int run_desktop_runtime() {
                             prompt_optimize_status = tr(ui_language, UiTextKey::OptimizingPrompt);
                             const auto provider = settings_draft.general_llm;
                             const auto raw = draft.system_prompt;
-                            pending_prompt_optimize.emplace(std::async(std::launch::async, [provider, raw] {
+                            const auto instructions = prompt_optimizer_system(settings_draft.prompt_optimizer_system);
+                            pending_prompt_optimize.emplace(std::async(std::launch::async, [provider, raw, instructions] {
                                 const auto result = OpenAiCompatibleClient{}.generate({
                                     .request_id = "prompt-optimize", .endpoint = provider.endpoint, .api_key = provider.api_key,
-                                    .model_id = provider.model_id, .system_message = prompt_optimizer_system(),
+                                    .model_id = provider.model_id, .system_message = instructions,
                                     .user_message = prompt_optimizer_user_message(raw), .temperature = 0.3,
                                     .timeout = std::chrono::milliseconds{60000}});
                                 if (!result.ok) return OptimizedPrompt{.prompt = {}, .restored_placeholders = {}, .error = result.error};

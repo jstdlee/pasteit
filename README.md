@@ -2,7 +2,33 @@
 
 **Copy anything. PasteIt guesses what you want to do next and does it in one keystroke.**
 
+[![Build and release](https://github.com/jstdlee/pasteit/actions/workflows/release.yml/badge.svg)](https://github.com/jstdlee/pasteit/actions/workflows/release.yml) [![Latest release](https://img.shields.io/github/v/release/jstdlee/pasteit?label=download&sort=date)](https://github.com/jstdlee/pasteit/releases/latest)
+
 PasteIt is a clipboard action popup for Linux (X11) and Windows. Press `Ctrl+Alt+F` after copying something. PasteIt reads the clipboard and the window you are working in, works out what the content is, and offers the handful of things you most likely want to do with it: paste it, save it, pretty-print it, chart it, translate it, anonymize it, pipe it through `sort | uniq -c`, and so on. A structured decision model (Jev) ranks the choices, and the ranking learns from your habits. Actions are always fixed native code, never model-generated commands.
+
+## Gallery
+
+**Main input types.** The same hotkey adapts to what you copied, and Jev ranks the likely next step first.
+
+| CSV table | JSON | URL |
+|---|---|---|
+| ![CSV clipboard: view as table, Markdown table, pipeline](docs/images/popup-csv.png) | ![JSON clipboard: pretty, YAML, save, jq pipeline](docs/images/popup-json.png) | ![URL clipboard: clean tracking, GitHub remote, summarize page](docs/images/popup-url.png) |
+| **Subnet / IP** | **Personal data** | **Image** |
+| ![Subnet clipboard: details, split, ping, DNS](docs/images/popup-subnet.png) | ![Text with contacts and a password: anonymize first](docs/images/popup-pii.png) | ![Image clipboard: save, annotate, copy temporary path](docs/images/popup-image.png) |
+
+**Sub-windows.** Actions open focused tools owned by the popup.
+
+| Table view | Chart (X / Y / Agg) |
+|---|---|
+| ![Sortable, filterable table with Summarize and Formula](docs/images/table-view.png) | ![Chart with X, Y and aggregate operator](docs/images/chart-view.png) |
+| **Anonymize** | **Image annotation** |
+| ![Findings list, placeholder output and Ask LLM](docs/images/anonymize-view.png) | ![Rectangle, arrow and circle marks with the tool bar](docs/images/annotation-view.png) |
+
+**Settings.**
+
+| Home | General LLM and prompt optimizer |
+|---|---|
+| ![Settings home: principles, providers, stats](docs/images/settings-home.png) | ![General LLM endpoint, model and prompt optimizer instructions](docs/images/settings-llm.png) |
 
 ## Principles
 
@@ -12,6 +38,8 @@ PasteIt is a clipboard action popup for Linux (X11) and Windows. Press `Ctrl+Alt
 | ⚡ | **Fast** | Local detection is instant, and the local fallback ranking is ready before Jev answers. Jev ranks a small bounded request (≤ 26 actions, ≤ 10 KiB) in the background, and nothing waits on the network to show the popup. |
 | 🔗 | **Pipelines for extension** | Every text action can be followed by a pipeline (`sort`, `uniq`, `grep`, `cut`, `awk`, `jq`, …), a saved recipe, your own named commands, or a prompt template. New behaviour is a line in Settings, not a rebuild. |
 | 🖥️ | **Cross-platform** | One C++20 code base with Dear ImGui. Native clipboard, focus, terminal, file-picker and network adapters for Linux X11 and Windows. |
+| 🧠 | **Learns from you** | Every pick is weighted by how often and how recently you choose it, for this kind of content, in this app, at this time of day, and fed back into Jev's ranking and the local fallback. The more you use PasteIt, the smarter the first card becomes. |
+| 🛡️ | **Private by design** | Jev sees only a short preview and action descriptions. Personal data can be swapped for placeholders before any LLM call and restored in the answer. |
 
 ### Reduce repeated work, save life
 
@@ -154,6 +182,16 @@ Any OpenAI-compatible server works: OpenAI, OpenCode, vLLM, llama.cpp, Ollama, o
 - A server that rejects `temperature` gets one retry without it, and PasteIt remembers that endpoint.
 - OpenCode Go endpoints get a per-request `x-opencode-session` header.
 - Settings → Home shows both providers, each with a one-click test.
+- **Prompt templates** can be edited in Settings. In the editor, **Optimize with LLM** rewrites a rough draft into a clear, precise prompt with an explicit output format, keeping every `{placeholder}` (and using `{text}` once); Revert restores the draft. Its instructions are the *Prompt optimizer* field under Settings → General LLM, saved in `settings.json` with the other LLM settings.
+- Placeholders such as `{source_language}` / `{target_language}` are editable wherever a template runs (the action card, the Ask LLM dialog and Anonymize → Ask LLM), with a dropdown of common languages; values are remembered per template.
+
+## Download
+
+Every push to `main` is built, tested and published by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) as a release named `build-<n>`, with the commit messages since the previous build as release notes.
+
+- **[Latest release](https://github.com/jstdlee/pasteit/releases/latest)** and **[all releases](https://github.com/jstdlee/pasteit/releases)**
+- `pasteit-linux-x86_64.zip`: unzip, run `./pasteit` on an X11 desktop, then press `Ctrl+Alt+F`
+- `pasteit-windows-x64.zip`: attached when the Windows build succeeds (best effort)
 
 ## Quick start
 
@@ -198,6 +236,7 @@ Prerequisites:
   - Pick the X column and one or more Y series. The **Y operator** (each row, sum, avg, min, max, count) reduces rows that share an X value.
   - Copy or save as PNG.
 - **Markdown:** a rendered preview with copy as HTML or plain text.
+- **Image annotation:** select/move (`S`), pen (`F`), line (`W`), arrow (`A`), rectangle (`R`), circle (`C`) and text (`T`) with colours and sizes; Delete removes the selection and Ctrl+Z undoes. Save SVG writes `~/Pictures/annotation-<time>.svg` (editable), then Open / Folder / Copy path.
 
 ## Pipelines
 
