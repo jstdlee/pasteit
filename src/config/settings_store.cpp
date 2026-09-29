@@ -81,6 +81,7 @@ SettingsLoadResult SettingsStore::load() const {
     s.language = static_cast<UiLanguage>(static_cast<int>(number_value(root->get("language"), 0)));
     s.window_opacity = static_cast<float>(number_value(root->get("window_opacity"), s.window_opacity));
     s.theme = number_value(root->get("theme"), 0) == 1 ? UiTheme::Light : UiTheme::Dark;
+    s.global_hotkey = string_value(root->get("global_hotkey"), s.global_hotkey);
     s.default_image_directory = path_from_utf8_string(string_value(
         root->get("default_image_directory"), path_to_utf8_string(s.default_image_directory)));
     s.default_text_directory = path_from_utf8_string(string_value(
@@ -140,6 +141,7 @@ SettingsLoadResult SettingsStore::load() const {
             value.temperature = number_value(item.get("temperature"), 0.2);
             value.enabled = bool_value(item.get("enabled"), true);
             value.built_in = bool_value(item.get("built_in"), false);
+            value.thinking = bool_value(item.get("thinking"), false);
             if (!value.id.empty() && !value.name.empty() && !value.system_prompt.empty()) s.prompt_templates.push_back(std::move(value));
         }
     }
@@ -199,6 +201,7 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
         << ",\n\"language\":" << static_cast<int>(settings.language)
         << ",\n\"window_opacity\":" << settings.window_opacity
         << ",\n\"theme\":" << static_cast<int>(settings.theme)
+        << ",\n\"global_hotkey\":" << json_quote(settings.global_hotkey)
         << ",\n\"default_image_directory\":" << json_quote(path_to_utf8_string(settings.default_image_directory))
         << ",\n\"default_text_directory\":" << json_quote(path_to_utf8_string(settings.default_text_directory))
         << ",\n\"djev\":"; write_provider(out, settings.djev);
@@ -229,7 +232,8 @@ bool SettingsStore::save(const AppSettings& source, std::string& error) const {
         const auto& t=settings.prompt_templates[i]; if (i) out << ',';
         out << "{\"id\":" << json_quote(t.id) << ",\"name\":" << json_quote(t.name)
             << ",\"system_prompt\":" << json_quote(t.system_prompt) << ",\"temperature\":" << t.temperature
-            << ",\"enabled\":" << (t.enabled?"true":"false") << ",\"built_in\":" << (t.built_in?"true":"false") << '}';
+            << ",\"enabled\":" << (t.enabled?"true":"false") << ",\"built_in\":" << (t.built_in?"true":"false")
+            << ",\"thinking\":" << (t.thinking?"true":"false") << '}';
     }
     out << "]";
     const auto write_strings = [&out](const std::vector<std::string>& values) {

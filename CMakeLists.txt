@@ -154,6 +154,7 @@ add_library(pasteit_core
     src/annotation/annotation_export.cpp
     src/annotation/image_annotation.cpp
     src/config/app_settings.cpp
+    src/config/hotkey.cpp
     src/config/settings_store.cpp
     src/config/prompt_template_service.cpp
     src/decision/action_category.cpp
@@ -213,6 +214,7 @@ add_library(pasteit_core
     src/ui/hash_result_panel.cpp
     src/ui/image_annotation_panel.cpp
     src/ui/ai_result_panel.cpp
+    src/ui/hotkey_editor.cpp
     src/ui/imgui_widgets.cpp
     src/ui/theme.cpp
     src/ui/data_views.cpp
@@ -323,6 +325,10 @@ if (PASTEIT_BUILD_TESTS)
         target_link_libraries(fast_action_services_test PRIVATE pasteit_core)
         add_test(NAME fast_action_services_test COMMAND fast_action_services_test)
     endif()
+
+    add_executable(hotkey_test tests/hotkey_test.cpp)
+    target_link_libraries(hotkey_test PRIVATE pasteit_core)
+    add_test(NAME hotkey_test COMMAND hotkey_test)
 
     add_executable(settings_test tests/settings_test.cpp)
     target_link_libraries(settings_test PRIVATE pasteit_core)

@@ -198,53 +198,62 @@ const UiPalette& palette() {
     return current_palette;
 }
 
+// The look follows GPU HUD: a dark glass panel with a thin accent outline,
+// controls drawn as translucent white (dark) or black (light) washes that
+// take the accent colour on hover, and a green accent for state. Light mode
+// keeps the same shapes and alphas on a pale panel.
 void apply_theme(UiTheme theme, float dpi_scale) {
     const bool light = theme == UiTheme::Light;
     current_palette = light ? UiPalette{
-        .background = rgb(0xF6F7F9),
+        .background = rgb(0xF3F5F4),
         .surface = rgb(0xFFFFFF),
-        .surface_hover = rgb(0xEEF1F6),
-        .border = rgb(0xDDE1E8),
-        .text = rgb(0x1C2027),
-        .text_muted = rgb(0x667085),
-        .accent = rgb(0x3D63F5),
-        .accent_soft = rgb(0x3D63F5, 0.12F),
-        .success = rgb(0x1F9D6B),
+        .surface_hover = rgb(0xE9EDEB),
+        .border = rgb(0xD9DFDC),
+        .text = rgb(0x1A1F1C),
+        .text_muted = rgb(0x5E6A64),
+        .accent = rgb(0x1E9E55),
+        .accent_soft = rgb(0x1E9E55, 0.14F),
+        .success = rgb(0x1E9E55),
         .warning = rgb(0xC98A12),
         .danger = rgb(0xD64545),
     } : UiPalette{
-        .background = rgb(0x15171C),
-        .surface = rgb(0x1E2128),
-        .surface_hover = rgb(0x272B34),
-        .border = rgb(0x2F343E),
-        .text = rgb(0xE6E8EC),
-        .text_muted = rgb(0x8B93A1),
-        .accent = rgb(0x7B96FF),
-        .accent_soft = rgb(0x7B96FF, 0.16F),
-        .success = rgb(0x3FB984),
-        .warning = rgb(0xE0A43B),
-        .danger = rgb(0xE5534B),
+        .background = rgb(0x0F1217),
+        .surface = rgb(0x171A1F),
+        .surface_hover = rgb(0x22262B),
+        .border = rgb(0x2A2E34),
+        .text = rgb(0xECEEF1),
+        .text_muted = rgb(0xA4ABB5),
+        .accent = rgb(0x4CC778),
+        .accent_soft = rgb(0x4CC778, 0.18F),
+        .success = rgb(0x4CC778),
+        .warning = rgb(0xF2AD38),
+        .danger = rgb(0xED4D47),
     };
     const auto& p = current_palette;
+    // Control washes: white over the dark panel, black over the light one.
+    const auto wash = [light](float alpha) { return light ? ImVec4(0, 0, 0, alpha * 0.75F) : ImVec4(1, 1, 1, alpha); };
+    const auto tint = [&p](float alpha) { return with_alpha(p.accent, alpha); };
 
     ImGuiStyle& style = ImGui::GetStyle();
     style = ImGuiStyle();
-    style.WindowPadding = ImVec2(16.0F, 14.0F);
-    style.FramePadding = ImVec2(10.0F, 6.0F);
-    style.ItemSpacing = ImVec2(8.0F, 8.0F);
-    style.ItemInnerSpacing = ImVec2(6.0F, 6.0F);
-    style.CellPadding = ImVec2(8.0F, 5.0F);
-    style.ScrollbarSize = 10.0F;
+    style.WindowPadding = ImVec2(12.0F, 10.0F);
+    style.FramePadding = ImVec2(9.0F, 5.0F);
+    style.ItemSpacing = ImVec2(8.0F, 6.0F);
+    style.ItemInnerSpacing = ImVec2(6.0F, 5.0F);
+    style.CellPadding = ImVec2(8.0F, 4.0F);
+    style.ScrollbarSize = 9.0F;
     style.GrabMinSize = 10.0F;
     style.WindowRounding = 10.0F;
     style.ChildRounding = 8.0F;
-    style.FrameRounding = 6.0F;
-    style.PopupRounding = 8.0F;
-    style.ScrollbarRounding = 8.0F;
-    style.GrabRounding = 6.0F;
-    style.TabRounding = 6.0F;
+    style.FrameRounding = 5.0F;
+    style.PopupRounding = 6.0F;
+    style.ScrollbarRounding = 5.0F;
+    style.GrabRounding = 4.0F;
+    style.TabRounding = 5.0F;
+    // Only windows get an outline (the accent hairline); controls are flat.
     style.WindowBorderSize = 1.0F;
-    style.FrameBorderSize = 1.0F;
+    style.ChildBorderSize = 1.0F;
+    style.FrameBorderSize = 0.0F;
     style.PopupBorderSize = 1.0F;
     style.TabBorderSize = 0.0F;
     style.SeparatorTextBorderSize = 1.0F;
@@ -258,54 +267,56 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_TextDisabled] = p.text_muted;
     c[ImGuiCol_WindowBg] = p.background;
     c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_PopupBg] = p.surface;
-    c[ImGuiCol_Border] = p.border;
-    // Buttons and frames share the thin border; buttons blend it in.
+    c[ImGuiCol_PopupBg] = light ? rgb(0xFFFFFF, 0.98F) : ImVec4(0.08F, 0.09F, 0.11F, 0.97F);
+    c[ImGuiCol_Border] = tint(0.35F);
     c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-    // Fields sit inset: darker than cards in dark mode, tinted in light mode.
-    c[ImGuiCol_FrameBg] = light ? rgb(0xF3F5F8) : rgb(0x121419);
-    c[ImGuiCol_FrameBgHovered] = light ? rgb(0xEBEEF3) : rgb(0x191C22);
-    c[ImGuiCol_FrameBgActive] = mix(p.surface_hover, p.accent, 0.15F);
+    c[ImGuiCol_FrameBg] = wash(0.08F);
+    c[ImGuiCol_FrameBgHovered] = wash(0.14F);
+    c[ImGuiCol_FrameBgActive] = tint(0.35F);
     c[ImGuiCol_TitleBg] = p.background;
     c[ImGuiCol_TitleBgActive] = p.surface;
     c[ImGuiCol_TitleBgCollapsed] = p.background;
     c[ImGuiCol_MenuBarBg] = p.surface;
     c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_ScrollbarGrab] = p.border;
-    c[ImGuiCol_ScrollbarGrabHovered] = mix(p.border, p.text_muted, 0.4F);
-    c[ImGuiCol_ScrollbarGrabActive] = p.text_muted;
+    c[ImGuiCol_ScrollbarGrab] = wash(0.14F);
+    c[ImGuiCol_ScrollbarGrabHovered] = tint(0.45F);
+    c[ImGuiCol_ScrollbarGrabActive] = tint(0.70F);
     c[ImGuiCol_CheckMark] = p.accent;
     c[ImGuiCol_SliderGrab] = p.accent;
-    c[ImGuiCol_SliderGrabActive] = mix(p.accent, p.text, 0.2F);
-    c[ImGuiCol_Button] = p.surface_hover;
-    c[ImGuiCol_ButtonHovered] = mix(p.surface_hover, p.accent, 0.25F);
-    c[ImGuiCol_ButtonActive] = mix(p.surface_hover, p.accent, 0.45F);
-    c[ImGuiCol_Header] = p.accent_soft;
-    c[ImGuiCol_HeaderHovered] = with_alpha(p.accent, 0.22F);
-    c[ImGuiCol_HeaderActive] = with_alpha(p.accent, 0.30F);
-    c[ImGuiCol_Separator] = p.border;
-    c[ImGuiCol_SeparatorHovered] = p.accent;
+    c[ImGuiCol_SliderGrabActive] = p.accent;
+    c[ImGuiCol_Button] = wash(0.08F);
+    c[ImGuiCol_ButtonHovered] = tint(0.45F);
+    c[ImGuiCol_ButtonActive] = tint(0.70F);
+    c[ImGuiCol_Header] = tint(0.30F);
+    c[ImGuiCol_HeaderHovered] = tint(0.45F);
+    c[ImGuiCol_HeaderActive] = tint(0.55F);
+    c[ImGuiCol_Separator] = wash(0.10F);
+    c[ImGuiCol_SeparatorHovered] = tint(0.60F);
     c[ImGuiCol_SeparatorActive] = p.accent;
-    c[ImGuiCol_ResizeGrip] = with_alpha(p.accent, 0.2F);
-    c[ImGuiCol_ResizeGripHovered] = with_alpha(p.accent, 0.5F);
+    c[ImGuiCol_ResizeGrip] = tint(0.25F);
+    c[ImGuiCol_ResizeGripHovered] = tint(0.55F);
     c[ImGuiCol_ResizeGripActive] = p.accent;
+    c[ImGuiCol_InputTextCursor] = p.accent;
     c[ImGuiCol_Tab] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_TabHovered] = p.surface_hover;
-    c[ImGuiCol_TabSelected] = p.surface;
+    c[ImGuiCol_TabHovered] = wash(0.08F);
+    c[ImGuiCol_TabSelected] = wash(0.08F);
     c[ImGuiCol_TabSelectedOverline] = p.accent;
     c[ImGuiCol_TabDimmed] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_TabDimmedSelected] = p.surface;
-    c[ImGuiCol_TabDimmedSelectedOverline] = with_alpha(p.accent, 0.5F);
+    c[ImGuiCol_TabDimmedSelected] = wash(0.06F);
+    c[ImGuiCol_TabDimmedSelectedOverline] = tint(0.5F);
+    c[ImGuiCol_PlotLines] = p.accent;
+    c[ImGuiCol_PlotLinesHovered] = rgb(0x739EFA);
     c[ImGuiCol_PlotHistogram] = p.accent;
     c[ImGuiCol_PlotHistogramHovered] = mix(p.accent, p.text, 0.2F);
-    c[ImGuiCol_TableHeaderBg] = p.surface;
-    c[ImGuiCol_TableBorderStrong] = p.border;
-    c[ImGuiCol_TableBorderLight] = with_alpha(p.border, 0.6F);
+    c[ImGuiCol_TableHeaderBg] = wash(0.06F);
+    c[ImGuiCol_TableBorderStrong] = wash(0.10F);
+    c[ImGuiCol_TableBorderLight] = wash(0.06F);
     c[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_TableRowBgAlt] = with_alpha(p.surface, 0.5F);
-    c[ImGuiCol_TextSelectedBg] = with_alpha(p.accent, 0.35F);
+    c[ImGuiCol_TableRowBgAlt] = wash(0.05F);
+    c[ImGuiCol_TextSelectedBg] = tint(0.35F);
+    c[ImGuiCol_DragDropTarget] = p.accent;
     c[ImGuiCol_NavCursor] = p.accent;
-    c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, light ? 0.2F : 0.45F);
+    c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, light ? 0.2F : 0.5F);
 }
 
 ImVec4 category_color(ActionCategory category) {
@@ -490,12 +501,9 @@ bool action_card(const char* id, const ActionCardModel& model) {
     }
     if (model.probability > 0.0) {
         const float fraction = static_cast<float>(std::clamp(model.probability, 0.0, 1.0));
-        const float bar_y = end.y - 13.0F * scale;
-        const ImVec2 bar_min(right - bar_width, bar_y);
-        draw->AddRectFilled(bar_min, ImVec2(right, bar_y + 4.0F * scale), ImGui::GetColorU32(with_alpha(p.border, alpha)),
-                            2.0F * scale);
-        draw->AddRectFilled(bar_min, ImVec2(bar_min.x + bar_width * fraction, bar_y + 4.0F * scale),
-                            ImGui::GetColorU32(with_alpha(model.selected ? p.accent : p.text_muted, alpha)), 2.0F * scale);
+        const float bar_y = end.y - 14.0F * scale;
+        draw_meter(draw, ImVec2(right - bar_width, bar_y), ImVec2(right, bar_y + 6.0F * scale), fraction,
+                   model.selected ? p.accent : p.text_muted, alpha);
         if (hovered) {
             ImGui::SetTooltip("%.0f%%", model.probability * 100.0);
         }
@@ -589,10 +597,75 @@ int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view
     return clicked;
 }
 
+void draw_meter(ImDrawList* draw, ImVec2 min, ImVec2 max, float fraction, ImVec4 fill, float alpha) {
+    const bool light = current_palette.background.x > 0.5F;
+    const float rounding = (max.y - min.y) * 0.35F;
+    draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, 0.08F * alpha) : ImVec4(1, 1, 1, 0.10F * alpha)),
+                        rounding);
+    fraction = std::clamp(fraction, 0.0F, 1.0F);
+    if (fraction <= 0.0F) return;
+    const float width = std::max((max.x - min.x) * fraction, rounding * 2.0F);
+    draw->AddRectFilled(min, ImVec2(min.x + width, max.y), ImGui::GetColorU32(with_alpha(fill, fill.w * alpha)), rounding);
+}
+
+void meter(float fraction, std::string_view overlay, float height, bool load) {
+    const auto& p = current_palette;
+    const float width = ImGui::GetContentRegionAvail().x;
+    if (height <= 0.0F) height = ImGui::GetFrameHeight() * 0.92F;
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImVec4 fill = !load || fraction < 0.70F ? p.accent : fraction < 0.90F ? p.warning : p.danger;
+    auto* draw = ImGui::GetWindowDrawList();
+    draw_meter(draw, pos, ImVec2(pos.x + width, pos.y + height), fraction, fill);
+    if (!overlay.empty()) {
+        const ImVec2 size = ImGui::CalcTextSize(overlay.data(), overlay.data() + overlay.size());
+        const ImVec2 text(pos.x + (width - size.x) * 0.5F, pos.y + (height - size.y) * 0.5F);
+        // Drop shadow keeps the label readable over the fill.
+        draw->AddText(ImVec2(text.x + 1.0F, text.y + 1.0F), IM_COL32(0, 0, 0, 160), overlay.data(), overlay.data() + overlay.size());
+        draw->AddText(text, ImGui::GetColorU32(ImGuiCol_Text), overlay.data(), overlay.data() + overlay.size());
+    }
+    ImGui::Dummy(ImVec2(width, height));
+}
+
+bool nav_item(const char* id, std::string_view label, bool selected) {
+    const auto& p = current_palette;
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    const float height = ImGui::GetFrameHeight() + 6.0F * scale;
+    const float width = ImGui::GetContentRegionAvail().x;
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImGui::PushID(id);
+    const bool clicked = ImGui::InvisibleButton("nav", ImVec2(width, height));
+    const bool hovered = ImGui::IsItemHovered();
+    const bool held = ImGui::IsItemActive();
+    ImGui::PopID();
+    auto* draw = ImGui::GetWindowDrawList();
+    const ImVec2 end(pos.x + width, pos.y + height);
+    const float rounding = 6.0F * scale;
+    const bool light = p.background.x > 0.5F;
+    if (selected) {
+        draw->AddRectFilled(pos, end, ImGui::GetColorU32(with_alpha(p.accent, held ? 0.30F : 0.20F)), rounding);
+    } else if (hovered) {
+        const float alpha = held ? 0.12F : 0.07F;
+        draw->AddRectFilled(pos, end, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, alpha) : ImVec4(1, 1, 1, alpha)), rounding);
+    }
+    const ImVec2 text_size = ImGui::CalcTextSize(label.data(), label.data() + label.size());
+    const ImVec2 text_pos(pos.x + 10.0F * scale, pos.y + (height - text_size.y) * 0.5F);
+    const ImVec4 clip(pos.x, pos.y, end.x - 4.0F * scale, end.y);
+    draw->AddText(nullptr, 0.0F, text_pos, ImGui::GetColorU32(selected ? p.accent : p.text), label.data(),
+                  label.data() + label.size(), 0.0F, &clip);
+    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    return clicked;
+}
+
+void separator_heading(std::string_view title) {
+    ImGui::PushStyleColor(ImGuiCol_Text, current_palette.accent);
+    ImGui::SeparatorText(std::string{title}.c_str());
+    ImGui::PopStyleColor();
+}
+
 void section_heading(const char* glyph, std::string_view title, std::string_view help) {
     ImGui::PushFont(current_fonts.bold, current_fonts.heading);
     const auto text = with_icon(glyph, title);
-    ImGui::TextUnformatted(text.c_str());
+    ImGui::TextColored(current_palette.accent, "%s", text.c_str());
     ImGui::PopFont();
     if (!help.empty()) {
         ImGui::PushTextWrapPos(0.0F);

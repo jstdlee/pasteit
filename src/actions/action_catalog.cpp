@@ -694,6 +694,7 @@ void add_prompt_actions(ActionCatalog& catalog, const ClipboardItem& item, const
             {"template_name", prompt.name},
             {"system_prompt", prompt.system_prompt},
             {"temperature", std::to_string(prompt.temperature)},
+            {"thinking", prompt.thinking ? "true" : "false"},
             {"llm_endpoint", provider.endpoint},
             {"llm_model_id", provider.model_id},
             {"input_variable", "text"},

@@ -16,6 +16,7 @@ public:
     bool erase(std::string_view id, std::string& error);
     std::optional<PromptTemplate> duplicate(std::string_view id, std::string& error);
     bool set_enabled(std::string_view id, bool enabled, std::string& error);
+    bool set_thinking(std::string_view id, bool thinking, std::string& error);
     void restore_defaults();
 private:
     std::vector<PromptTemplate>& templates_;

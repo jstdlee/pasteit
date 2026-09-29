@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     if (!receiver.available()) {
         return skip("X11 display could not be opened");
     }
-    if (!send_only && !receiver.register_ctrl_alt_f_shortcut()) {
+    if (!send_only && !receiver.register_shortcut(pasteit::default_hotkey())) {
         return skip("Ctrl+Alt+F is already grabbed by another client");
     }
 
@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
     bool received = false;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{1};
     while (!received && std::chrono::steady_clock::now() < deadline) {
-        received = receiver.poll_ctrl_alt_f_shortcut();
+        received = receiver.poll_shortcut();
         std::this_thread::sleep_for(std::chrono::milliseconds{5});
     }
     XCloseDisplay(sender);

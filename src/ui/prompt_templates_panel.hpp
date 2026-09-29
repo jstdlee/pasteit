@@ -35,6 +35,7 @@ struct PromptTemplateRow {
     std::string system_prompt;
     double temperature = 0.0;
     bool built_in = false;
+    bool thinking = false;
     std::vector<std::string> columns;
     std::vector<std::string> actions;
     std::vector<std::string> tooltips;

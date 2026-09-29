@@ -4,7 +4,7 @@
 
 [![Build and release](https://github.com/jstdlee/pasteit/actions/workflows/release.yml/badge.svg)](https://github.com/jstdlee/pasteit/actions/workflows/release.yml) [![Latest release](https://img.shields.io/github/v/release/jstdlee/pasteit?label=download&sort=date)](https://github.com/jstdlee/pasteit/releases/latest)
 
-PasteIt is a clipboard action popup for Linux (X11) and Windows. Press `Ctrl+Alt+F` after copying something. PasteIt reads the clipboard and the window you are working in, works out what the content is, and offers the handful of things you most likely want to do with it: paste it, save it, pretty-print it, chart it, translate it, anonymize it, pipe it through `sort | uniq -c`, and so on. A structured decision model (Jev) ranks the choices, and the ranking learns from your habits. Actions are always fixed native code, never model-generated commands.
+PasteIt is a clipboard action popup for Linux (X11) and Windows. Press `Ctrl+Alt+F` (configurable) after copying something. PasteIt reads the clipboard and the window you are working in, works out what the content is, and offers the handful of things you most likely want to do with it: paste it, save it, pretty-print it, chart it, translate it, anonymize it, pipe it through `sort | uniq -c`, and so on. A structured decision model (Jev) ranks the choices, and the ranking learns from your habits. Actions are always fixed native code, never model-generated commands.
 
 ## Gallery
 
@@ -218,6 +218,7 @@ Prerequisites:
 ## Using the popup
 
 - **Open, run, hide.** Copy something, press `Ctrl+Alt+F`, then click a card, press `1`–`8`, or use Up/Down and Enter. Escape hides the popup.
+- **Your own shortcut.** Settings > General > Global shortcut: click the button and press a new combination. PasteIt checks it live (is another application holding it?), against your GNOME or KDE keybindings, and against well-known system and editing shortcuts (Alt+Tab, Win+L, Ctrl+V, AltGr combinations on Windows). A shortcut that cannot work is refused; one that shadows something else is saved with a warning. The old shortcut stays active until the new one is registered.
 - **Edit before acting.** The preview is an editable text area: change the text, then press Ctrl+Enter or click ✓. The edit becomes a new clipboard item and the actions re-rank.
 - **Window behaviour.** The popup has no title bar; drag the tab row to move it. It is a normal window (not always-on-top). Sub-windows (confirmations, views, results) are owned by the popup and stay in front of it.
 - **Tabs.** Smart Actions, Recent Paths (frecency-ranked), Clipboard History (newest 50), and Settings.

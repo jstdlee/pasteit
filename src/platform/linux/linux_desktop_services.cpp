@@ -1,5 +1,6 @@
 #include "platform/linux/linux_desktop_services.hpp"
 #include "platform/linux/linux_recent_paths.hpp"
+#include "pipeline/process_runner.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -7,6 +8,8 @@
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
 #include <pwd.h>
 #include <spawn.h>
 #include <string>
@@ -276,8 +279,59 @@ std::vector<PlatformRecentPath> LinuxDesktopServices::recent_paths() {
     values.insert(values.end(), shells.begin(), shells.end());
     return values;
 }
-bool LinuxDesktopServices::register_global_shortcut() { return focus_.register_ctrl_alt_f_shortcut(); }
-bool LinuxDesktopServices::global_shortcut_activated() { return focus_.poll_ctrl_alt_f_shortcut(); }
+bool LinuxDesktopServices::register_global_shortcut(const Hotkey& hotkey) { return focus_.register_shortcut(hotkey); }
+bool LinuxDesktopServices::global_shortcut_activated() { return focus_.poll_shortcut(); }
+HotkeyAvailability LinuxDesktopServices::probe_global_shortcut(const Hotkey& hotkey) { return focus_.probe_shortcut(hotkey); }
+std::vector<DesktopShortcut> LinuxDesktopServices::desktop_shortcuts() {
+    if (desktop_shortcuts_) return *desktop_shortcuts_;
+    std::vector<DesktopShortcut> found;
+    constexpr auto timeout = std::chrono::milliseconds(1500);
+    constexpr std::size_t max_output = 256 * 1024;
+    const auto gsettings = [&](std::vector<std::string> argv) {
+        argv.insert(argv.begin(), "gsettings");
+        const auto run = run_process_with_input(argv, {}, timeout, max_output);
+        return run.started && !run.timed_out && run.exit_code == 0 ? run.output : std::string{};
+    };
+    if (find_executable("gsettings")) {
+        // A schema the desktop does not install just fails and adds nothing.
+        for (const char* schema : {"org.gnome.desktop.wm.keybindings", "org.gnome.shell.keybindings",
+                                   "org.gnome.mutter.keybindings", "org.gnome.settings-daemon.plugins.media-keys"}) {
+            auto bindings = parse_gsettings_keybindings(gsettings({"list-recursively", schema}));
+            found.insert(found.end(), bindings.begin(), bindings.end());
+        }
+        // Custom shortcuts live at relocatable paths listed in custom-keybindings.
+        const auto paths = gsettings({"get", "org.gnome.settings-daemon.plugins.media-keys", "custom-keybindings"});
+        std::size_t at = 0;
+        while ((at = paths.find('\'', at)) != std::string::npos) {
+            const auto close = paths.find('\'', at + 1);
+            if (close == std::string::npos) break;
+            const auto schema = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:" +
+                                paths.substr(at + 1, close - at - 1);
+            at = close + 1;
+            auto binding = gsettings({"get", schema, "binding"});
+            auto name = gsettings({"get", schema, "name"});
+            const auto unquote = [](std::string text) {
+                const auto first = text.find('\''), last = text.rfind('\'');
+                return first != std::string::npos && last > first ? text.substr(first + 1, last - first - 1) : std::string{};
+            };
+            if (const auto hotkey = parse_gtk_accelerator(unquote(binding))) {
+                found.push_back({*hotkey, "GNOME", unquote(name)});
+            }
+        }
+    }
+    const char* config_home = std::getenv("XDG_CONFIG_HOME");
+    const auto kde_file = (config_home != nullptr && *config_home != '\0'
+                               ? std::filesystem::path(config_home)
+                               : user_home_directory() / ".config") / "kglobalshortcutsrc";
+    if (std::ifstream input(kde_file, std::ios::binary); input) {
+        std::ostringstream text;
+        text << input.rdbuf();
+        auto bindings = parse_kde_global_shortcuts(text.str());
+        found.insert(found.end(), bindings.begin(), bindings.end());
+    }
+    desktop_shortcuts_ = std::move(found);
+    return *desktop_shortcuts_;
+}
 bool LinuxDesktopServices::restore_focus_and_paste(const PlatformFocusContext& context) {
     return focus_.focus_and_paste(to_x11_focus(context));
 }

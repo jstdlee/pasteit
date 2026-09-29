@@ -160,7 +160,7 @@ void write_spans(FlowWriter& writer, const std::vector<MdSpan>& spans, float siz
         ImFont* font = (span.style & MdBold) || force_bold ? fonts.bold : fonts.regular;
         ImVec4 color = base;
         if (span.style & MdLink) color = p.accent;
-        else if (span.style & MdCode) color = ImVec4(0.93F, 0.55F, 0.45F, 1.0F);
+        else if (span.style & MdCode) color = p.warning;
         else if (span.style & MdItalic) color = ImVec4(base.x * 0.85F + 0.1F, base.y * 0.85F + 0.1F, base.z * 0.85F + 0.15F, base.w);
         writer.write(span.text, font, size, ImGui::GetColorU32(color), span.style, span.url, open_uri);
     }

@@ -48,6 +48,44 @@ struct X11ErrorTrap {
     int (*previous)(Display*, XErrorEvent*) = nullptr;
 };
 
+constexpr unsigned int kHotkeyModifierMask = ShiftMask | ControlMask | Mod1Mask | Mod4Mask;
+
+unsigned int hotkey_modifier_mask(const Hotkey& hotkey) {
+    return (hotkey.ctrl ? ControlMask : 0U) | (hotkey.alt ? Mod1Mask : 0U) | (hotkey.shift ? ShiftMask : 0U) |
+           (hotkey.super ? Mod4Mask : 0U);
+}
+
+unsigned int hotkey_keycode(Display* display, const Hotkey& hotkey) {
+    const auto* key = find_hotkey_key(hotkey.key);
+    if (key == nullptr) return 0;
+    const KeySym keysym = XStringToKeysym(key->x11_keysym);
+    return keysym == NoSymbol ? 0U : static_cast<unsigned int>(XKeysymToKeycode(display, keysym));
+}
+
+void ungrab_key(Display* display, Window root, unsigned int keycode, unsigned int modifiers) {
+    for (unsigned int variant : x11_lock_modifier_variants()) {
+        XUngrabKey(display, static_cast<int>(keycode), modifiers | variant, root);
+    }
+    // Sync, not flush: other clients may probe this combination right away.
+    XSync(display, False);
+}
+
+// Grabs the combination with every Caps/Num Lock variant. Another client
+// holding any variant is a conflict (BadAccess), and nothing stays grabbed.
+bool grab_key(Display* display, Window root, unsigned int keycode, unsigned int modifiers) {
+    bool all_grabbed = false;
+    {
+        X11ErrorTrap trap(display);
+        for (unsigned int variant : x11_lock_modifier_variants()) {
+            XGrabKey(display, static_cast<int>(keycode), modifiers | variant, root, False, GrabModeAsync, GrabModeAsync);
+        }
+        XSync(display, False);
+        all_grabbed = x11_error_seen == 0;
+    }
+    if (!all_grabbed) ungrab_key(display, root, keycode, modifiers);
+    return all_grabbed;
+}
+
 Atom intern(Display* display, const char* name) {
     return XInternAtom(display, name, False);
 }
@@ -199,11 +237,8 @@ X11ContextService::~X11ContextService() {
 #if defined(PASTEIT_HAS_X11)
     if (display_ != nullptr) {
         auto* display = static_cast<Display*>(display_);
-        if (shortcut_registered_ && shortcut_keycode_ != 0) {
-            for (unsigned int variant : x11_lock_modifier_variants()) {
-                XUngrabKey(display, static_cast<int>(shortcut_keycode_), ControlMask | Mod1Mask | variant,
-                           static_cast<Window>(root_));
-            }
+        if (shortcut_registered_) {
+            ungrab_key(display, static_cast<Window>(root_), shortcut_keycode_, shortcut_modifiers_);
         }
         XCloseDisplay(display);
     }
@@ -214,60 +249,86 @@ bool X11ContextService::available() const {
     return display_ != nullptr;
 }
 
-bool X11ContextService::register_ctrl_alt_f_shortcut() {
+bool X11ContextService::register_shortcut(const Hotkey& hotkey) {
 #if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr) {
         return false;
     }
     auto* display = static_cast<Display*>(display_);
-    shortcut_keycode_ = XKeysymToKeycode(display, XK_f);
-    if (shortcut_keycode_ == 0) {
+    const auto root = static_cast<Window>(root_);
+    const unsigned int keycode = hotkey_keycode(display, hotkey);
+    const unsigned int modifiers = hotkey_modifier_mask(hotkey);
+    if (keycode == 0) {
         return false;
     }
-
-    bool all_grabbed = false;
-    {
-        X11ErrorTrap trap(display);
-        for (unsigned int variant : x11_lock_modifier_variants()) {
-            XGrabKey(display, static_cast<int>(shortcut_keycode_), ControlMask | Mod1Mask | variant,
-                     static_cast<Window>(root_), False, GrabModeAsync, GrabModeAsync);
-        }
-        XSync(display, False);
-        all_grabbed = x11_error_seen == 0;
+    if (shortcut_registered_ && keycode == shortcut_keycode_ && modifiers == shortcut_modifiers_) {
+        return true;
     }
-    if (!all_grabbed) {
-        for (unsigned int variant : x11_lock_modifier_variants()) {
-            XUngrabKey(display, static_cast<int>(shortcut_keycode_), ControlMask | Mod1Mask | variant,
-                       static_cast<Window>(root_));
-        }
-        XFlush(display);
+    // Grab the new combination before letting go of the old one, so a failed
+    // change leaves the working shortcut in place.
+    if (!grab_key(display, root, keycode, modifiers)) {
         return false;
     }
+    if (shortcut_registered_) {
+        ungrab_key(display, root, shortcut_keycode_, shortcut_modifiers_);
+    }
+    shortcut_keycode_ = keycode;
+    shortcut_modifiers_ = modifiers;
     shortcut_registered_ = true;
     return true;
 #else
+    (void)hotkey;
     return false;
 #endif
 }
 
-bool X11ContextService::poll_ctrl_alt_f_shortcut() {
+HotkeyAvailability X11ContextService::probe_shortcut(const Hotkey& hotkey) {
+#if defined(PASTEIT_HAS_X11)
+    if (display_ == nullptr) {
+        return HotkeyAvailability::Unknown;
+    }
+    auto* display = static_cast<Display*>(display_);
+    const unsigned int keycode = hotkey_keycode(display, hotkey);
+    const unsigned int modifiers = hotkey_modifier_mask(hotkey);
+    if (keycode == 0) {
+        return HotkeyAvailability::Unsupported;
+    }
+    // Grabbing our own combination again would succeed and the ungrab below
+    // would then release the live shortcut.
+    if (shortcut_registered_ && keycode == shortcut_keycode_ && modifiers == shortcut_modifiers_) {
+        return HotkeyAvailability::Current;
+    }
+    const auto root = static_cast<Window>(root_);
+    if (!grab_key(display, root, keycode, modifiers)) {
+        return HotkeyAvailability::InUse;
+    }
+    ungrab_key(display, root, keycode, modifiers);
+    return HotkeyAvailability::Available;
+#else
+    (void)hotkey;
+    return HotkeyAvailability::Unknown;
+#endif
+}
+
+bool X11ContextService::poll_shortcut() {
 #if defined(PASTEIT_HAS_X11)
     if (display_ == nullptr || !shortcut_registered_) {
         return false;
     }
     auto* display = static_cast<Display*>(display_);
+    bool activated = false;
     while (XPending(display) > 0) {
         XEvent event;
         XNextEvent(display, &event);
         if (event.type != KeyPress) {
             continue;
         }
-        const auto state = static_cast<unsigned int>(event.xkey.state);
-        if (event.xkey.keycode == shortcut_keycode_ && (state & ControlMask) != 0 && (state & Mod1Mask) != 0) {
-            return true;
+        const auto state = static_cast<unsigned int>(event.xkey.state) & kHotkeyModifierMask;
+        if (event.xkey.keycode == shortcut_keycode_ && state == shortcut_modifiers_) {
+            activated = true;
         }
     }
-    return false;
+    return activated;
 #else
     return false;
 #endif
@@ -347,14 +408,6 @@ bool X11ContextService::focus_and_paste(const FocusContext& context) const {
 
 FocusContext collect_x11_context() {
     return global_context_service().collect_focus_context();
-}
-
-bool register_ctrl_alt_f_shortcut() {
-    return global_context_service().register_ctrl_alt_f_shortcut();
-}
-
-bool poll_ctrl_alt_f_shortcut() {
-    return global_context_service().poll_ctrl_alt_f_shortcut();
 }
 
 bool focus_x11_target_and_paste(const FocusContext& context) {

@@ -101,6 +101,15 @@ float footer_height();
 // accent color. Returns the clicked index or -1.
 int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view status = {});
 bool primary_button(const std::string& label);
+// GPU HUD meter: rounded track with an accent fill that turns amber at 70%
+// and red at 90% when `load` is set, and optional centred overlay text.
+void draw_meter(ImDrawList* draw, ImVec2 min, ImVec2 max, float fraction, ImVec4 fill, float alpha = 1.0F);
+void meter(float fraction, std::string_view overlay = {}, float height = 0.0F, bool load = false);
+// Sidebar entry: full-width rounded highlight on hover/selection, label
+// left-aligned and vertically centred.
+bool nav_item(const char* id, std::string_view label, bool selected);
+// SeparatorText with the title in the accent colour, like GPU HUD sections.
+void separator_heading(std::string_view title);
 void section_heading(const char* glyph, std::string_view title, std::string_view help = {});
 
 // Two-column form: labels on the left, full-width fields on the right.

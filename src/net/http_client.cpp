@@ -23,6 +23,7 @@
 #include <optional>
 #include <sstream>
 #include <spawn.h>
+#include <csignal>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -47,8 +48,17 @@ std::size_t append_capped(void* ptr,std::size_t size,std::size_t count,void* tar
     if(bytes>room){capped.truncated=true;return 0;}
     return bytes;
 }
+struct StreamingBody { std::string* body; const HttpChunkSink* sink; };
+std::size_t append_streaming(void* ptr,std::size_t size,std::size_t count,void* target){
+    auto& streaming=*static_cast<StreamingBody*>(target);const auto bytes=size*count;
+    const std::string_view chunk(static_cast<const char*>(ptr),bytes);
+    streaming.body->append(chunk);
+    return (*streaming.sink)(chunk)?bytes:0;  // 0 aborts the transfer
+}
 class CurlTransport final:public HttpTransport{
-public: HttpResponse post_json(const HttpRequest& request) override {
+public: HttpResponse post_json(const HttpRequest& request) override { return post(request,nullptr); }
+  HttpResponse post_stream(const HttpRequest& request,const HttpChunkSink& on_data) override { return post(request,&on_data); }
+  HttpResponse post(const HttpRequest& request,const HttpChunkSink* sink) {
     HttpResponse response; CURL* curl=curl_easy_init();
     if(!curl){response.transport_error="libcurl initialization failed";return response;}
     curl_slist* headers=nullptr; headers=curl_slist_append(headers,"Content-Type: application/json");
@@ -57,7 +67,9 @@ public: HttpResponse post_json(const HttpRequest& request) override {
     curl_easy_setopt(curl,CURLOPT_HTTPHEADER,headers);curl_easy_setopt(curl,CURLOPT_POSTFIELDS,request.body.c_str());
     curl_easy_setopt(curl,CURLOPT_POSTFIELDSIZE,static_cast<long>(request.body.size()));
     curl_easy_setopt(curl,CURLOPT_TIMEOUT_MS,static_cast<long>(request.timeout.count()));
-    curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,append_body);curl_easy_setopt(curl,CURLOPT_WRITEDATA,&response.body);
+    StreamingBody streaming{&response.body,sink};
+    if(sink){curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,append_streaming);curl_easy_setopt(curl,CURLOPT_WRITEDATA,&streaming);}
+    else{curl_easy_setopt(curl,CURLOPT_WRITEFUNCTION,append_body);curl_easy_setopt(curl,CURLOPT_WRITEDATA,&response.body);}
     const auto code=curl_easy_perform(curl);long status=0;curl_easy_getinfo(curl,CURLINFO_RESPONSE_CODE,&status);response.status=static_cast<int>(status);
     if(code!=CURLE_OK)response.transport_error=curl_easy_strerror(code);
     curl_slist_free_all(headers);curl_easy_cleanup(curl);return response;
@@ -116,7 +128,8 @@ std::wstring request_path(const URL_COMPONENTS& components) {
     return path;
 }
 
-HttpResponse winhttp_json_request(const HttpRequest& request, const wchar_t* method) {
+HttpResponse winhttp_json_request(const HttpRequest& request, const wchar_t* method,
+                                  const HttpChunkSink* sink = nullptr) {
     HttpResponse response;
     const auto url = utf8_to_wide(request.url);
     if (url.empty()) {
@@ -219,6 +232,11 @@ HttpResponse winhttp_json_request(const HttpRequest& request, const wchar_t* met
             return response;
         }
         response.body.resize(offset + read);
+        if (sink != nullptr && read > 0 &&
+            !(*sink)(std::string_view(response.body.data() + offset, read))) {
+            response.transport_error = "cancelled";
+            return response;
+        }
     }
     return response;
 }
@@ -227,6 +245,10 @@ class WinHttpTransport final : public HttpTransport {
 public:
     HttpResponse post_json(const HttpRequest& request) override {
         return winhttp_json_request(request, L"POST");
+    }
+
+    HttpResponse post_stream(const HttpRequest& request, const HttpChunkSink& on_data) override {
+        return winhttp_json_request(request, L"POST", &on_data);
     }
 
     HttpResponse get_json(const HttpRequest& request) override {
@@ -280,6 +302,23 @@ std::string read_whole_file(const std::string& path) {
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
 }
 
+// Method, headers and body for `curl --config -`, so nothing (the API key in
+// particular) appears on the command line.
+std::string curl_request_config(const HttpRequest& request, std::string_view method, const std::string& body_path) {
+    std::string config = "request = \"" + std::string{method} + "\"\n";
+    if (!has_header(request, "Accept")) config += "header = \"Accept: application/json\"\n";
+    if (!request.body.empty() && !has_header(request, "Content-Type")) {
+        config += "header = \"Content-Type: application/json\"\n";
+    }
+    for (const auto& [name, value] : request.headers) {
+        config += "header = \"" + curl_config_quote(name + ": " + value) + "\"\n";
+    }
+    if (!body_path.empty()) {
+        config += "data-binary = \"@" + curl_config_quote(body_path) + "\"\n";
+    }
+    return config;
+}
+
 HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_view method = "POST") {
     HttpResponse response;
     // Request body, response body and curl's stderr each get their own file:
@@ -328,17 +367,7 @@ HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_vie
         arguments.insert(arguments.end(), {"--location", "--proto-redir", "=http,https"});
     }
     arguments.push_back(request.url);
-    std::string config = "request = \"" + std::string{method} + "\"\n";
-    if (!has_header(request, "Accept")) config += "header = \"Accept: application/json\"\n";
-    if (!request.body.empty() && !has_header(request, "Content-Type")) {
-        config += "header = \"Content-Type: application/json\"\n";
-    }
-    for (const auto& [name, value] : request.headers) {
-        config += "header = \"" + curl_config_quote(name + ": " + value) + "\"\n";
-    }
-    if (!body_path.empty()) {
-        config += "data-binary = \"@" + curl_config_quote(body_path) + "\"\n";
-    }
+    const auto config = curl_request_config(request, method, body_path);
 
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
@@ -400,6 +429,115 @@ HttpResponse post_json_with_curl_cli(const HttpRequest& request, std::string_vie
     return response;
 }
 
+// Streams a POST through the curl executable: the body arrives on curl's
+// stdout (unbuffered) and is handed to on_data chunk by chunk; the status
+// comes from the dumped response headers afterwards.
+HttpResponse stream_with_curl_cli(const HttpRequest& request, const HttpChunkSink& on_data) {
+    HttpResponse response;
+    const std::string body_path = request.body.empty() ? std::string{} : make_temp_file("pasteit-http-request");
+    const std::string header_path = make_temp_file("pasteit-http-headers");
+    const std::string error_path = make_temp_file("pasteit-http-error");
+    const auto cleanup = [&] {
+        for (const auto* path : {&body_path, &header_path, &error_path}) {
+            if (!path->empty()) ::unlink(path->c_str());
+        }
+    };
+    if ((!request.body.empty() && body_path.empty()) || header_path.empty() || error_path.empty()) {
+        cleanup();
+        response.transport_error = "could not create temporary HTTP files";
+        return response;
+    }
+    if (!body_path.empty()) {
+        const int body_fd = ::open(body_path.c_str(), O_WRONLY | O_TRUNC);
+        const bool body_ok = body_fd >= 0 && write_pipe(body_fd, request.body);
+        if (body_fd >= 0) ::close(body_fd);
+        if (!body_ok) {
+            cleanup();
+            response.transport_error = "could not write temporary HTTP request body";
+            return response;
+        }
+    }
+    int input_pipe[2]{-1, -1};
+    int output_pipe[2]{-1, -1};
+    if (::pipe(input_pipe) != 0 || ::pipe(output_pipe) != 0) {
+        for (const int fd : input_pipe) if (fd >= 0) ::close(fd);
+        for (const int fd : output_pipe) if (fd >= 0) ::close(fd);
+        cleanup();
+        response.transport_error = "could not create curl adapter pipes";
+        return response;
+    }
+    const auto timeout_seconds = std::max<std::int64_t>(1, (request.timeout.count() + 999) / 1000);
+    std::vector<std::string> arguments{
+        "curl", "--silent", "--show-error", "--no-buffer", "--max-time", std::to_string(timeout_seconds),
+        "--dump-header", header_path, "--stderr", error_path, "--proto", "=http,https", "--config", "-",
+        request.url,
+    };
+    const auto config = curl_request_config(request, "POST", body_path);
+
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, input_pipe[0], STDIN_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, output_pipe[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, input_pipe[1]);
+    posix_spawn_file_actions_addclose(&actions, output_pipe[0]);
+    pid_t pid = 0;
+    std::vector<char*> argv;
+    argv.reserve(arguments.size() + 1);
+    for (auto& argument : arguments) argv.push_back(argument.data());
+    argv.push_back(nullptr);
+    const int spawn_error = posix_spawnp(&pid, argv.front(), &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    ::close(input_pipe[0]);
+    ::close(output_pipe[1]);
+    if (spawn_error != 0) {
+        ::close(input_pipe[1]);
+        ::close(output_pipe[0]);
+        cleanup();
+        response.transport_error = "HTTPS transport requires libcurl or the curl executable";
+        return response;
+    }
+    const bool request_written = write_pipe(input_pipe[1], config);
+    ::close(input_pipe[1]);
+    bool cancelled = false;
+    char buffer[4096];
+    for (;;) {
+        const auto count = ::read(output_pipe[0], buffer, sizeof(buffer));
+        if (count == 0) break;
+        if (count < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        const std::string_view chunk(buffer, static_cast<std::size_t>(count));
+        response.body.append(chunk);
+        if (!on_data(chunk)) {
+            cancelled = true;
+            ::kill(pid, SIGTERM);
+            break;
+        }
+    }
+    ::close(output_pipe[0]);
+    int status = 0;
+    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    // The last status line wins (100 Continue, proxy CONNECT replies come first).
+    const auto headers = read_whole_file(header_path);
+    for (std::size_t at = 0; (at = headers.find("HTTP/", at)) != std::string::npos; ++at) {
+        if (at != 0 && headers[at - 1] != '\n') continue;
+        const auto space = headers.find(' ', at);
+        if (space != std::string::npos) response.status = std::atoi(headers.c_str() + space + 1);
+    }
+    if (cancelled) {
+        response.transport_error = "cancelled";
+    } else if (!request_written || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        std::string detail = read_whole_file(error_path);
+        while (!detail.empty() && (detail.back() == '\n' || detail.back() == '\r')) detail.pop_back();
+        response.transport_error = detail.empty()
+            ? "curl request failed (exit " + std::to_string(WIFEXITED(status) ? WEXITSTATUS(status) : -1) + ")"
+            : detail;
+    }
+    cleanup();
+    return response;
+}
+
 std::optional<PlainUrl> parse_http(std::string_view url,std::string& error){
  constexpr std::string_view prefix="http://";if(!url.starts_with(prefix)){error=url.empty()?"endpoint URL is empty":"unsupported URL scheme (use http:// or https://)";return std::nullopt;}
  std::string rest{url.substr(prefix.size())};const auto slash=rest.find('/');const auto authority=slash==std::string::npos?rest:rest.substr(0,slash);PlainUrl parsed;parsed.path=slash==std::string::npos?"/":rest.substr(slash);const auto colon=authority.rfind(':');if(colon==std::string::npos)parsed.host=authority;else{parsed.host=authority.substr(0,colon);parsed.port=authority.substr(colon+1);}if(parsed.host.empty()||parsed.port.empty()){error="HTTP endpoint host or port is empty";return std::nullopt;}return parsed;
@@ -412,7 +550,10 @@ HttpResponse socket_json_request(const HttpRequest& request, std::string_view me
  std::ostringstream message;message<<method<<" "<<url->path<<" HTTP/1.1\r\nHost: "<<url->host<<"\r\nAccept: application/json\r\nConnection: close\r\n";if(!request.body.empty())message<<"Content-Type: application/json\r\nContent-Length: "<<request.body.size()<<"\r\n";for(const auto& [name,value]:request.headers)message<<name<<": "<<value<<"\r\n";message<<"\r\n"<<request.body;const auto wire=message.str();if(!write_all(fd,wire)){response.transport_error=std::strerror(errno);close(fd);return response;}
  std::string raw;char buffer[8192];for(;;){const auto count=recv(fd,buffer,sizeof(buffer),0);if(count==0)break;if(count<0){response.transport_error=std::strerror(errno);close(fd);return response;}raw.append(buffer,static_cast<std::size_t>(count));}close(fd);const auto line=raw.find("\r\n");const auto split=raw.find("\r\n\r\n");if(line==std::string::npos||split==std::string::npos){response.transport_error="Invalid HTTP response";return response;}const auto status_line=raw.substr(0,line);if(status_line.size()>=12)response.status=std::atoi(status_line.substr(9,3).c_str());response.body=raw.substr(split+4);return response;
 }
-class SocketTransport final:public HttpTransport{public:HttpResponse post_json(const HttpRequest& request)override{if(request.url.starts_with("https://"))return post_json_with_curl_cli(request);return socket_json_request(request,"POST");}HttpResponse get_json(const HttpRequest& request)override{if(request.url.starts_with("https://")||request.follow_redirects)return post_json_with_curl_cli(request,"GET");return socket_json_request(request,"GET");}};
+class SocketTransport final:public HttpTransport{public:HttpResponse post_json(const HttpRequest& request)override{if(request.url.starts_with("https://"))return post_json_with_curl_cli(request);return socket_json_request(request,"POST");}
+// curl handles chunked transfer encoding, which streaming servers use even
+// over plain http; without curl the answer arrives in one piece.
+HttpResponse post_stream(const HttpRequest& request,const HttpChunkSink& on_data)override{auto response=stream_with_curl_cli(request,on_data);if(response.status==0&&response.transport_error=="HTTPS transport requires libcurl or the curl executable"&&!request.url.starts_with("https://"))return HttpTransport::post_stream(request,on_data);return response;}HttpResponse get_json(const HttpRequest& request)override{if(request.url.starts_with("https://")||request.follow_redirects)return post_json_with_curl_cli(request,"GET");return socket_json_request(request,"GET");}};
 #endif
 }
 std::shared_ptr<HttpTransport> make_default_http_transport(){

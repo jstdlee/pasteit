@@ -19,7 +19,7 @@ public:
     bool publish_image(const std::vector<std::byte>&, std::string_view) override { return true; }
     pasteit::PlatformFocusContext focused_context() override { return {}; }
     std::vector<pasteit::PlatformRecentPath> recent_paths() override { return {}; }
-    bool register_global_shortcut() override { return false; }
+    bool register_global_shortcut(const pasteit::Hotkey&) override { return false; }
     bool global_shortcut_activated() override { return false; }
     bool restore_focus_and_paste(const pasteit::PlatformFocusContext&) override { return false; }
     bool open_path(const std::filesystem::path&) override { return false; }

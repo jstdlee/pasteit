@@ -39,6 +39,7 @@ std::optional<PromptTemplate> find_template(const PromptTemplatesPanelModel& mod
     prompt.temperature = row->temperature;
     prompt.enabled = row->enabled;
     prompt.built_in = row->built_in;
+    prompt.thinking = row->thinking;
     return prompt;
 }
 
@@ -71,6 +72,7 @@ PromptTemplatesPanelModel build_prompt_templates_panel_model(const std::vector<P
             .system_prompt = prompt.system_prompt,
             .temperature = prompt.temperature,
             .built_in = prompt.built_in,
+            .thinking = prompt.thinking,
             .columns = model.columns,
             .actions = prompt_template_actions(),
             .tooltips = prompt_template_tooltips(),
@@ -125,7 +127,8 @@ PromptTemplateCommandResult save_prompt_template_edit(PromptTemplatesPanelModel&
     std::string error;
     const auto draft = *model.draft;
     if (!service.update(draft.id, draft.name, draft.system_prompt, draft.temperature, error) ||
-        !service.set_enabled(draft.id, draft.enabled, error)) {
+        !service.set_enabled(draft.id, draft.enabled, error) ||
+        !service.set_thinking(draft.id, draft.thinking, error)) {
         model.error = error;
         PromptTemplateCommandResult result;
         result.command = PromptTemplateCommand::SaveEdit;

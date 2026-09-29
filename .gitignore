@@ -21,3 +21,4 @@ compile_commands.json
 *.dll
 *.so
 *.part
+/.claude/

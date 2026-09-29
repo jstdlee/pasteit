@@ -6,7 +6,7 @@ public:void apply_settings(const pasteit::AppSettings&)override{}
 std::optional<pasteit::ClipboardCapture> poll_clipboard()override{return std::nullopt;}void process_events()override{}
 bool publish_text(std::string_view)override{return true;}bool publish_image(const std::vector<std::byte>&,std::string_view)override{return true;}
 pasteit::PlatformFocusContext focused_context()override{return {};}std::vector<pasteit::PlatformRecentPath> recent_paths()override{return {};}
-bool register_global_shortcut()override{return true;}bool global_shortcut_activated()override{return false;}bool restore_focus_and_paste(const pasteit::PlatformFocusContext&)override{return true;}
+bool register_global_shortcut(const pasteit::Hotkey&)override{return true;}bool global_shortcut_activated()override{return false;}bool restore_focus_and_paste(const pasteit::PlatformFocusContext&)override{return true;}
 bool open_path(const std::filesystem::path& p)override{opened=p;return true;}bool open_uri(std::string_view)override{return true;}bool copy_text(std::string_view t)override{copied=t;return true;}
 bool move_popup_by(int,int)override{return true;}bool set_popup_opacity(float)override{return true;}std::vector<std::filesystem::path> preferred_ui_fonts()override{return {};}
 std::optional<std::filesystem::path> choose_directory(const std::filesystem::path&)override{return std::nullopt;}

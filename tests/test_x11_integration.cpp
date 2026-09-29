@@ -61,8 +61,8 @@ int main() {
     const auto focus = context.collect_focus_context();
     assert(!focus.focused_target_hash.empty());
 
-    if (context.register_ctrl_alt_f_shortcut()) {
-        assert(!context.poll_ctrl_alt_f_shortcut());
+    if (context.register_shortcut(pasteit::default_hotkey())) {
+        assert(!context.poll_shortcut());
     } else {
         std::cout << "SKIP: Ctrl+Alt+F is already grabbed by another client\n";
     }

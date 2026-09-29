@@ -54,6 +54,7 @@
 #include "ui/download_progress_panel.hpp"
 #include "ui/file_operation_confirmation_panel.hpp"
 #include "ui/hash_result_panel.hpp"
+#include "ui/hotkey_editor.hpp"
 #include "ui/image_annotation_panel.hpp"
 #include "ui/imgui_widgets.hpp"
 #include "ui/localization.hpp"
@@ -82,6 +83,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -283,6 +285,14 @@ struct GenerationJob {
     ActionInstance action;
     std::string source_text;
     std::optional<std::future<TextGenerationResult>> pending;
+    // Filled by the worker thread while the answer streams in.
+    struct Stream {
+        std::mutex mutex;
+        TextStreamUpdate latest;
+        bool changed = false;
+    };
+    std::shared_ptr<Stream> stream;
+    std::size_t reasoning_chars = 0;
     bool focus_pending = true;
     bool restore_placeholders = false;  // request text was anonymized
 };
@@ -303,6 +313,7 @@ struct CustomPromptDialog {
     ActionInstance action;
     std::string prompt;
     std::string template_id;  // empty = custom prompt
+    bool thinking = false;    // per run; follows the selected template
 };
 
 struct AuxiliaryPanelWindow {
@@ -616,8 +627,14 @@ int run_desktop_runtime() {
     auto usage_load = usage_store.load();
     UsageModel usage_model = std::move(usage_load.model);
     if (!usage_load.warning.empty()) std::cerr << "PasteIt: " << usage_load.warning << '\n';
-    if (!platform->register_global_shortcut()) {
-        std::cerr << "Could not register global Ctrl+Alt+F; set PASTEIT_SHOW_ON_START=1 to open manually.\n";
+    // Startup never fails on a taken shortcut: Settings > General shows the
+    // conflict and lets the user pick another combination.
+    bool global_shortcut_ok = platform->register_global_shortcut(
+        parse_hotkey(settings.global_hotkey).value_or(default_hotkey()));
+    if (!global_shortcut_ok) {
+        std::cerr << "Could not register global " << settings.global_hotkey
+                  << "; another application holds it. Change it in Settings > General,"
+                     " or set PASTEIT_SHOW_ON_START=1 to open manually.\n";
     }
 
     DjevClient djev_client(settings.djev.endpoint, settings.djev.model_id, DjevClient::kDefaultTimeout, {},
@@ -625,6 +642,19 @@ int run_desktop_runtime() {
     OpenAiCompatibleClient llm_client;
     DecisionFutureSlot pending_decision;
     std::vector<std::unique_ptr<GenerationJob>> generation_jobs;
+    // Runs a text job with a streamed answer; the UI picks up partial text
+    // from job.stream each frame.
+    const auto launch_streaming_job = [&llm_client](GenerationJob& job, TextGenerationRequest request) {
+        job.stream = std::make_shared<GenerationJob::Stream>();
+        job.reasoning_chars = 0;
+        job.pending.emplace(std::async(std::launch::async, [&llm_client, request = std::move(request), stream = job.stream] {
+            return llm_client.generate(request, [&stream](const TextStreamUpdate& update) {
+                std::lock_guard lock(stream->mutex);
+                stream->latest = update;
+                stream->changed = true;
+            });
+        }));
+    };
     PromptParameterDialog prompt_parameter_dialog;
     CustomPromptDialog custom_prompt_dialog;
     ChartViewState chart_view;
@@ -735,6 +765,7 @@ int run_desktop_runtime() {
     bool preview_edit_apply_requested = false;
     DecisionState decision_state = DecisionState::Idle;
     SettingsPage settings_page = SettingsPage::Home;
+    HotkeyEditorState hotkey_editor_state;
     bool fit_popup_pending = false;
     bool popup_drag_armed = false;
     std::set<std::uint64_t> owned_sub_windows;
@@ -778,7 +809,7 @@ int run_desktop_runtime() {
             ImGui::Checkbox("##allow-any", &settings_draft.pipelines.allow_any_program);
             end_form();
         }
-        ImGui::SeparatorText(tr(language, UiTextKey::CustomCommands).c_str());
+        separator_heading(tr(language, UiTextKey::CustomCommands));
         ImGui::PushTextWrapPos(0.0F);
         ImGui::TextColored(pal.text_muted, "%s", tr(language, UiTextKey::CustomCommandsHelp).c_str());
         ImGui::PopTextWrapPos();
@@ -811,7 +842,7 @@ int run_desktop_runtime() {
         if (ImGui::Button(with_icon(icon::kPlus, tr(language, UiTextKey::CustomCommands)).c_str())) {
             settings_draft.pipelines.custom_commands.push_back({"errors", "grep -i 'error|fail'"});
         }
-        ImGui::SeparatorText(tr(language, UiTextKey::Recipes).c_str());
+        separator_heading(tr(language, UiTextKey::Recipes));
         std::optional<std::size_t> remove;
         if (ImGui::BeginTable("settings-recipes", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn(tr(language, UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 56.0F);
@@ -889,7 +920,7 @@ int run_desktop_runtime() {
             lines_field("##never-hide", privacy.never_hide);
             end_form();
         }
-        ImGui::SeparatorText(tr(language, UiTextKey::Detect).c_str());
+        separator_heading(tr(language, UiTextKey::Detect));
         if (ImGui::BeginTable("privacy-categories", 2, ImGuiTableFlags_SizingStretchSame)) {
             for (const auto category : all_pii_categories()) {
                 ImGui::TableNextColumn();
@@ -1275,7 +1306,7 @@ int run_desktop_runtime() {
     // Starts a general-LLM text job whose result opens in an AI result
     // window; restore maps placeholders in the answer back to real values.
     const auto start_text_job = [&](ActionInstance action, std::string system_message, std::string user_message,
-                                    double temperature, bool restore) {
+                                    double temperature, bool restore, bool thinking) {
         if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
             execution_status = "General LLM provider is not configured";
             return;
@@ -1288,6 +1319,7 @@ int run_desktop_runtime() {
             .system_message = std::move(system_message),
             .user_message = user_message,
             .temperature = temperature,
+            .thinking = thinking,
         };
         auto job = std::make_unique<GenerationJob>();
         job->kind = GenerationJob::Kind::TextPrompt;
@@ -1296,7 +1328,7 @@ int run_desktop_runtime() {
         job->restore_placeholders = restore;
         job->state.start(job->action.id, user_message, request);
         job->panel = {.open = true, .running = true, .request_id = request.request_id, .editable_text = {}, .error = {}};
-        job->pending.emplace(std::async(std::launch::async, [&llm_client, request] { return llm_client.generate(request); }));
+        launch_streaming_job(*job, request);
         generation_jobs.push_back(std::move(job));
     };
     struct PageFetchResult {
@@ -1418,6 +1450,12 @@ int run_desktop_runtime() {
             custom_prompt_dialog.focus_pending = true;
             custom_prompt_dialog.action = *action;
             custom_prompt_dialog.prompt.clear();
+            custom_prompt_dialog.thinking = false;
+            if (const auto selected = std::find_if(settings.prompt_templates.begin(), settings.prompt_templates.end(),
+                    [&](const PromptTemplate& prompt) { return prompt.id == custom_prompt_dialog.template_id; });
+                selected != settings.prompt_templates.end()) {
+                custom_prompt_dialog.thinking = selected->thinking;
+            }
             return;
         }
         if (needs_file_confirmation(action->kind) && !action->parameters.contains("confirmation_complete")) {
@@ -1493,6 +1531,9 @@ int run_desktop_runtime() {
             prompt.name = action->parameters.at("template_name");
             prompt.system_prompt = action->parameters.at("system_prompt");
             prompt.temperature = std::stod(action->parameters.at("temperature"));
+            if (const auto thinking = action->parameters.find("thinking"); thinking != action->parameters.end()) {
+                prompt.thinking = thinking->second == "true";
+            }
             const auto source_text = clipboard_store.read_text(action->source_ref);
             PromptVariables prompt_variables;
             const auto variables = prompt_variable_names(prompt.system_prompt);
@@ -1521,6 +1562,7 @@ int run_desktop_runtime() {
                 .system_message = expanded.system_message,
                 .user_message = expanded.user_message,
                 .temperature = prompt.temperature,
+                .thinking = prompt.thinking,
             };
             auto job = std::make_unique<GenerationJob>();
             job->kind = GenerationJob::Kind::TextPrompt;
@@ -1535,9 +1577,7 @@ int run_desktop_runtime() {
                 .editable_text = {},
                 .error = {},
             };
-            job->pending.emplace(std::async(std::launch::async, [&llm_client, request] {
-                return llm_client.generate(request);
-            }));
+            launch_streaming_job(*job, request);
             generation_jobs.push_back(std::move(job));
             execution_status = "Text transformation is running…";
             return;
@@ -1618,11 +1658,21 @@ int run_desktop_runtime() {
                 start_text_job(action,
                                "Summarize this web page for a busy reader: one line with the gist, then up to 7 short "
                                "bullet points with the key facts. Keep names, numbers and dates. Answer in the page's language.",
-                               llm_text, 0.2, protected_text);
+                               llm_text, 0.2, protected_text, false);
                 execution_status.clear();
             }
         }
         for (auto& job : generation_jobs) {
+            // Show whatever has streamed in so far.
+            if (job->pending.has_value() && job->stream) {
+                std::lock_guard lock(job->stream->mutex);
+                if (job->stream->changed) {
+                    job->stream->changed = false;
+                    job->reasoning_chars = job->stream->latest.reasoning_chars;
+                    job->panel.editable_text = job->restore_placeholders ? privacy_vault.restore(job->stream->latest.text)
+                                                                         : job->stream->latest.text;
+                }
+            }
             if (!job->pending.has_value() ||
                 job->pending->wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) continue;
             const auto result = job->pending->get();
@@ -2094,12 +2144,10 @@ int run_desktop_runtime() {
             ImGui::BeginChild("settings-nav", ImVec2(150.0F * ImGui::GetStyle().FontScaleDpi, body_height), false);
             for (const auto& entry : sections) {
                 const bool selected = settings_page == entry.page;
-                if (selected) ImGui::PushStyleColor(ImGuiCol_Text, pal.accent);
-                if (ImGui::Selectable(with_icon(entry.glyph, tr(ui_language, entry.label)).c_str(), selected, 0,
-                                      ImVec2(0.0F, ImGui::GetFrameHeight()))) {
+                if (nav_item(tr(ui_language, entry.label).c_str(), with_icon(entry.glyph, tr(ui_language, entry.label)),
+                             selected)) {
                     settings_page = entry.page;
                 }
-                if (selected) ImGui::PopStyleColor();
             }
             ImGui::EndChild();
             ImGui::SameLine();
@@ -2173,12 +2221,17 @@ int run_desktop_runtime() {
                     }
                     ImGui::EndTable();
                 }
-                ImGui::SeparatorText(tr(ui_language, UiTextKey::HowToUse).c_str());
+                separator_heading(tr(ui_language, UiTextKey::HowToUse));
                 ImGui::PushTextWrapPos(0.0F);
-                ImGui::TextUnformatted(tr(ui_language, UiTextKey::HowToUseBody).c_str());
+                {
+                    auto how_to = tr(ui_language, UiTextKey::HowToUseBody);
+                    const auto hotkey = parse_hotkey(settings.global_hotkey).value_or(default_hotkey());
+                    if (const auto at = how_to.find("{shortcut}"); at != std::string::npos) how_to.replace(at, 10, display_hotkey(hotkey));
+                    ImGui::TextUnformatted(how_to.c_str());
+                }
                 ImGui::PopTextWrapPos();
 
-                ImGui::SeparatorText(tr(ui_language, UiTextKey::Providers).c_str());
+                separator_heading(tr(ui_language, UiTextKey::Providers));
                 const auto provider_row = [&](const char* id, const char* glyph, UiTextKey name, const ProviderSettings& provider,
                                               const std::string& status, const auto& start_test, SettingsPage page) {
                     ImGui::PushID(id);
@@ -2207,7 +2260,7 @@ int run_desktop_runtime() {
                 provider_row("home-djev", icon::kGauge, UiTextKey::Djev, settings_draft.djev, djev_test_status, start_djev_test, SettingsPage::Ranking);
                 provider_row("home-llm", icon::kAi, UiTextKey::GeneralLlm, settings_draft.general_llm, llm_test_status, start_llm_test, SettingsPage::Llm);
 
-                ImGui::SeparatorText(tr(ui_language, UiTextKey::AtAGlance).c_str());
+                separator_heading(tr(ui_language, UiTextKey::AtAGlance));
                 std::size_t learned = 0;
                 for (const auto& [context, actions] : usage_model.contexts) learned += actions.size();
                 const std::pair<std::size_t, UiTextKey> stats[] = {
@@ -2241,6 +2294,14 @@ int run_desktop_runtime() {
             case SettingsPage::General: {
                 section_heading(icon::kSliders, tr(ui_language, UiTextKey::General));
                 if (begin_form("settings-general")) {
+                    form_row(tr(ui_language, UiTextKey::GlobalShortcut));
+                    draw_hotkey_editor("global-hotkey", settings_draft.global_hotkey, hotkey_editor_state, *platform,
+                                       ui_language, pal);
+                    if (!global_shortcut_ok && settings.global_hotkey == settings_draft.global_hotkey) {
+                        ImGui::PushTextWrapPos(0.0F);
+                        ImGui::TextColored(pal.danger, "%s", tr(ui_language, UiTextKey::ShortcutRegisterStartupFailed).c_str());
+                        ImGui::PopTextWrapPos();
+                    }
                     form_row(tr(ui_language, UiTextKey::Language));
                     int language = static_cast<int>(settings_draft.language);
                     const char* languages[] = {"System", "English", "简体中文"};
@@ -2261,7 +2322,7 @@ int run_desktop_runtime() {
                     end_form();
                 }
                 ImGui::Spacing();
-                ImGui::SeparatorText(tr(ui_language, UiTextKey::ClipboardHistory).c_str());
+                separator_heading(tr(ui_language, UiTextKey::ClipboardHistory));
                 if (ImGui::Button(tr(ui_language,UiTextKey::KeepLatest10).c_str())) rewrite_history(10, ui_language);
                 ImGui::SameLine();
                 ImGui::PushStyleColor(ImGuiCol_Text, pal.danger);
@@ -2339,7 +2400,7 @@ int run_desktop_runtime() {
                 if (!llm_test_status.empty()) ImGui::TextColored(pal.text_muted, "%s", llm_test_status.c_str());
                 // Instructions used by Prompt templates > Optimize with LLM.
                 ImGui::Spacing();
-                ImGui::SeparatorText(tr(ui_language, UiTextKey::PromptOptimizerInstructions).c_str());
+                separator_heading(tr(ui_language, UiTextKey::PromptOptimizerInstructions));
                 ImGui::PushTextWrapPos(0.0F);
                 ImGui::TextColored(pal.text_muted, "%s", tr(ui_language, UiTextKey::PromptOptimizerInstructionsHelp).c_str());
                 ImGui::PopTextWrapPos();
@@ -2357,11 +2418,12 @@ int run_desktop_runtime() {
                 PromptTemplateService service(settings_draft.prompt_templates);
                 if (prompt_panel_model.modal == PromptTemplateModal::None) prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates);
                 std::string view_id, edit_id, duplicate_id, delete_id;
-                if (ImGui::BeginTable("settings-prompt-templates", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                if (ImGui::BeginTable("settings-prompt-templates", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
                                       ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp)) {
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 52);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 3);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Temperature).c_str(), ImGuiTableColumnFlags_WidthFixed, 110);
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::ThinkingColumn).c_str(), ImGuiTableColumnFlags_WidthFixed, 80);
                     ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 150);
                     ImGui::TableHeadersRow();
                     for (const auto& row : prompt_panel_model.rows) {
@@ -2384,6 +2446,13 @@ int run_desktop_runtime() {
                             }
                         }
                         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::TemperatureHelp).c_str());
+                        ImGui::TableNextColumn();
+                        bool thinking = row.thinking;
+                        if (ImGui::Checkbox("##thinking", &thinking)) { std::string error; service.set_thinking(row.id, thinking, error); }
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("%s\n%s", tr(ui_language, UiTextKey::PromptThinking).c_str(),
+                                              tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
+                        }
                         ImGui::TableNextColumn();
                         const auto icon_button = [&](const char* glyph, const char* fallback, const char* id) {
                             const auto label = std::string{ui_fonts().icons ? glyph : fallback} + id;
@@ -2436,6 +2505,9 @@ int run_desktop_runtime() {
                             form_row(tr(ui_language,UiTextKey::Temperature));
                             float temperature = static_cast<float>(prompt_panel_model.draft->temperature);
                             if (ImGui::SliderFloat("##template-temperature", &temperature, 0.0F, 2.0F, "%.1f")) prompt_panel_model.draft->temperature = temperature;
+                            form_row(tr(ui_language,UiTextKey::ThinkingColumn));
+                            ImGui::Checkbox(tr(ui_language,UiTextKey::PromptThinking).c_str(), &prompt_panel_model.draft->thinking);
+                            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                             end_form();
                         }
                         auto& draft = *prompt_panel_model.draft;
@@ -2516,7 +2588,7 @@ int run_desktop_runtime() {
             }
             case SettingsPage::FastActions: {
                 section_heading(icon::kZap, tr(ui_language, UiTextKey::FastActions));
-                ImGui::SeparatorText(tr(UiTextKey::Downloads).c_str());
+                separator_heading(tr(UiTextKey::Downloads));
                 if (begin_form("settings-downloads")) {
                     form_row(tr(UiTextKey::DownloadResumeDirectory));
                     path_field("##download-dir", settings_draft.downloads.resume_directory);
@@ -2524,7 +2596,7 @@ int run_desktop_runtime() {
                     ImGui::Checkbox("##keep-part", &settings_draft.downloads.keep_part_files);
                     end_form();
                 }
-                ImGui::SeparatorText(tr(UiTextKey::TerminalAndFiles).c_str());
+                separator_heading(tr(UiTextKey::TerminalAndFiles));
                 if (begin_form("settings-terminal")) {
                     form_row(tr(UiTextKey::TerminalCommand));
                     auto terminal_command = join_argv(settings_draft.terminal.command);
@@ -2547,7 +2619,7 @@ int run_desktop_runtime() {
                     settings_draft.annotation.export_format = "svg";
                     end_form();
                 }
-                ImGui::SeparatorText(tr(UiTextKey::DateTime).c_str());
+                separator_heading(tr(UiTextKey::DateTime));
                 if (begin_form("settings-datetime")) {
                     form_row(tr(UiTextKey::SourceTimeZone));
                     input_text_string("##source-zone", settings_draft.date_time.source_zone);
@@ -2568,7 +2640,7 @@ int run_desktop_runtime() {
                 const auto summary = usage_summary(usage_model, current_time_ms(), 5);
                 if (summary.empty()) ImGui::TextColored(pal.text_muted, "%s", tr(ui_language,UiTextKey::UsageInsightsEmpty).c_str());
                 for (const auto& [kind, habits] : summary) {
-                    ImGui::SeparatorText(kind.c_str());
+                    separator_heading(kind);
                     if (ImGui::BeginTable(("usage-" + kind).c_str(), 3, ImGuiTableFlags_SizingStretchProp)) {
                         ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthStretch, 3.0F);
                         ImGui::TableSetupColumn("share", ImGuiTableColumnFlags_WidthStretch, 2.0F);
@@ -2578,7 +2650,7 @@ int run_desktop_runtime() {
                             ImGui::TableNextColumn();
                             ImGui::TextUnformatted(usage_action_label(habit.action_key).c_str());
                             ImGui::TableNextColumn();
-                            ImGui::ProgressBar(static_cast<float>(habit.share), ImVec2(-FLT_MIN, 6.0F), "");
+                            meter(static_cast<float>(habit.share), {}, 6.0F * ImGui::GetStyle().FontScaleDpi);
                             ImGui::TableNextColumn();
                             ImGui::TextColored(pal.text_muted, "%3.0f%%  ×%u", habit.share * 100.0, habit.count);
                         }
@@ -2611,7 +2683,18 @@ int run_desktop_runtime() {
             }
             if (clicked == 1) {
                 AppSettings candidate = settings; std::string error;
-                if (save_settings_draft(settings_store, settings, settings_draft, candidate, error)) {
+                // Take the new global shortcut before saving so a combination
+                // someone else holds is never written as the setting.
+                const bool hotkey_changed = settings_draft.global_hotkey != settings.global_hotkey;
+                const auto new_hotkey = parse_hotkey(settings_draft.global_hotkey);
+                bool hotkey_ok = true;
+                if (hotkey_changed && new_hotkey && !has_blocking_conflict(find_hotkey_conflicts(*new_hotkey))) {
+                    hotkey_ok = platform->register_global_shortcut(*new_hotkey);
+                    hotkey_editor_state.probed_text.clear();
+                }
+                if (!hotkey_ok) {
+                    settings_status = tr(ui_language, UiTextKey::ShortcutRegisterFailed);
+                } else if (save_settings_draft(settings_store, settings, settings_draft, candidate, error)) {
                     const bool llm_endpoint_changed = settings.general_llm.endpoint != candidate.general_llm.endpoint;
                     const bool djev_changed = settings.djev.endpoint != candidate.djev.endpoint ||
                                               settings.djev.model_id != candidate.djev.model_id ||
@@ -2628,7 +2711,14 @@ int run_desktop_runtime() {
                     annotation_panel.export_directory = settings.annotation.save_directory;
                     annotation_panel.export_format = settings.annotation.export_format;
                     platform->apply_settings(settings);
-                } else settings_status = error;
+                    if (hotkey_changed) global_shortcut_ok = true;
+                } else {
+                    settings_status = error;
+                    if (hotkey_changed && new_hotkey) {
+                        (void)platform->register_global_shortcut(parse_hotkey(settings.global_hotkey).value_or(default_hotkey()));
+                        hotkey_editor_state.probed_text.clear();
+                    }
+                }
             }
             if (dirty && settings_status == tr(ui_language, UiTextKey::Saved)) settings_status.clear();
             ImGui::EndTabItem();
@@ -2642,7 +2732,7 @@ int run_desktop_runtime() {
                 ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg));
         }
         if (!modal_open && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-            !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            !ImGui::GetIO().WantTextInput && !hotkey_editor_state.capturing && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             popup_visible = false;
             const bool keep_visible=has_any_auxiliary_window();
             if (!keep_visible) {
@@ -2689,10 +2779,14 @@ int run_desktop_runtime() {
                 const bool custom = selected == settings.prompt_templates.end();
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 if (ImGui::BeginCombo("##ask-template", custom ? custom_label.c_str() : selected->name.c_str())) {
-                    if (ImGui::Selectable(custom_label.c_str(), custom)) custom_prompt_dialog.template_id.clear();
+                    if (ImGui::Selectable(custom_label.c_str(), custom)) {
+                        custom_prompt_dialog.template_id.clear();
+                        custom_prompt_dialog.thinking = false;
+                    }
                     for (const auto& prompt : settings.prompt_templates) {
                         if (prompt.enabled && ImGui::Selectable(prompt.name.c_str(), prompt.id == custom_prompt_dialog.template_id)) {
                             custom_prompt_dialog.template_id = prompt.id;
+                            custom_prompt_dialog.thinking = prompt.thinking;
                         }
                     }
                     ImGui::EndCombo();
@@ -2713,6 +2807,8 @@ int run_desktop_runtime() {
                         (void)draw_prompt_parameter_fields("ask-llm-parameters", names, values);
                     }
                 }
+                ImGui::Checkbox(tr(ui_language, UiTextKey::PromptThinking).c_str(), &custom_prompt_dialog.thinking);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                 const bool can_run = !custom || !trim(custom_prompt_dialog.prompt).empty();
                 const auto privacy_note = settings.privacy.anonymize_before_llm ? tr(ui_language, UiTextKey::AskLlmHelp) : std::string{};
                 const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Generate), true, can_run}},
@@ -2722,7 +2818,8 @@ int run_desktop_runtime() {
                     const auto source_text = clipboard_store.read_text(custom_prompt_dialog.action.source_ref);
                     const auto [llm_text, protected_text] = protect_for_llm(source_text);
                     if (custom) {
-                        start_text_job(custom_prompt_dialog.action, custom_prompt_dialog.prompt, llm_text, 0.2, protected_text);
+                        start_text_job(custom_prompt_dialog.action, custom_prompt_dialog.prompt, llm_text, 0.2, protected_text,
+                                       custom_prompt_dialog.thinking);
                     } else {
                         PromptVariables variables;
                         if (const auto remembered = prompt_parameter_memory.find(selected->id); remembered != prompt_parameter_memory.end()) {
@@ -2730,7 +2827,7 @@ int run_desktop_runtime() {
                         }
                         const auto expanded = expand_prompt(*selected, llm_text, variables);
                         start_text_job(custom_prompt_dialog.action, expanded.system_message, expanded.user_message,
-                                       selected->temperature, protected_text);
+                                       selected->temperature, protected_text, custom_prompt_dialog.thinking);
                     }
                     custom_prompt_dialog.open = false;
                 }
@@ -2786,7 +2883,7 @@ int run_desktop_runtime() {
                     const auto prompt = std::find_if(settings.prompt_templates.begin(), settings.prompt_templates.end(),
                                                      [&](const PromptTemplate& value) { return value.id == template_id; });
                     if (prompt == settings.prompt_templates.end()) {
-                        start_text_job(action, custom_prompt, text, 0.2, true);
+                        start_text_job(action, custom_prompt, text, 0.2, true, false);
                         return;
                     }
                     PromptVariables variables;
@@ -2794,7 +2891,7 @@ int run_desktop_runtime() {
                         variables.values = remembered->second;
                     }
                     const auto expanded = expand_prompt(*prompt, text, variables);
-                    start_text_job(action, expanded.system_message, expanded.user_message, prompt->temperature, true);
+                    start_text_job(action, expanded.system_message, expanded.user_message, prompt->temperature, true, prompt->thinking);
                 },
             };
             for (const auto& prompt : settings.prompt_templates) {
@@ -3058,14 +3155,21 @@ int run_desktop_runtime() {
             if (begin_tool_window(title, &job->panel.open, ImVec2(result_width, result_height), &job->focus_pending)) {
                 const auto& pal = palette();
                 if (job->panel.running) {
-                    ImGui::TextColored(pal.warning, "%s", tr(ui_language,UiTextKey::Generating).c_str());
+                    // Reasoning models think before answering; say so instead of a bare spinner.
+                    const bool thinking = job->panel.editable_text.empty() && job->reasoning_chars > 0;
+                    const auto status = thinking ? tr(ui_language, UiTextKey::ModelThinking) + " (" +
+                                                       std::to_string(job->reasoning_chars) + ")"
+                                                 : tr(ui_language, UiTextKey::Generating);
+                    ImGui::TextColored(pal.warning, "%s", status.c_str());
                 }
                 if (!job->panel.error.empty()) {
                     ImGui::PushTextWrapPos(0.0F);
                     ImGui::TextColored(pal.danger, "%s", job->panel.error.c_str());
                     ImGui::PopTextWrapPos();
                 }
-                input_text_string("##ai-result", job->panel.editable_text, true, 0, -footer_height());
+                // Read-only while streaming, so edits are not overwritten by the next chunk.
+                input_text_string("##ai-result", job->panel.editable_text, true,
+                                  job->panel.running ? ImGuiInputTextFlags_ReadOnly : 0, -footer_height());
                 const bool ready = !job->panel.running && !job->panel.editable_text.empty();
                 const int clicked = footer_buttons({{with_icon(icon::kRefresh, tr(ui_language,UiTextKey::Retry)), false, !job->pending.has_value()},
                                                     {tr(ui_language,UiTextKey::ReplaceClipboard), false, ready},
@@ -3075,7 +3179,8 @@ int run_desktop_runtime() {
                         job->panel.running = true;
                         job->panel.error.clear();
                         job->focus_pending = true;
-                        job->pending.emplace(std::async(std::launch::async, [&llm_client, request = *retry] { return llm_client.generate(request); }));
+                        job->panel.editable_text.clear();
+                        launch_streaming_job(*job, *retry);
                     }
                 }
                 if (clicked == 1) platform->publish_text(job->panel.editable_text);

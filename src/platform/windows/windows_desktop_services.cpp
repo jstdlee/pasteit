@@ -37,6 +37,17 @@ namespace pasteit {
 namespace {
 
 constexpr int kShortcutId = 1;
+constexpr int kProbeShortcutId = 2;
+
+UINT hotkey_modifiers(const Hotkey& hotkey) {
+    return (hotkey.ctrl ? MOD_CONTROL : 0U) | (hotkey.alt ? MOD_ALT : 0U) | (hotkey.shift ? MOD_SHIFT : 0U) |
+           (hotkey.super ? MOD_WIN : 0U);
+}
+
+UINT hotkey_virtual_key(const Hotkey& hotkey) {
+    const auto* key = find_hotkey_key(hotkey.key);
+    return key == nullptr ? 0U : static_cast<UINT>(key->windows_vk);
+}
 
 std::int64_t current_time_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -708,12 +719,52 @@ std::vector<PlatformRecentPath> WindowsDesktopServices::recent_paths() {
     return result;
 }
 
-bool WindowsDesktopServices::register_global_shortcut() {
+bool WindowsDesktopServices::register_global_shortcut(const Hotkey& hotkey) {
     if (!ensure_message_window()) {
         return false;
     }
-    shortcut_registered_ = RegisterHotKey(message_window_, kShortcutId, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'F') != 0;
-    return shortcut_registered_;
+    const UINT vk = hotkey_virtual_key(hotkey);
+    if (vk == 0) {
+        return false;
+    }
+    if (shortcut_registered_ && active_shortcut_ == hotkey) {
+        return true;
+    }
+    // Windows keeps one hot key per id, so release the old one first and put
+    // it back if the new combination is taken.
+    if (shortcut_registered_) {
+        UnregisterHotKey(message_window_, kShortcutId);
+    }
+    if (RegisterHotKey(message_window_, kShortcutId, hotkey_modifiers(hotkey) | MOD_NOREPEAT, vk) != 0) {
+        active_shortcut_ = hotkey;
+        shortcut_registered_ = true;
+        return true;
+    }
+    if (shortcut_registered_) {
+        shortcut_registered_ = RegisterHotKey(message_window_, kShortcutId,
+                                              hotkey_modifiers(active_shortcut_) | MOD_NOREPEAT,
+                                              hotkey_virtual_key(active_shortcut_)) != 0;
+    }
+    return false;
+}
+
+HotkeyAvailability WindowsDesktopServices::probe_global_shortcut(const Hotkey& hotkey) {
+    if (!ensure_message_window()) {
+        return HotkeyAvailability::Unknown;
+    }
+    const UINT vk = hotkey_virtual_key(hotkey);
+    if (vk == 0) {
+        return HotkeyAvailability::Unsupported;
+    }
+    if (shortcut_registered_ && active_shortcut_ == hotkey) {
+        return HotkeyAvailability::Current;
+    }
+    if (RegisterHotKey(message_window_, kProbeShortcutId, hotkey_modifiers(hotkey) | MOD_NOREPEAT, vk) == 0) {
+        // ERROR_HOTKEY_ALREADY_REGISTERED, or a combination the shell reserves.
+        return HotkeyAvailability::InUse;
+    }
+    UnregisterHotKey(message_window_, kProbeShortcutId);
+    return HotkeyAvailability::Available;
 }
 
 bool WindowsDesktopServices::global_shortcut_activated() {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "config/hotkey.hpp"
+
 #include <filesystem>
 #include <map>
 #include <string>
@@ -24,6 +26,8 @@ struct PromptTemplate {
     double temperature = 0.2;
     bool enabled = true;
     bool built_in = false;
+    // Off by default: reasoning models are asked to skip thinking so answers come fast.
+    bool thinking = false;
 
     bool operator==(const PromptTemplate&) const = default;
 };
@@ -123,6 +127,8 @@ struct AppSettings {
     UiLanguage language = UiLanguage::System;
     float window_opacity = 0.94F;
     UiTheme theme = UiTheme::Dark;
+    // Global shortcut that opens the popup, canonical text (see config/hotkey.hpp).
+    std::string global_hotkey{kDefaultHotkey};
     std::filesystem::path default_image_directory;
     std::filesystem::path default_text_directory;
     ProviderSettings djev;

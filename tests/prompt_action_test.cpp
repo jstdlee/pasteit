@@ -12,7 +12,7 @@ int main() {
     };
     std::vector<PromptTemplate> templates{
         {.id="translate",.name="Translate",.system_prompt="Translate {text} from {source_language} to {target_language}",.temperature=0.2,.enabled=true},
-        {.id="rewrite",.name="Rewrite",.system_prompt="Rewrite this",.temperature=0.3,.enabled=true},
+        {.id="rewrite",.name="Rewrite",.system_prompt="Rewrite this",.temperature=0.3,.enabled=true,.thinking=true},
         {.id="off",.name="Off",.system_prompt="No",.temperature=0.1,.enabled=false},
     };
     ProviderSettings provider{.endpoint="http://local/v1/chat/completions",.model_id="model",.api_key="must-not-freeze"};
@@ -25,9 +25,13 @@ int main() {
         assert(action.parameters.at("llm_endpoint")==provider.endpoint);
         assert(action.parameters.at("llm_model_id")==provider.model_id);
         assert(!action.parameters.contains("api_key"));
+        assert(action.parameters.at("thinking")==(action.parameters.at("template_id")=="rewrite"?"true":"false"));
     }
     assert(text_count==2);assert(url_count==0);
     assert(catalog.find("a_transform_text_text_translate").has_value());
+    // Built-in templates keep thinking off so answers stay fast.
+    for(const auto& prompt:default_prompt_templates())assert(!prompt.thinking);
+    assert(!PromptTemplate{}.thinking);
 
     const auto expanded=expand_prompt(templates[0],"Hello {world}", {.source_language="English",.target_language="Chinese"});
     assert(expanded.system_message=="Translate Hello {world} from English to Chinese");

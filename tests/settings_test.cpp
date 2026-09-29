@@ -47,6 +47,7 @@ int main() {
     const auto missing = store.load();
     assert(!missing.loaded_from_disk);
     assert(!missing.settings.prompt_templates.empty());
+    for (const auto& prompt : missing.settings.prompt_templates) assert(!prompt.thinking);
     assert(missing.settings.djev.model_id == "typed-decisions");
 
     {
@@ -85,6 +86,7 @@ int main() {
     settings.privacy.replacement_style = "mask";
     settings.privacy.anonymize_before_llm = true;
     settings.privacy.always_hide = {"Project Falcon"};
+    settings.prompt_templates.front().thinking = true;
     std::string error;
     assert(store.save(settings, error));
     const auto loaded = store.load();
@@ -97,7 +99,9 @@ int main() {
     assert(loaded.settings.djev.api_key == "djev-key");
     assert(loaded.settings.general_llm.api_key == "llm-key");
     assert(loaded.settings.default_image_directory == "/tmp/images");
-    assert(loaded.settings.prompt_templates.size() == settings.prompt_templates.size());
+    assert(loaded.settings.prompt_templates == settings.prompt_templates);
+    assert(loaded.settings.prompt_templates.front().thinking);
+    assert(!loaded.settings.prompt_templates.back().thinking);
     assert(loaded.settings.renderers.mermaid_cli_path == "/tools/mmdc");
     assert((loaded.settings.renderers.mermaid_arguments == std::vector<std::string>{"--theme", "forest"}));
     assert(loaded.settings.renderers.qrencode_path == "/tools/qrencode");

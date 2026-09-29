@@ -22,8 +22,9 @@ public:
     bool publish_image(const std::vector<std::byte>& bytes, std::string_view mime_type) override;
     PlatformFocusContext focused_context() override;
     std::vector<PlatformRecentPath> recent_paths() override;
-    bool register_global_shortcut() override;
+    bool register_global_shortcut(const Hotkey& hotkey) override;
     bool global_shortcut_activated() override;
+    HotkeyAvailability probe_global_shortcut(const Hotkey& hotkey) override;
     bool restore_focus_and_paste(const PlatformFocusContext& context) override;
     bool open_path(const std::filesystem::path& path) override;
     bool open_uri(std::string_view uri) override;
@@ -50,6 +51,7 @@ private:
     bool clipboard_dirty_ = true;
     bool shortcut_activated_ = false;
     bool shortcut_registered_ = false;
+    Hotkey active_shortcut_;
     WindowsFastActionServices fast_actions_;
 };
 

@@ -102,7 +102,7 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
         ImGui::PopStyleColor();
         // Ask the LLM with placeholders only; the answer comes back restored.
         if (host.ask_llm) {
-            ImGui::SeparatorText(tr(language, UiTextKey::AskLlm).c_str());
+            separator_heading(tr(language, UiTextKey::AskLlm));
             const std::string custom_label = tr(language, UiTextKey::CustomPrompt);
             const std::string preview = state.prompt_choice >= 0 && static_cast<std::size_t>(state.prompt_choice) < host.templates.size()
                 ? host.templates[static_cast<std::size_t>(state.prompt_choice)].second : custom_label;

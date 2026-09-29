@@ -118,6 +118,8 @@ void normalize_settings(AppSettings& settings) {
         settings.prompt_optimizer_system = default_prompt_optimizer_system();
     }
     if (settings.schema_version < 1) settings.schema_version = 1;
+    const auto hotkey = parse_hotkey(settings.global_hotkey);
+    settings.global_hotkey = format_hotkey(hotkey.value_or(default_hotkey()));
     if (!is_qr_error_correction(settings.renderers.qr_error_correction)) {
         settings.renderers.qr_error_correction = "M";
     }

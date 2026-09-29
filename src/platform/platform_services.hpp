@@ -43,8 +43,13 @@ public:
     virtual bool publish_image(const std::vector<std::byte>& bytes, std::string_view mime_type) = 0;
     virtual PlatformFocusContext focused_context() = 0;
     virtual std::vector<PlatformRecentPath> recent_paths() = 0;
-    virtual bool register_global_shortcut() = 0;
+    // Replaces the active global shortcut. On failure the previous one stays active.
+    virtual bool register_global_shortcut(const Hotkey& hotkey) = 0;
     virtual bool global_shortcut_activated() = 0;
+    // Asks the OS whether the shortcut could be grabbed now, without keeping it.
+    virtual HotkeyAvailability probe_global_shortcut(const Hotkey& hotkey) { (void)hotkey; return HotkeyAvailability::Unknown; }
+    // Shortcuts the desktop environment has bound (read once, then cached).
+    virtual std::vector<DesktopShortcut> desktop_shortcuts() { return {}; }
     virtual bool restore_focus_and_paste(const PlatformFocusContext& context) = 0;
     virtual bool open_path(const std::filesystem::path& path) = 0;
     virtual bool open_uri(std::string_view uri) = 0;
