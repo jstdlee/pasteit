@@ -1846,6 +1846,62 @@ int run_desktop_runtime() {
             }
         }
         const auto& theme_fonts = ui_fonts();
+        const ImVec2 tab_row_pos = ImGui::GetCursorScreenPos();
+        const float tab_row_right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+        // Provider status in the window's top-right corner, on the tab row, drawn
+        // before the tab bar so it stays the row's next item:
+        // green reachable, yellow down, grey not configured / not checked yet.
+        // Hover for details; click re-checks both.
+        {
+            const auto& pal = palette();
+            struct Indicator { const char* id; const char* name; const ProviderHealth* health; bool checking; };
+            const Indicator indicators[] = {
+                {"health-jev", "Jev", &jev_health, pending_jev_health.has_value()},
+                {"health-llm", "LLM", &llm_health, pending_llm_health.has_value()},
+            };
+            const float dot_radius = std::round(ImGui::GetFontSize() * 0.22F);
+            const float gap = ImGui::GetStyle().ItemSpacing.x;
+            float total = 0.0F;
+            for (const auto& indicator : indicators) {
+                total += dot_radius * 2.0F + 5.0F + ImGui::CalcTextSize(indicator.name).x + gap * 1.5F;
+            }
+            float x = tab_row_right - total + gap * 1.5F;
+            const float row_height = ImGui::GetFrameHeight();
+            for (const auto& indicator : indicators) {
+                const auto& health = *indicator.health;
+                const ImVec4 color = health.state == ProviderHealthState::Ok   ? pal.success
+                                   : health.state == ProviderHealthState::Down ? pal.warning
+                                                                               : pal.text_muted;
+                const float width = dot_radius * 2.0F + 5.0F + ImGui::CalcTextSize(indicator.name).x;
+                ImGui::SetCursorScreenPos(ImVec2(x, tab_row_pos.y));
+                ImGui::PushID(indicator.id);
+                const bool clicked = ImGui::InvisibleButton("status", ImVec2(width, row_height));
+                const bool hovered = ImGui::IsItemHovered();
+                ImGui::PopID();
+                auto* draw = ImGui::GetWindowDrawList();
+                const float center_y = tab_row_pos.y + row_height * 0.5F;
+                draw->AddCircleFilled(ImVec2(x + dot_radius, center_y), dot_radius, ImGui::GetColorU32(color));
+                draw->AddText(ImVec2(x + dot_radius * 2.0F + 5.0F, center_y - ImGui::GetFontSize() * 0.5F),
+                              ImGui::GetColorU32(hovered ? pal.text : pal.text_muted), indicator.name);
+                if (hovered) {
+                    const std::string state = tr(ui_language, health.state == ProviderHealthState::Ok     ? UiTextKey::HealthOk
+                                                             : health.state == ProviderHealthState::Down ? UiTextKey::HealthDown
+                                                                                                         : UiTextKey::NotConfigured);
+                    std::string text = std::string{indicator.name} + ": " + state;
+                    if (!health.detail.empty() && health.state != ProviderHealthState::Unconfigured) text += "\n" + health.detail;
+                    if (health.checked_at_ms > 0) {
+                        const auto seconds = std::max<std::int64_t>(0, (current_time_ms() - health.checked_at_ms) / 1000);
+                        text += "\n" + tr(ui_language, UiTextKey::HealthChecked) + ": " + std::to_string(seconds) + " s";
+                    }
+                    text += "\n" + (indicator.checking ? tr(ui_language, UiTextKey::Testing) : tr(ui_language, UiTextKey::HealthClickToCheck));
+                    ImGui::SetTooltip("%s", text.c_str());
+                }
+                if (clicked) health_recheck_requested = true;
+                x += width + gap * 1.5F;
+            }
+            // Back to the row start: the tab bar is the next item (no dangling cursor move).
+            ImGui::SetCursorScreenPos(tab_row_pos);
+        }
         if (ImGui::BeginTabBar("main-tabs")) {
         if (ImGui::BeginTabItem((with_icon(icon::kZap, tr(ui_language,UiTextKey::SmartActions)) + "###tab-smart").c_str())) {
         ImGui::BeginChild("smart-actions-body", ImVec2(0.0F, 0.0F), false);
@@ -2754,34 +2810,6 @@ int run_desktop_runtime() {
             if (dirty && settings_status == tr(ui_language, UiTextKey::Saved)) settings_status.clear();
             ImGui::EndTabItem();
         }
-        // Provider dots at the right end of the tab row: green reachable,
-        // yellow down, grey not configured / not checked yet. Click re-checks.
-        const auto health_dot = [&](const char* id, const char* name, const ProviderHealth& health, bool checking) {
-            const auto& pal = palette();
-            const ImVec4 color = health.state == ProviderHealthState::Ok     ? pal.success
-                               : health.state == ProviderHealthState::Down   ? pal.warning
-                                                                              : pal.text_muted;
-            ImGui::PushStyleColor(ImGuiCol_Text, color);
-            const bool clicked = ImGui::TabItemButton((std::string{"\xE2\x97\x8F "} + name + "###" + id).c_str(),
-                                                      ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip);
-            ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) {
-                const std::string state = tr(ui_language, health.state == ProviderHealthState::Ok     ? UiTextKey::HealthOk
-                                                         : health.state == ProviderHealthState::Down ? UiTextKey::HealthDown
-                                                                                                     : UiTextKey::NotConfigured);
-                std::string text = std::string{name} + ": " + state;
-                if (!health.detail.empty() && health.state != ProviderHealthState::Unconfigured) text += "\n" + health.detail;
-                if (health.checked_at_ms > 0) {
-                    const auto seconds = std::max<std::int64_t>(0, (current_time_ms() - health.checked_at_ms) / 1000);
-                    text += "\n" + tr(ui_language, UiTextKey::HealthChecked) + ": " + std::to_string(seconds) + " s";
-                }
-                text += "\n" + (checking ? tr(ui_language, UiTextKey::Testing) : tr(ui_language, UiTextKey::HealthClickToCheck));
-                ImGui::SetTooltip("%s", text.c_str());
-            }
-            if (clicked) health_recheck_requested = true;
-        };
-        health_dot("health-llm", "LLM", llm_health, pending_llm_health.has_value());
-        health_dot("health-jev", "Jev", jev_health, pending_jev_health.has_value());
         ImGui::EndTabBar();
         }
         if (modal_open) {
