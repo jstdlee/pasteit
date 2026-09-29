@@ -222,6 +222,7 @@ Prerequisites:
 - **Edit before acting.** The preview is an editable text area: change the text, then press Ctrl+Enter or click ✓. The edit becomes a new clipboard item and the actions re-rank.
 - **Window behaviour.** The popup has no title bar; drag the tab row to move it. It is a normal window (not always-on-top). Sub-windows (confirmations, views, results) are owned by the popup and stay in front of it.
 - **Tabs.** Smart Actions, Recent Paths (frecency-ranked), Clipboard History (newest 50), and Settings.
+- **Provider status.** Two dots at the right of the tab row show whether Jev and the general LLM are reachable: green is OK, yellow is down, grey is not configured. They are re-checked every minute (Jev `GET /health`, the LLM `GET /v1/models`, so no tokens are spent) and right after settings change; hover for details, click to check now.
 - **Settings pages.** Home (overview, provider tests, stats), General, Jev, General LLM, Prompt templates, Fast actions, Pipelines, Privacy, and Usage insights.
 - **Saving files.** Save, download, copy and move actions open a confirmation window with an editable destination and a generated file name.
 

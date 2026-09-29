@@ -192,6 +192,7 @@ add_library(pasteit_core
     src/history/usage_store.cpp
     src/net/http_client.cpp
     src/net/page_text.cpp
+    src/net/provider_health.cpp
     src/render/external_renderer.cpp
     src/render/markdown.cpp
     third_party/qrcodegen/qrcodegen.cpp
@@ -394,6 +395,9 @@ if (PASTEIT_BUILD_TESTS)
     add_executable(email_scan_test tests/email_scan_test.cpp)
     target_link_libraries(email_scan_test PRIVATE pasteit_core)
     add_test(NAME email_scan_test COMMAND email_scan_test)
+    add_executable(provider_health_test tests/provider_health_test.cpp)
+    target_link_libraries(provider_health_test PRIVATE pasteit_core)
+    add_test(NAME provider_health_test COMMAND provider_health_test)
     add_executable(prompt_optimizer_test tests/prompt_optimizer_test.cpp)
     target_link_libraries(prompt_optimizer_test PRIVATE pasteit_core)
     add_test(NAME prompt_optimizer_test COMMAND prompt_optimizer_test)

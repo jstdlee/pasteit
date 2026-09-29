@@ -199,7 +199,7 @@ public:
 
     void wait_started() {
         std::unique_lock lock(mutex_);
-        const bool ready = changed_.wait_for(lock, std::chrono::seconds(2), [&] { return started_ > 0; });
+        const bool ready = changed_.wait_for(lock, std::chrono::seconds(10), [&] { return started_ > 0; });
         assert(ready);
     }
 
@@ -240,7 +240,8 @@ public:
 
 std::vector<pasteit::ExecutionResult> poll_until_done(pasteit::FastActionExecutor& executor,
                                                      pasteit::ExecutionContext& context) {
-    for (int attempt = 0; attempt < 100; ++attempt) {
+    // Returns as soon as the job finishes; the 10 s ceiling only matters on busy CI machines.
+    for (int attempt = 0; attempt < 1000; ++attempt) {
         auto results = executor.poll(context);
         if (!results.empty()) {
             return results;

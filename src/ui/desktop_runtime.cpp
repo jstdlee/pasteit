@@ -42,6 +42,7 @@
 #include "ui/pipeline_view.hpp"
 #include "ui/privacy_view.hpp"
 #include "ui/prompt_parameters.hpp"
+#include "net/provider_health.hpp"
 #include "ai/prompt_optimizer.hpp"
 #include "privacy/anonymizer.hpp"
 #include "net/page_text.hpp"
@@ -712,6 +713,14 @@ int run_desktop_runtime() {
     };
     std::map<std::string, std::map<std::string, std::string>> prompt_parameter_memory;
     std::optional<std::future<std::string>> pending_provider_test;
+    // Jev / general LLM reachability, re-checked every minute (and right after
+    // settings change) and shown as dots beside the Settings tab.
+    ProviderHealth jev_health;
+    ProviderHealth llm_health;
+    std::optional<std::future<ProviderHealth>> pending_jev_health;
+    std::optional<std::future<ProviderHealth>> pending_llm_health;
+    auto next_health_check = std::chrono::steady_clock::now();
+    bool health_recheck_requested = false;
     // Prompt editor "Optimize with LLM": the request, the template it belongs
     // to, and the draft it replaced (for Revert).
     std::optional<std::future<OptimizedPrompt>> pending_prompt_optimize;
@@ -1606,6 +1615,27 @@ int run_desktop_runtime() {
         glfwPollEvents();
         platform->process_events();
         capture_clipboard(false);
+        {
+            const auto now = std::chrono::steady_clock::now();
+            if ((now >= next_health_check || health_recheck_requested) && !pending_jev_health && !pending_llm_health) {
+                health_recheck_requested = false;
+                next_health_check = now + kProviderHealthInterval;
+                pending_jev_health.emplace(std::async(std::launch::async, [provider = settings.djev] {
+                    return check_jev_health(provider);
+                }));
+                pending_llm_health.emplace(std::async(std::launch::async, [provider = settings.general_llm] {
+                    return check_llm_health(provider);
+                }));
+            }
+            const auto take = [](std::optional<std::future<ProviderHealth>>& pending, ProviderHealth& target) {
+                if (!pending || pending->wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) return;
+                try { target = pending->get(); }
+                catch (const std::exception& error) { target = {.state = ProviderHealthState::Down, .detail = error.what(), .checked_at_ms = current_time_ms()}; }
+                pending.reset();
+            };
+            take(pending_jev_health, jev_health);
+            take(pending_llm_health, llm_health);
+        }
         const bool show_requested = single_instance.take_show_request();
         if (show_on_start || show_requested || platform->global_shortcut_activated()) {
             show_on_start = false;
@@ -2700,6 +2730,7 @@ int run_desktop_runtime() {
                                               settings.djev.model_id != candidate.djev.model_id ||
                                               settings.djev.api_key != candidate.djev.api_key;
                     settings = candidate; settings_draft = settings; settings_status = tr(ui_language,UiTextKey::Saved);
+                    health_recheck_requested = true;  // endpoints or keys may have changed
                     if (llm_endpoint_changed) { general_llm_models.clear(); model_list_endpoint.clear(); model_list_status.clear(); }
                     (void)platform->set_popup_opacity(settings.window_opacity);
                     if (djev_changed) {
@@ -2723,6 +2754,34 @@ int run_desktop_runtime() {
             if (dirty && settings_status == tr(ui_language, UiTextKey::Saved)) settings_status.clear();
             ImGui::EndTabItem();
         }
+        // Provider dots at the right end of the tab row: green reachable,
+        // yellow down, grey not configured / not checked yet. Click re-checks.
+        const auto health_dot = [&](const char* id, const char* name, const ProviderHealth& health, bool checking) {
+            const auto& pal = palette();
+            const ImVec4 color = health.state == ProviderHealthState::Ok     ? pal.success
+                               : health.state == ProviderHealthState::Down   ? pal.warning
+                                                                              : pal.text_muted;
+            ImGui::PushStyleColor(ImGuiCol_Text, color);
+            const bool clicked = ImGui::TabItemButton((std::string{"\xE2\x97\x8F "} + name + "###" + id).c_str(),
+                                                      ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip);
+            ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered()) {
+                const std::string state = tr(ui_language, health.state == ProviderHealthState::Ok     ? UiTextKey::HealthOk
+                                                         : health.state == ProviderHealthState::Down ? UiTextKey::HealthDown
+                                                                                                     : UiTextKey::NotConfigured);
+                std::string text = std::string{name} + ": " + state;
+                if (!health.detail.empty() && health.state != ProviderHealthState::Unconfigured) text += "\n" + health.detail;
+                if (health.checked_at_ms > 0) {
+                    const auto seconds = std::max<std::int64_t>(0, (current_time_ms() - health.checked_at_ms) / 1000);
+                    text += "\n" + tr(ui_language, UiTextKey::HealthChecked) + ": " + std::to_string(seconds) + " s";
+                }
+                text += "\n" + (checking ? tr(ui_language, UiTextKey::Testing) : tr(ui_language, UiTextKey::HealthClickToCheck));
+                ImGui::SetTooltip("%s", text.c_str());
+            }
+            if (clicked) health_recheck_requested = true;
+        };
+        health_dot("health-llm", "LLM", llm_health, pending_llm_health.has_value());
+        health_dot("health-jev", "Jev", jev_health, pending_jev_health.has_value());
         ImGui::EndTabBar();
         }
         if (modal_open) {
