@@ -50,8 +50,11 @@ void stream_tests(){
         parser.feed("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"hmm\"}}]}\r\n\r\n: keep-alive\n");
         parser.feed("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\ndata: {\"choi");
         assert(parser.content()=="Hel"&&parser.reasoning_chars()==3&&!parser.done());
-        parser.feed("ces\":[{\"delta\":{\"content\":\"lo \u4f60\"}}]}\n\ndata: [DONE]\n\n");
+        parser.feed("ces\":[{\"delta\":{\"content\":\"lo \\u4f60\"}}]}\n\ndata: [DONE]\n\n");
         assert(parser.content()=="Hello \xE4\xBD\xA0"&&parser.done()&&parser.saw_events());
+        // \u escapes decode to UTF-8, including surrogate pairs (emoji).
+        const auto escaped=parse_json(R"({"t":"你😀"})");
+        assert(escaped&&*escaped->get("t")->string()=="\xE4\xBD\xA0\xF0\x9F\x98\x80");
         ChatStreamParser failing;
         failing.feed("data: {\"error\":{\"message\":\"quota exceeded\"}}\n");
         assert(failing.error()=="quota exceeded");

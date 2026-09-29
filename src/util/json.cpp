@@ -3,11 +3,46 @@
 #include <cctype>
 #include <charconv>
 #include <cstdlib>
+#include <optional>
 #include <sstream>
 #include <string_view>
 
 namespace pasteit {
 namespace {
+
+void append_utf8(std::string& out, unsigned int codepoint) {
+    if (codepoint < 0x80) {
+        out += static_cast<char>(codepoint);
+    } else if (codepoint < 0x800) {
+        out += static_cast<char>(0xC0 | (codepoint >> 6));
+        out += static_cast<char>(0x80 | (codepoint & 0x3F));
+    } else if (codepoint < 0x10000) {
+        out += static_cast<char>(0xE0 | (codepoint >> 12));
+        out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (codepoint & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (codepoint >> 18));
+        out += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (codepoint & 0x3F));
+    }
+}
+
+// Four hex digits at input[pos], advancing pos.
+std::optional<unsigned int> read_hex4(std::string_view input, std::size_t& pos) {
+    if (pos + 4 > input.size()) return std::nullopt;
+    unsigned int value = 0;
+    for (int index = 0; index < 4; ++index) {
+        const char ch = input[pos++];
+        value <<= 4;
+        if (ch >= '0' && ch <= '9') value |= static_cast<unsigned int>(ch - '0');
+        else if (ch >= 'a' && ch <= 'f') value |= static_cast<unsigned int>(ch - 'a' + 10);
+        else if (ch >= 'A' && ch <= 'F') value |= static_cast<unsigned int>(ch - 'A' + 10);
+        else return std::nullopt;
+    }
+    return value;
+}
+
 
 class JsonValidator {
 public:
@@ -267,11 +302,19 @@ private:
                 case 'n': out.push_back('\n'); break;
                 case 'r': out.push_back('\r'); break;
                 case 't': out.push_back('\t'); break;
-                case 'u':
-                    if (pos_ + 4 > input_.size()) return std::nullopt;
-                    pos_ += 4;
-                    out.push_back('?');
+                case 'u': {
+                    auto codepoint = read_hex4(input_, pos_);
+                    if (!codepoint) return std::nullopt;
+                    // A surrogate pair encodes one character outside the BMP (emoji).
+                    if (*codepoint >= 0xD800 && *codepoint <= 0xDBFF && input_.substr(pos_, 2) == "\\u") {
+                        pos_ += 2;
+                        const auto low = read_hex4(input_, pos_);
+                        if (!low || *low < 0xDC00 || *low > 0xDFFF) return std::nullopt;
+                        codepoint = 0x10000 + ((*codepoint - 0xD800) << 10) + (*low - 0xDC00);
+                    }
+                    append_utf8(out, *codepoint);
                     break;
+                }
                 default: return std::nullopt;
             }
         }
@@ -456,37 +499,7 @@ private:
         return true;
     }
 
-    static void append_utf8(std::string& out, unsigned int codepoint) {
-        if (codepoint < 0x80) {
-            out += static_cast<char>(codepoint);
-        } else if (codepoint < 0x800) {
-            out += static_cast<char>(0xC0 | (codepoint >> 6));
-            out += static_cast<char>(0x80 | (codepoint & 0x3F));
-        } else if (codepoint < 0x10000) {
-            out += static_cast<char>(0xE0 | (codepoint >> 12));
-            out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-            out += static_cast<char>(0x80 | (codepoint & 0x3F));
-        } else {
-            out += static_cast<char>(0xF0 | (codepoint >> 18));
-            out += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-            out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-            out += static_cast<char>(0x80 | (codepoint & 0x3F));
-        }
-    }
-
-    std::optional<unsigned int> hex4() {
-        if (position_ + 4 > input_.size()) return std::nullopt;
-        unsigned int value = 0;
-        for (int index = 0; index < 4; ++index) {
-            const char ch = input_[position_++];
-            value <<= 4;
-            if (ch >= '0' && ch <= '9') value |= static_cast<unsigned int>(ch - '0');
-            else if (ch >= 'a' && ch <= 'f') value |= static_cast<unsigned int>(ch - 'a' + 10);
-            else if (ch >= 'A' && ch <= 'F') value |= static_cast<unsigned int>(ch - 'A' + 10);
-            else return std::nullopt;
-        }
-        return value;
-    }
+    std::optional<unsigned int> hex4() { return read_hex4(input_, position_); }
 
     std::optional<std::string> parse_string() {
         if (position_ >= input_.size() || input_[position_] != '"') return std::nullopt;
