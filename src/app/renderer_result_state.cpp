@@ -123,7 +123,7 @@ bool rendered_output_decodes(RendererResultKind kind, const std::filesystem::pat
             return text.starts_with("<!doctype html>") &&
                    text.find("<pre class=\"mermaid\">") != std::string::npos &&
                    text.find("mermaid.initialize") != std::string::npos &&
-                   text.find("mermaid.run()") != std::string::npos &&
+                   text.find("mermaid.run(") != std::string::npos &&
                    text.find("</html>") != std::string::npos &&
                    text.find("<script src=") == std::string::npos;
         }

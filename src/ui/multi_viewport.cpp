@@ -5,6 +5,7 @@
 #include "util/path_utf8.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 
 namespace pasteit {
@@ -77,10 +78,23 @@ bool RendererPreviewPanelState::select_view(const FastActionPanelCommand& comman
     return false;
 }
 
+namespace {
+// "~/Documents/x.html" -> "/home/me/Documents/x.html"
+std::string expand_home(const std::string& path) {
+    if (path != "~" && !path.starts_with("~/") && !path.starts_with("~\\")) return path;
+#if defined(_WIN32)
+    const char* home = std::getenv("USERPROFILE");
+#else
+    const char* home = std::getenv("HOME");
+#endif
+    return home == nullptr ? path : std::string{home} + path.substr(1);
+}
+}  // namespace
+
 bool RendererPreviewPanelState::save(const FastActionPanelCommand& command, std::string_view extension) {
     if (pending_save.has_value()) return false;
     status_text = "Saving...";
-    auto path = path_from_utf8_string(destination);
+    auto path = path_from_utf8_string(expand_home(destination));
     if (!path.empty() && path.extension() != extension) {
         path.replace_extension(extension);
         destination = path_to_utf8_string(path);

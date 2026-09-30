@@ -810,6 +810,8 @@ bool WindowsDesktopServices::restore_focus_and_paste(const PlatformFocusContext&
 }
 
 bool WindowsDesktopServices::open_path(const std::filesystem::path& path) {
+    // Let the default app (a browser for .html) take the foreground from PasteIt.
+    AllowSetForegroundWindow(ASFW_ANY);
     const auto wide = path_to_wide(path);
     return reinterpret_cast<std::intptr_t>(ShellExecuteW(popup_window_, L"open", wide.c_str(), nullptr, nullptr,
                                                          SW_SHOWNORMAL)) > 32;

@@ -31,6 +31,7 @@
 #include "storage/clipboard_store.hpp"
 #include "storage/path_history.hpp"
 #include "util/path_utf8.hpp"
+#include "history/choice_memory.hpp"
 #include "history/usage_store.hpp"
 #include "ui/desktop_flow.hpp"
 #include "ui/decision_future_slot.hpp"
@@ -259,6 +260,10 @@ std::filesystem::path path_history_file() {
 
 std::filesystem::path usage_history_file() {
     return app_data_dir() / "usage.json";
+}
+
+std::filesystem::path choice_memory_file() {
+    return app_data_dir() / "choices.json";
 }
 
 struct ImageTexture {
@@ -711,7 +716,27 @@ int run_desktop_runtime() {
             return {};
         },
     };
-    std::map<std::string, std::map<std::string, std::string>> prompt_parameter_memory;
+    // Last-used action options (prompt placeholders such as the target
+    // language, the Ask LLM template, the chart type), kept across restarts.
+    const ChoiceMemoryStore choice_memory_store(choice_memory_file());
+    ChoiceMemory choice_memory = choice_memory_store.load();
+    auto& prompt_parameter_memory = choice_memory.prompt_parameters;
+    const auto save_choice_memory = [&] {
+        std::string error;
+        if (!choice_memory_store.save(choice_memory, error)) {
+            std::cerr << "PasteIt remembered choices save failed: " << error << '\n';
+        }
+    };
+    const auto remember_choice = [&](const std::string& key, std::string value) {
+        auto& stored = choice_memory.choices[key];
+        if (stored == value) return;
+        stored = std::move(value);
+        save_choice_memory();
+    };
+    custom_prompt_dialog.template_id = choice_memory.choice("ask_llm.template");
+    if (const auto kind = choice_memory.choice("chart.kind"); !kind.empty()) {
+        chart_view.kind = std::clamp(std::atoi(kind.c_str()), 0, static_cast<int>(ChartKind::Histogram));
+    }
     std::optional<std::future<std::string>> pending_provider_test;
     // Jev / general LLM reachability, re-checked every minute (and right after
     // settings change) and shown as dots beside the Settings tab.
@@ -968,6 +993,20 @@ int run_desktop_runtime() {
                    return job->panel.open;
                });
     };
+
+    // How many dialogs and result windows are open; a drop means one closed.
+    const auto open_auxiliary_window_count = [&] {
+        const bool flags[] = {image_preview.open, file_confirmation.has_value(), prompt_parameter_dialog.open,
+                              custom_prompt_dialog.open, chart_view.open, table_view.open, markdown_view.open,
+                              pipeline_view.open, anonymize_view.open, page_consent.has_value(), contact_panel.open,
+                              network_panel.open, mermaid_panel.open, qr_panel.open, download_panel.open,
+                              hash_panel.open, annotation_panel.open};
+        return static_cast<std::size_t>(std::count(std::begin(flags), std::end(flags), true)) +
+               static_cast<std::size_t>(std::count_if(generation_jobs.begin(), generation_jobs.end(),
+                                                      [](const auto& job) { return job->panel.open; }));
+    };
+    std::size_t last_auxiliary_window_count = 0;
+    bool refocus_popup = false;
 
     const auto persist_clipboard_history = [&] {
         const auto saved = clipboard_history_store.save(clipboard_store.items_newest_first(50), clipboard_store.next_ref());
@@ -1237,8 +1276,23 @@ int run_desktop_runtime() {
             case RendererResultKind::Mermaid:
                 mermaid_panel.bring_to_front();
                 mermaid_preview_state.mode = RendererPreviewPanelState::Mode::Source;
-                mermaid_preview_state.destination = path_to_utf8_string(std::filesystem::temp_directory_path() /
-                    ("pasteit-" + renderer.action_id + ".mmd"));
+                // Save where the user can find it (not the temp directory), as
+                // the offline HTML page when it rendered, else the source.
+                {
+                    const auto directory = settings.default_text_directory.empty()
+                        ? std::filesystem::temp_directory_path() : settings.default_text_directory;
+                    const auto stamp = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+                    const bool html = renderer.output_path && renderer.output_path->extension() == ".html";
+                    mermaid_preview_state.destination = path_to_utf8_string(
+                        directory / ("mermaid-" + std::to_string(stamp) + (html ? ".html" : ".mmd")));
+                    // No inline preview for the HTML page: show it in the default browser right away.
+                    if (html && renderer.status == RendererResultStatus::Ready) {
+                        mermaid_preview_state.mode = RendererPreviewPanelState::Mode::Preview;
+                        mermaid_preview_state.open_preview(*renderer.output_path,
+                            [platform = platform.get()](const std::filesystem::path& path) { return platform->open_path(path); });
+                    }
+                }
                 break;
             case RendererResultKind::Qr:
                 qr_panel.bring_to_front();
@@ -1432,6 +1486,13 @@ int run_desktop_runtime() {
         }
         if (action->kind == ActionKind::AnonymizeText) {
             open_anonymize_view(anonymize_view, clipboard_store.read_text(action->source_ref), anonymize_options());
+            // Its Ask LLM picker lists the enabled templates; start on the last one used.
+            int template_index = 0;
+            for (const auto& prompt : settings.prompt_templates) {
+                if (!prompt.enabled) continue;
+                if (prompt.id == choice_memory.choice("anonymize.ask_template")) anonymize_view.prompt_choice = template_index;
+                ++template_index;
+            }
             return;
         }
         if (action->kind == ActionKind::RestorePlaceholders) {
@@ -1814,6 +1875,7 @@ int run_desktop_runtime() {
         ImGui::SetNextWindowViewport(main_viewport->ID);
         const auto flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                            ImGuiWindowFlags_NoSavedSettings;
+        if (refocus_popup) ImGui::SetNextWindowFocus();
         ImGui::Begin("PasteItPopup", nullptr, flags);
         // A pending confirmation or parameter dialog owns input until closed.
         const bool modal_open = file_confirmation.has_value() || prompt_parameter_dialog.open || custom_prompt_dialog.open ||
@@ -2847,6 +2909,7 @@ int run_desktop_runtime() {
                     PromptVariables values;
                     values.values = prompt_parameter_dialog.values;
                     prompt_parameter_memory[prompt_parameter_dialog.template_id] = values.values;
+                    save_choice_memory();
                     activated_prompt_variables = std::move(values);
                     activated_action = prompt_parameter_dialog.action_id;
                     prompt_parameter_dialog.open = false;
@@ -2901,9 +2964,16 @@ int run_desktop_runtime() {
                 const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Generate), true, can_run}},
                                                    privacy_note);
                 if (clicked == 0) custom_prompt_dialog.open = false;
-                if (clicked == 1) {
-                    const auto source_text = clipboard_store.read_text(custom_prompt_dialog.action.source_ref);
+                const auto source = clicked == 1 ? clipboard_store.item(custom_prompt_dialog.action.source_ref) : std::nullopt;
+                if (clicked == 1 && !source) {
+                    execution_status = "Clipboard source is no longer available";
+                    custom_prompt_dialog.open = false;
+                } else if (clicked == 1) {
+                    const auto source_text = clipboard_store.read_text(source->ref);
                     const auto [llm_text, protected_text] = protect_for_llm(source_text);
+                    // Next Ask LLM starts from this template and its placeholder values.
+                    choice_memory.choices["ask_llm.template"] = custom ? std::string{} : selected->id;
+                    save_choice_memory();
                     if (custom) {
                         start_text_job(custom_prompt_dialog.action, custom_prompt_dialog.prompt, llm_text, 0.2, protected_text,
                                        custom_prompt_dialog.thinking);
@@ -2923,6 +2993,7 @@ int run_desktop_runtime() {
         }
 
         draw_chart_view(chart_view, data_view_host, ui_language);
+        if (chart_view.open) remember_choice("chart.kind", std::to_string(chart_view.kind));
         draw_table_view(table_view, chart_view, data_view_host, ui_language, default_chart_path());
         draw_markdown_view(markdown_view, data_view_host, ui_language);
         {
@@ -2969,6 +3040,9 @@ int run_desktop_runtime() {
                     action.kind = ActionKind::TransformText;
                     const auto prompt = std::find_if(settings.prompt_templates.begin(), settings.prompt_templates.end(),
                                                      [&](const PromptTemplate& value) { return value.id == template_id; });
+                    choice_memory.choices["anonymize.ask_template"] =
+                        prompt == settings.prompt_templates.end() ? std::string{} : template_id;
+                    save_choice_memory();
                     if (prompt == settings.prompt_templates.end()) {
                         start_text_job(action, custom_prompt, text, 0.2, true, false);
                         return;
@@ -3280,6 +3354,13 @@ int run_desktop_runtime() {
             glfwSetWindowAttrib(window, GLFW_FLOATING, GLFW_FALSE);
             glfwHideWindow(window);
         }
+        // Closing a dialog or result window hands OS focus to whatever app was
+        // behind it; give it back to the popup so another action can be picked.
+        const bool popup_focus_requested = refocus_popup;
+        refocus_popup = false;
+        const auto auxiliary_window_count = open_auxiliary_window_count();
+        if (popup_visible && auxiliary_window_count < last_auxiliary_window_count) refocus_popup = true;
+        last_auxiliary_window_count = auxiliary_window_count;
 
         ImGui::Render();
         int display_width = 0;
@@ -3313,8 +3394,14 @@ int run_desktop_runtime() {
             glfwMakeContextCurrent(backup_context);
         }
         glfwSwapBuffers(window);
+        if (refocus_popup && !popup_focus_requested) glfwFocusWindow(window);
         if (activated_action.has_value()) {
-            execute_selected(*activated_action, std::move(activated_prompt_variables));
+            // A stale clipboard ref or unreadable blob must not take the app down.
+            try {
+                execute_selected(*activated_action, std::move(activated_prompt_variables));
+            } catch (const std::exception& error) {
+                execution_status = std::string{"Action failed: "} + error.what();
+            }
         }
     }
 

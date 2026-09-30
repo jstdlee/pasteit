@@ -186,6 +186,7 @@ add_library(pasteit_core
     src/executor/file_executor.cpp
     src/executor/url_executor.cpp
     src/executor/utility_executor.cpp
+    src/history/choice_memory.cpp
     src/history/clipboard_history_store.cpp
     src/history/path_history_store.cpp
     src/history/path_target_resolver.cpp
@@ -382,6 +383,10 @@ if (PASTEIT_BUILD_TESTS)
     add_executable(clipboard_prune_test tests/clipboard_prune_test.cpp)
     target_link_libraries(clipboard_prune_test PRIVATE pasteit_core)
     add_test(NAME clipboard_prune_test COMMAND clipboard_prune_test)
+
+    add_executable(choice_memory_test tests/choice_memory_test.cpp)
+    target_link_libraries(choice_memory_test PRIVATE pasteit_core)
+    add_test(NAME choice_memory_test COMMAND choice_memory_test)
 
     add_executable(model_catalog_test tests/model_catalog_test.cpp)
     target_link_libraries(model_catalog_test PRIVATE pasteit_core)

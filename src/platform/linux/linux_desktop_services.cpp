@@ -39,6 +39,90 @@ struct DirectoryChooserResult {
     std::filesystem::path path;
 };
 
+// The page's <title>, when the file is an HTML page PasteIt generated.
+std::string html_title(const std::filesystem::path& path) {
+    if (path.extension() != ".html") return {};
+    std::ifstream input(path, std::ios::binary);
+    std::string head(4096, '\0');
+    input.read(head.data(), static_cast<std::streamsize>(head.size()));
+    head.resize(static_cast<std::size_t>(input.gcount()));
+    const auto start = head.find("<title>");
+    const auto end = start == std::string::npos ? start : head.find("</title>", start);
+    return end == std::string::npos ? std::string{} : head.substr(start + 7, end - start - 7);
+}
+
+// A browser that is already running opens the page in a background tab and
+// the window manager keeps its window behind PasteIt. Once a window shows the
+// page's title, ask the window manager to activate it (as a pager would, which
+// focus-stealing prevention allows).
+void raise_window_titled(std::string title) {
+#if defined(PASTEIT_HAS_X11)
+    if (title.empty()) return;
+    std::thread([title = std::move(title)] {
+        Display* display = XOpenDisplay(nullptr);
+        if (display == nullptr) return;
+        const Window root = DefaultRootWindow(display);
+        const Atom client_list = XInternAtom(display, "_NET_CLIENT_LIST", False);
+        const Atom wm_name = XInternAtom(display, "_NET_WM_NAME", False);
+        const Atom utf8 = XInternAtom(display, "UTF8_STRING", False);
+        const Atom active = XInternAtom(display, "_NET_ACTIVE_WINDOW", False);
+        // Mutter ignores activation requests stamped CurrentTime (0); a fresh
+        // server time comes from a property change on a throwaway window.
+        const auto server_time = [&]() -> Time {
+            const Window probe = XCreateSimpleWindow(display, root, 0, 0, 1, 1, 0, 0, 0);
+            XSelectInput(display, probe, PropertyChangeMask);
+            const Atom stamp = XInternAtom(display, "PASTEIT_TIMESTAMP", False);
+            XChangeProperty(display, probe, stamp, XA_STRING, 8, PropModeReplace, nullptr, 0);
+            XEvent event{};
+            XWindowEvent(display, probe, PropertyChangeMask, &event);
+            XDestroyWindow(display, probe);
+            return event.xproperty.time;
+        };
+        const auto find_window = [&]() -> Window {
+            Atom type = None;
+            int format = 0;
+            unsigned long count = 0, remaining = 0;
+            unsigned char* data = nullptr;
+            if (XGetWindowProperty(display, root, client_list, 0, 4096, False, XA_WINDOW, &type, &format, &count,
+                                   &remaining, &data) != Success || data == nullptr) return None;
+            const auto* windows = reinterpret_cast<const Window*>(data);
+            Window found = None;
+            for (unsigned long index = 0; index < count && found == None; ++index) {
+                unsigned char* name = nullptr;
+                unsigned long length = 0;
+                if (XGetWindowProperty(display, windows[index], wm_name, 0, 1024, False, utf8, &type, &format, &length,
+                                       &remaining, &name) == Success && name != nullptr) {
+                    if (std::string_view{reinterpret_cast<const char*>(name), length}.find(title) != std::string_view::npos) {
+                        found = windows[index];
+                    }
+                    XFree(name);
+                }
+            }
+            XFree(data);
+            return found;
+        };
+        for (int attempt = 0; attempt < 50; ++attempt) {
+            if (const Window window = find_window(); window != None) {
+                XEvent event{};
+                event.xclient.type = ClientMessage;
+                event.xclient.window = window;
+                event.xclient.message_type = active;
+                event.xclient.format = 32;
+                event.xclient.data.l[0] = 2;  // source: pager
+                event.xclient.data.l[1] = static_cast<long>(server_time());
+                XSendEvent(display, root, False, SubstructureRedirectMask | SubstructureNotifyMask, &event);
+                XFlush(display);
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds{200});
+        }
+        XCloseDisplay(display);
+    }).detach();
+#else
+    (void)title;
+#endif
+}
+
 bool open_with_xdg(std::string value) {
     std::vector<char*> argv{const_cast<char*>("xdg-open"), value.data(), nullptr};
     pid_t pid = 0;
@@ -337,7 +421,9 @@ bool LinuxDesktopServices::restore_focus_and_paste(const PlatformFocusContext& c
 }
 bool LinuxDesktopServices::open_path(const std::filesystem::path& path) {
     const auto browser_path = browser_open_path(path, user_home_directory());
-    return browser_path.has_value() && open_with_xdg(browser_path->string());
+    if (!browser_path.has_value() || !open_with_xdg(browser_path->string())) return false;
+    raise_window_titled(html_title(*browser_path));
+    return true;
 }
 bool LinuxDesktopServices::open_uri(std::string_view uri) { return open_with_xdg(std::string{uri}); }
 bool LinuxDesktopServices::copy_text(std::string_view text) { return publish_text(text); }

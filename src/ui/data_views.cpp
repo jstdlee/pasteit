@@ -34,7 +34,9 @@ void open_markdown_view(MarkdownViewState& state, std::string source) {
 }
 
 void open_chart_from_series(ChartViewState& state, std::string source, std::string save_path) {
+    const int kind = state.kind;  // keep the last chart type
     state = {};
+    state.kind = kind;
     state.open = true;
     state.focus_pending = true;
     state.series_source = std::move(source);
@@ -44,7 +46,9 @@ void open_chart_from_series(ChartViewState& state, std::string source, std::stri
 
 void open_chart_from_table(ChartViewState& state, const TableData& table, std::vector<std::size_t> rows,
                            std::string save_path) {
+    const int kind = state.kind;  // keep the last chart type
     state = {};
+    state.kind = kind;
     state.open = true;
     state.focus_pending = true;
     state.table = table;

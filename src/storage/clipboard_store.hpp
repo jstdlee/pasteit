@@ -38,8 +38,14 @@ public:
 
 private:
     std::filesystem::path data_dir_;
+    const ClipboardItem* find(const std::string& ref) const;
+
     std::uint64_t next_ref_ = 1;
     std::map<std::string, ClipboardItem> items_;
+    // Refs dropped by restore() whose content survives under a newer ref
+    // (history coalesces repeated copies). Open actions and dialogs still
+    // hold the old ref, so it keeps resolving to the same bytes.
+    std::map<std::string, std::string> aliases_;
 };
 
 std::string content_hash_hex(const std::vector<std::byte>& bytes);

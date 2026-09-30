@@ -149,19 +149,48 @@ void ClipboardStore::restore(std::vector<ClipboardItem> items, std::uint64_t nex
         max_serial = std::max(max_serial, serial_from_ref(item.ref));
         restored.insert_or_assign(item.ref, std::move(item));
     }
+    std::map<std::string, std::string> newest_by_hash;
+    for (const auto& [ref, item] : restored) {
+        if (item.content_hash.empty()) continue;
+        auto& newest = newest_by_hash[item.content_hash];
+        if (newest.empty() || restored.at(newest).captured_at_ms <= item.captured_at_ms) newest = ref;
+    }
+    std::map<std::string, std::string> aliases;
+    const auto alias_to_survivor = [&](const std::string& ref, const std::string& content_hash) {
+        if (restored.contains(ref)) return;
+        if (const auto survivor = newest_by_hash.find(content_hash); survivor != newest_by_hash.end()) {
+            aliases[ref] = survivor->second;
+        }
+    };
+    for (const auto& [ref, item] : items_) alias_to_survivor(ref, item.content_hash);
+    for (const auto& [ref, target] : aliases_) {
+        if (const auto* item = find(target)) alias_to_survivor(ref, item->content_hash);
+    }
     items_ = std::move(restored);
+    aliases_ = std::move(aliases);
     next_ref_ = std::max(next_ref, max_serial + 1);
     if (next_ref_ == 0) {
         next_ref_ = 1;
     }
 }
 
-std::vector<std::byte> ClipboardStore::read(const std::string& ref) const {
-    const auto found = items_.find(ref);
+const ClipboardItem* ClipboardStore::find(const std::string& ref) const {
+    auto found = items_.find(ref);
     if (found == items_.end()) {
+        const auto alias = aliases_.find(ref);
+        if (alias == aliases_.end()) return nullptr;
+        found = items_.find(alias->second);
+        if (found == items_.end()) return nullptr;
+    }
+    return &found->second;
+}
+
+std::vector<std::byte> ClipboardStore::read(const std::string& ref) const {
+    const auto* found = find(ref);
+    if (found == nullptr) {
         throw std::out_of_range("unknown clipboard ref");
     }
-    std::ifstream in(found->second.blob_path, std::ios::binary);
+    std::ifstream in(found->blob_path, std::ios::binary);
     if (!in) {
         throw std::runtime_error("failed to read clipboard blob");
     }
@@ -185,11 +214,11 @@ std::string ClipboardStore::read_text(const std::string& ref) const {
 }
 
 std::optional<ClipboardItem> ClipboardStore::item(const std::string& ref) const {
-    const auto found = items_.find(ref);
-    if (found == items_.end()) {
+    const auto* found = find(ref);
+    if (found == nullptr) {
         return std::nullopt;
     }
-    return found->second;
+    return *found;
 }
 
 std::vector<ClipboardItem> ClipboardStore::items_newest_first(std::size_t limit) const {
@@ -217,6 +246,7 @@ void ClipboardStore::retain_latest(std::size_t limit) {
 
 void ClipboardStore::clear() {
     items_.clear();
+    aliases_.clear();
 }
 
 std::filesystem::path ClipboardStore::default_data_dir() {
