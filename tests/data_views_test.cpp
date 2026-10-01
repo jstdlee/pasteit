@@ -152,7 +152,57 @@ void aggregates_and_formulas() {
     assert(summed.labels.size() == 2 && summed.series[0].values[0] == 8.0);
 }
 
+void table_edits() {
+    auto table = *parse_delimited_table("city,pop\nTokyo,\"13,960,000\"\nParis,2161000\nOslo,n/a\n", ',', true);
+    assert(table.has_header && table.headers[0] == "city");
+
+    // Header row toggles both ways and keeps the data intact.
+    assert(set_header_row(table, false) && !table.has_header);
+    assert(table.headers[0] == "Column 1" && table.rows.size() == 4 && table.rows[0][0] == "city");
+    assert(!set_header_row(table, false));
+    assert(set_header_row(table, true) && table.headers[1] == "pop" && table.rows.size() == 3);
+    const auto no_header = parse_delimited_table("a,1\nb,2\n", ',', false);
+    assert(no_header && !no_header->has_header && no_header->headers[1] == "Column 2");
+
+    rename_column(table, 1, "  population ");
+    assert(table.headers[1] == "population");
+    rename_column(table, 1, " ");
+    assert(table.headers[1] == "Column 2");
+
+    // Forced type: "n/a" keeps the column Text until the user says Number,
+    // then numbers sort numerically and the odd cell goes last.
+    assert(table.stats[1].type == ColumnType::Text);
+    set_column_type(table, 1, ColumnType::Number);
+    assert(table.stats[1].type == ColumnType::Number);
+    auto rows = table_view_rows(table, "", 1, false);
+    assert(table.rows[rows[0]][0] == "Paris" && table.rows[rows[2]][0] == "Oslo");
+    set_column_type(table, 1, std::nullopt);
+    assert(table.stats[1].type == ColumnType::Text);
+
+    // Literal replace: case-insensitive by default, $ is not special, dry run counts only.
+    ReplaceSpec literal{.column = 0, .find = "O", .replacement = "$0"};
+    auto counted = replace_in_table(table, literal, nullptr, false);
+    assert(counted.cells == 2 && table.rows[0][0] == "Tokyo");
+    literal.match_case = true;
+    assert(replace_in_table(table, literal, nullptr, true).cells == 1 && table.rows[2][0] == "$0slo");
+
+    // Regex with groups, limited to some rows; numbers become a Number column.
+    ReplaceSpec regex{.column = 1, .find = R"((\d+),(\d+),(\d+))", .replacement = "$1$2$3", .regex = true};
+    const std::vector<std::size_t> first{0};
+    assert(replace_in_table(table, regex, &first, true).cells == 1 && table.rows[0][1] == "13960000");
+    ReplaceSpec cleanup{.column = 1, .find = "^n/a$", .replacement = "", .regex = true};
+    assert(replace_in_table(table, cleanup, nullptr, true).cells == 1 && table.stats[1].type == ColumnType::Number);
+
+    // Every column, and an invalid pattern reports an error without changes.
+    ReplaceSpec all{.find = "a", .replacement = "A"};
+    assert(replace_in_table(table, all, nullptr, true).cells == 1 && table.rows[1][0] == "PAris");
+    ReplaceSpec broken{.find = "(", .regex = true};
+    const auto failed = replace_in_table(table, broken, nullptr, true);
+    assert(!failed.error.empty() && failed.cells == 0);
+}
+
 int main() {
+    table_edits();
     aggregates_and_formulas();
     tables();
     charts();

@@ -422,16 +422,19 @@ bool icon_cell(const char* glyph, ImVec4 color, float size) {
     return true;
 }
 
-bool icon_button(const char* id, const char* glyph, const std::string& tooltip) {
+bool icon_button(const char* id, const char* glyph, const std::string& tooltip, bool active) {
+    const auto& p = current_palette;
     const bool has_glyph = current_fonts.icons && glyph != nullptr;
     const auto label = std::string{has_glyph ? glyph : tooltip.c_str()} + "##" + id;
-    // Toolbar style: no fill or border until hovered, square hit target.
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    // Toolbar style: no fill or border until hovered, square hit target;
+    // an active toggle sits in an accent wash with an accent glyph.
+    ImGui::PushStyleColor(ImGuiCol_Button, active ? p.accent_soft : ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0, 0, 0, 0));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, current_palette.surface_hover);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, active ? with_alpha(p.accent, p.accent_soft.w + 0.08F) : p.surface_hover);
+    ImGui::PushStyleColor(ImGuiCol_Text, active ? p.accent : p.text);
     const float side = ImGui::GetFrameHeight();
     const bool clicked = ImGui::Button(label.c_str(), has_glyph ? ImVec2(side, side) : ImVec2(0.0F, side));
-    ImGui::PopStyleColor(3);
+    ImGui::PopStyleColor(4);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
     return clicked;
 }

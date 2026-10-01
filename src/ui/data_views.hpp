@@ -67,6 +67,22 @@ struct TableViewState {
     int formula_right = 0;  // column index, or -1 for the constant
     double formula_constant = 1.0;
     std::string formula_name;
+    // Find and replace; the preview count is recomputed only when its inputs change.
+    std::string find;
+    std::string replacement;
+    int replace_column = -1;  // -1: every column
+    bool replace_regex = false;
+    bool replace_match_case = false;
+    bool replace_filtered_only = true;
+    bool open_replace = false;  // opened from a column header menu
+    // Bottom-right corner of the toolbar button that opened a popup (screen
+    // coordinates); the popup opens right-aligned below it.
+    float popup_anchor_x = -1.0F;
+    float popup_anchor_y = -1.0F;
+    std::string replace_preview_key;
+    ReplaceResult replace_preview;
+    // The table before the last edit (replace, header row, type, formula).
+    std::optional<TableData> undo;
 };
 
 struct MarkdownViewState {

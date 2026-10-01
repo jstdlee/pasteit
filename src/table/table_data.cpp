@@ -173,6 +173,7 @@ std::optional<TableData> parse_delimited_table(std::string_view text, char delim
     for (const auto& record : records) columns = std::max(columns, record.size());
     if (columns < 2) return std::nullopt;
     TableData table;
+    table.has_header = header;
     if (header) {
         table.headers = records.front();
         records.erase(records.begin());
@@ -247,6 +248,7 @@ void compute_column_stats(TableData& table) {
         else if (stats.numeric * 10 >= stats.filled * 9) stats.type = ColumnType::Number;
         else if (dates * 10 >= stats.filled * 9) stats.type = ColumnType::Date;
         else stats.type = ColumnType::Text;
+        if (column < table.type_overrides.size() && table.type_overrides[column]) stats.type = *table.type_overrides[column];
     }
 }
 
@@ -270,10 +272,12 @@ std::vector<std::size_t> table_view_rows(const TableData& table, std::string_vie
             if (a.empty() != b.empty()) return !a.empty();  // blanks last either way
             bool less = false;
             if (numeric) {
-                const auto x = parse_cell_number(a).value_or(0.0);
-                const auto y = parse_cell_number(b).value_or(0.0);
-                if (x == y) return false;
-                less = x < y;
+                // Cells that are not numbers sort after the numbers, like blanks.
+                const auto x = parse_cell_number(a);
+                const auto y = parse_cell_number(b);
+                if (x.has_value() != y.has_value()) return x.has_value();
+                if (!x || *x == *y) return false;
+                less = *x < *y;
             } else {
                 const auto x = lower(a);
                 const auto y = lower(b);
@@ -398,6 +402,89 @@ std::string column_type_name(ColumnType type) {
         case ColumnType::Empty: return "empty";
     }
     return "text";
+}
+
+bool set_header_row(TableData& table, bool header) {
+    if (header == table.has_header) return false;
+    if (header) {
+        if (table.rows.empty()) return false;
+        table.headers = std::move(table.rows.front());
+        table.rows.erase(table.rows.begin());
+        for (std::size_t index = 0; index < table.headers.size(); ++index) {
+            if (trim(table.headers[index]).empty()) table.headers[index] = "Column " + std::to_string(index + 1);
+        }
+    } else {
+        table.rows.insert(table.rows.begin(), table.headers);
+        for (std::size_t index = 0; index < table.headers.size(); ++index) table.headers[index] = "Column " + std::to_string(index + 1);
+    }
+    table.has_header = header;
+    compute_column_stats(table);
+    return true;
+}
+
+void rename_column(TableData& table, std::size_t column, std::string_view name) {
+    if (column >= table.headers.size()) return;
+    const auto trimmed = trim(name);
+    table.headers[column] = trimmed.empty() ? "Column " + std::to_string(column + 1) : trimmed;
+}
+
+void set_column_type(TableData& table, std::size_t column, std::optional<ColumnType> type) {
+    if (column >= table.headers.size()) return;
+    if (table.type_overrides.size() < table.headers.size()) table.type_overrides.resize(table.headers.size());
+    table.type_overrides[column] = type;
+    compute_column_stats(table);
+}
+
+ReplaceResult replace_in_table(TableData& table, const ReplaceSpec& spec, const std::vector<std::size_t>* rows, bool apply) {
+    ReplaceResult result;
+    if (spec.find.empty()) return result;
+    if (spec.column && *spec.column >= table.headers.size()) return result;
+    std::regex pattern;
+    try {
+        auto flags = std::regex::ECMAScript;
+        if (!spec.match_case) flags |= std::regex::icase;
+        if (spec.regex) {
+            pattern = std::regex(spec.find, flags);
+        } else {
+            // Literal search: escape every regex metacharacter.
+            std::string escaped;
+            for (const char ch : spec.find) {
+                if (std::string_view{"\\^$.|?*+()[]{}"}.find(ch) != std::string_view::npos) escaped += '\\';
+                escaped += ch;
+            }
+            pattern = std::regex(escaped, flags);
+        }
+    } catch (const std::regex_error& error) {
+        result.error = error.what();
+        return result;
+    }
+    // A literal replacement must not expand $ sequences.
+    std::string replacement = spec.replacement;
+    if (!spec.regex) {
+        std::string escaped;
+        for (const char ch : replacement) {
+            if (ch == '$') escaped += '$';
+            escaped += ch;
+        }
+        replacement = std::move(escaped);
+    }
+    const auto visit = [&](std::size_t row) {
+        if (row >= table.rows.size()) return;
+        for (std::size_t column = 0; column < table.headers.size(); ++column) {
+            if (spec.column && column != *spec.column) continue;
+            auto& cell = table.rows[row][column];
+            if (!std::regex_search(cell, pattern)) continue;
+            ++result.cells;
+            if (apply) cell = std::regex_replace(cell, pattern, replacement);
+        }
+    };
+    if (rows != nullptr) {
+        for (const auto row : *rows) visit(row);
+    } else {
+        for (std::size_t row = 0; row < table.rows.size(); ++row) visit(row);
+    }
+    if (apply && result.cells > 0) compute_column_stats(table);
+    return result;
 }
 
 std::string aggregate_name(Aggregate aggregate) {

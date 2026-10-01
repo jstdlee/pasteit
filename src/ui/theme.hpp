@@ -62,8 +62,8 @@ void draw_category_icon(ImDrawList* draw, ImVec2 center, float size, ActionCateg
 // false (drawing nothing) when the icon font is unavailable.
 bool icon_cell(const char* glyph, ImVec4 color, float size = 18.0F);
 // Square, borderless toolbar button (frame height) with a tooltip; falls
-// back to the text label.
-bool icon_button(const char* id, const char* glyph, const std::string& tooltip);
+// back to the text label. `active` shows it pressed in, for toggles.
+bool icon_button(const char* id, const char* glyph, const std::string& tooltip, bool active = false);
 // Width of `count` icon buttons laid out with SameLine().
 float icon_buttons_width(int count);
 

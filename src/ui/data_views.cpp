@@ -11,6 +11,7 @@
 #endif
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdio>
 
@@ -466,8 +467,21 @@ bool column_combo(const char* id, const TableData& table, int& column, bool numb
     return changed;
 }
 
+// Opens a toolbar popup below the last item, right-aligned to it.
+void open_tool_popup(TableViewState& state, const char* id) {
+    state.popup_anchor_x = ImGui::GetItemRectMax().x;
+    state.popup_anchor_y = ImGui::GetItemRectMax().y + 4.0F * ImGui::GetStyle().FontScaleDpi;
+    ImGui::OpenPopup(id);
+}
+
+void place_tool_popup(const TableViewState& state) {
+    if (state.popup_anchor_x < 0.0F) return;
+    ImGui::SetNextWindowPos(ImVec2(state.popup_anchor_x, state.popup_anchor_y), ImGuiCond_Appearing, ImVec2(1.0F, 0.0F));
+}
+
 // Returns true when the table was replaced by its summary.
 bool draw_summarize_popup(TableViewState& state, const std::vector<std::size_t>& rows, UiLanguage language) {
+    place_tool_popup(state);
     if (!ImGui::BeginPopup("table-summarize")) return false;
     const auto& table = state.table;
     if (state.group_values.size() != table.headers.size()) {
@@ -520,6 +534,7 @@ bool draw_summarize_popup(TableViewState& state, const std::vector<std::size_t>&
 
 // Returns true when a formula column was added.
 bool draw_formula_popup(TableViewState& state, UiLanguage language) {
+    place_tool_popup(state);
     if (!ImGui::BeginPopup("table-formula")) return false;
     auto& table = state.table;
     ImGui::TextColored(palette().text_muted, "%s", tr(language, UiTextKey::FormulaHelp).c_str());
@@ -567,7 +582,9 @@ bool draw_formula_popup(TableViewState& state, UiLanguage language) {
         ImGui::SameLine();
         if (ImGui::Button(with_icon(icon::kPlus, tr(language, UiTextKey::AddColumn)).c_str())) {
             std::string error;
+            TableData before = table;
             if (add_formula_column(table, formula, error)) {
+                state.undo = std::move(before);
                 state.visible.push_back(true);
                 state.group_values.clear();
                 state.formula_name.clear();
@@ -583,61 +600,306 @@ bool draw_formula_popup(TableViewState& state, UiLanguage language) {
     return added;
 }
 
+const char* column_type_icon(ColumnType type) {
+    switch (type) {
+        case ColumnType::Number: return icon::kHash;
+        case ColumnType::Date: return icon::kCalendar;
+        case ColumnType::Text:
+        case ColumnType::Empty: return icon::kType;
+    }
+    return icon::kType;
+}
+
+std::string column_type_label(ColumnType type, UiLanguage language) {
+    switch (type) {
+        case ColumnType::Number: return tr(language, UiTextKey::TypeNumber);
+        case ColumnType::Date: return tr(language, UiTextKey::TypeDate);
+        case ColumnType::Text:
+        case ColumnType::Empty: return tr(language, UiTextKey::TypeText);
+    }
+    return tr(language, UiTextKey::TypeText);
+}
+
+std::optional<ColumnType> type_override(const TableData& table, std::size_t column) {
+    return column < table.type_overrides.size() ? table.type_overrides[column] : std::nullopt;
+}
+
+void change_column_type(TableViewState& state, std::size_t column, std::optional<ColumnType> type) {
+    if (type_override(state.table, column) == type) return;
+    state.undo = state.table;
+    set_column_type(state.table, column, type);
+}
+
+constexpr std::optional<ColumnType> kTypeChoices[] = {std::nullopt, ColumnType::Text, ColumnType::Number, ColumnType::Date};
+
+// Auto shows the detected type next to it.
+void column_type_combo(const char* id, TableViewState& state, std::size_t column, UiLanguage language) {
+    const auto current = type_override(state.table, column);
+    const auto preview = current ? column_type_label(*current, language)
+                                 : tr(language, UiTextKey::TypeAuto) + " (" + column_type_label(state.table.stats[column].type, language) + ")";
+    if (begin_combo(id, preview.c_str())) {
+        for (const auto& choice : kTypeChoices) {
+            const auto label = choice ? with_icon(column_type_icon(*choice), column_type_label(*choice, language))
+                                      : tr(language, UiTextKey::TypeAuto);
+            if (ImGui::Selectable(label.c_str(), current == choice)) change_column_type(state, column, choice);
+        }
+        ImGui::EndCombo();
+    }
+}
+
+// Edits the header in place; an emptied name falls back to "Column N".
+void column_name_field(const char* id, TableData& table, std::size_t column) {
+    input_text_string(id, table.headers[column]);
+    if (ImGui::IsItemDeactivatedAfterEdit()) rename_column(table, column, table.headers[column]);
+}
+
+// Column manager: visibility, name and type per column.
+void draw_columns_popup(TableViewState& state, UiLanguage language) {
+    place_tool_popup(state);
+    if (!ImGui::BeginPopup("table-columns")) return;
+    auto& table = state.table;
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    ImGui::TextColored(palette().text_muted, "%s", tr(language, UiTextKey::ColumnsHelp).c_str());
+    if (ImGui::BeginTable("table-columns-editor", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)) {
+        ImGui::TableSetupColumn(tr(language, UiTextKey::Visible).c_str(), ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
+        ImGui::TableSetupColumn(tr(language, UiTextKey::ColumnName).c_str(), ImGuiTableColumnFlags_WidthFixed, 220.0F * scale);
+        ImGui::TableSetupColumn(tr(language, UiTextKey::ColumnType).c_str(), ImGuiTableColumnFlags_WidthFixed, 170.0F * scale);
+        ImGui::TableHeadersRow();
+        for (std::size_t column = 0; column < table.headers.size(); ++column) {
+            ImGui::PushID(static_cast<int>(column));
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            const bool visible = state.visible[column];
+            if (icon_button("visible", visible ? icon::kEye : icon::kEyeOff,
+                            tr(language, visible ? UiTextKey::HideColumn : UiTextKey::Visible), visible)) {
+                state.visible[column] = !visible;
+            }
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            column_name_field("##name", table, column);
+            ImGui::TableNextColumn();
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            column_type_combo("##type", state, column, language);
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+    }
+    ImGui::EndPopup();
+}
+
+// Right-click menu of one column header.
+void draw_column_menu(TableViewState& state, std::size_t column, UiLanguage language) {
+    const auto& p = palette();
+    const float width = 240.0F * ImGui::GetStyle().FontScaleDpi;
+    ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::ColumnName).c_str());
+    ImGui::SetNextItemWidth(width);
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    column_name_field("##rename", state.table, column);
+    ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::ColumnType).c_str());
+    ImGui::SetNextItemWidth(width);
+    column_type_combo("##type", state, column, language);
+    ImGui::Separator();
+    if (ImGui::MenuItem(with_icon(icon::kReplace, tr(language, UiTextKey::ReplaceInColumn)).c_str())) {
+        state.replace_column = static_cast<int>(column);
+        state.open_replace = true;
+    }
+    if (ImGui::MenuItem(with_icon(icon::kEyeOff, tr(language, UiTextKey::HideColumn)).c_str())) state.visible[column] = false;
+}
+
+void draw_replace_popup(TableViewState& state, const std::vector<std::size_t>& rows, UiLanguage language) {
+    place_tool_popup(state);
+    if (!ImGui::BeginPopup("table-replace")) return;
+    const auto& p = palette();
+    auto& table = state.table;
+    const auto& style = ImGui::GetStyle();
+    const float field = 320.0F * style.FontScaleDpi;
+    if (state.replace_column >= static_cast<int>(table.headers.size())) state.replace_column = -1;
+    ImGui::PushFont(ui_fonts().bold, ui_fonts().body);
+    ImGui::TextUnformatted(tr(language, UiTextKey::FindReplace).c_str());
+    ImGui::PopFont();
+    ImGui::SetNextItemWidth(field);
+    (void)column_combo("##replace-column", table, state.replace_column, false, tr(language, UiTextKey::AllColumns).c_str());
+    // Find field with regex and match-case toggles at its end.
+    const float toggles = icon_buttons_width(2) + style.ItemSpacing.x;
+    ImGui::SetNextItemWidth(field - toggles);
+    if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+    input_text_hint("##find", tr(language, UiTextKey::FindText).c_str(), state.find);
+    ImGui::SameLine();
+    if (icon_button("regex", icon::kRegex, tr(language, UiTextKey::UseRegex), state.replace_regex)) state.replace_regex = !state.replace_regex;
+    ImGui::SameLine();
+    if (icon_button("case", icon::kCaseSensitive, tr(language, UiTextKey::MatchCase), state.replace_match_case)) {
+        state.replace_match_case = !state.replace_match_case;
+    }
+    ImGui::SetNextItemWidth(field - toggles);
+    input_text_hint("##replacement", tr(language, UiTextKey::ReplaceWith).c_str(), state.replacement);
+    const bool filtered = rows.size() != table.rows.size();
+    if (filtered) {
+        ImGui::Checkbox((tr(language, UiTextKey::OnlyFilteredRows) + " (" + std::to_string(rows.size()) + ")").c_str(),
+                        &state.replace_filtered_only);
+    }
+    const bool only_filtered = filtered && state.replace_filtered_only;
+    const ReplaceSpec spec{
+        .column = state.replace_column >= 0 ? std::optional<std::size_t>{static_cast<std::size_t>(state.replace_column)} : std::nullopt,
+        .find = state.find,
+        .replacement = state.replacement,
+        .regex = state.replace_regex,
+        .match_case = state.replace_match_case,
+    };
+    // Count matches only when an input changes, not every frame.
+    const auto key = state.find + '\x1F' + std::to_string(state.replace_column) + (state.replace_regex ? "r" : "-") +
+                     (state.replace_match_case ? "c" : "-") + (only_filtered ? state.filter + '\x1F' + std::to_string(rows.size()) : "") +
+                     '\x1F' + std::to_string(table.rows.size()) + (table.has_header ? "h" : "-");
+    if (key != state.replace_preview_key) {
+        state.replace_preview = replace_in_table(table, spec, only_filtered ? &rows : nullptr, false);
+        state.replace_preview_key = key;
+    }
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + field);
+    if (!state.replace_preview.error.empty()) {
+        ImGui::TextColored(p.danger, "%s", state.replace_preview.error.c_str());
+    } else if (!state.find.empty()) {
+        ImGui::TextColored(state.replace_preview.cells > 0 ? p.text : p.text_muted, "%s %zu",
+                           tr(language, UiTextKey::CellsMatch).c_str(), state.replace_preview.cells);
+    }
+    if (state.replace_regex) ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::ReplaceHelp).c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    const auto apply_label = with_icon(icon::kReplace, tr(language, UiTextKey::ReplaceAll));
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + field - button_width(apply_label));
+    ImGui::BeginDisabled(state.replace_preview.cells == 0 || !state.replace_preview.error.empty());
+    if (primary_button(apply_label)) {
+        state.undo = table;
+        const auto result = replace_in_table(table, spec, only_filtered ? &rows : nullptr, true);
+        state.status = tr(language, UiTextKey::CellsReplaced) + " " + std::to_string(result.cells);
+        state.replace_preview_key.clear();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::EndPopup();
+}
+
 }  // namespace
 
 void draw_table_view(TableViewState& state, ChartViewState& chart, const DataViewHost& host, UiLanguage language,
                      const std::string& default_chart_path) {
     if (!state.open) return;
-    const auto title = with_icon(icon::kTable, state.title.empty() ? tr(language, UiTextKey::ViewTable) : state.title) + "###table-view";
-    const float width = std::clamp(140.0F * static_cast<float>(state.table.headers.size()), 560.0F, 1100.0F);
-    // Summarize / formula replace the table mid-frame; finish the window
-    // without drawing the stale grid.
+    const auto heading = state.title.empty() ? tr(language, UiTextKey::ViewTable) : state.title;
+    const auto title = with_icon(icon::kTable, heading) + "###table-view";
+    const float width = std::clamp(140.0F * static_cast<float>(state.table.headers.size()), 600.0F, 1100.0F);
+    // Header row, undo, summarize and formula replace the table mid-frame;
+    // finish the window without drawing the stale grid.
     const auto end_table_view = [] { ImGui::End(); };
-    if (begin_tool_window(title, &state.open, ImVec2(width, 560.0F), &state.focus_pending)) {
+    // The window draws its own title bar: title on the left, tools and close on the right.
+    if (begin_tool_window(title, &state.open, ImVec2(width, 560.0F), &state.focus_pending, ImGuiWindowFlags_NoTitleBar)) {
         const auto& p = palette();
+        const auto& style = ImGui::GetStyle();
+        const float scale = style.FontScaleDpi;
         auto& table = state.table;
+        if (state.visible.size() != table.headers.size()) state.visible.resize(table.headers.size(), true);
         std::vector<std::size_t> columns;
         for (std::size_t column = 0; column < table.headers.size(); ++column) {
-            if (column < state.visible.size() && state.visible[column]) columns.push_back(column);
+            if (state.visible[column]) columns.push_back(column);
         }
         const auto rows = table_view_rows(table, state.filter, state.sort_column, state.descending);
-
-        // Toolbar: filter, columns, stats, chart, summarize, formula. Buttons
-        // wrap to a second line when the window is narrow.
-        const auto toolbar_button = [](const std::string& label) {
-            const float width = ImGui::CalcTextSize(label.c_str(), nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0F;
-            ImGui::SameLine();
-            if (ImGui::GetContentRegionAvail().x < width) ImGui::NewLine();
-            return ImGui::Button(label.c_str());
+        const auto table_replaced = [&] {
+            state.visible.resize(state.table.headers.size(), true);
+            state.sort_column = -1;
+            state.replace_preview_key.clear();
         };
-        ImGui::SetNextItemWidth(std::clamp(ImGui::GetContentRegionAvail().x * 0.3F, 140.0F, 260.0F));
-        input_text_hint("##table-filter", (std::string{ui_fonts().icons ? icon::kSearch : ""} + " " + tr(language, UiTextKey::Filter)).c_str(), state.filter);
-        if (toolbar_button(with_icon(icon::kLayers, tr(language, UiTextKey::Columns)))) ImGui::OpenPopup("table-columns");
-        if (ImGui::BeginPopup("table-columns")) {
-            for (std::size_t column = 0; column < table.headers.size(); ++column) {
-                bool visible = state.visible[column];
-                if (ImGui::Checkbox((table.headers[column] + "##col" + std::to_string(column)).c_str(), &visible)) {
-                    state.visible[column] = visible;
+
+        // Title bar. Dragging its empty space moves the window.
+        ImGui::AlignTextToFramePadding();
+        ImGui::PushFont(ui_fonts().bold, ui_fonts().body);
+        if (ui_fonts().icons) {
+            ImGui::TextColored(p.accent, "%s", icon::kTable);
+            ImGui::SameLine(0.0F, 8.0F * scale);
+        }
+        ImGui::TextUnformatted(heading.c_str());
+        ImGui::PopFont();
+        // Tools in groups: history | shape the table | analyse it, then close.
+        const float tight = 2.0F * scale;
+        const float group_gap = 12.0F * scale;
+        const int edit_tools = 3;
+        const int analyse_tools = 4;
+        const int history_tools = (state.undo ? 1 : 0) + (state.original ? 1 : 0);
+        const auto group_width = [&](int count) {
+            return count <= 0 ? 0.0F : ImGui::GetFrameHeight() * static_cast<float>(count) + tight * static_cast<float>(count - 1);
+        };
+        const float tools_width = group_width(edit_tools) + group_gap + group_width(analyse_tools) +
+                                  (history_tools > 0 ? group_gap + group_width(history_tools) : 0.0F) +
+                                  group_gap + ImGui::GetFrameHeight();
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX() + group_gap, ImGui::GetWindowContentRegionMax().x - tools_width));
+
+        // History tools sit leftmost so the others keep their place when they appear.
+        if (history_tools > 0) {
+            bool first = true;
+            if (state.undo) {
+                first = false;
+                if (icon_button("undo", icon::kUndo, tr(language, UiTextKey::UndoChange))) {
+                    state.table = std::move(*state.undo);
+                    state.undo.reset();
+                    table_replaced();
+                    return end_table_view();
                 }
             }
-            ImGui::EndPopup();
+            if (state.original) {
+                if (!first) ImGui::SameLine(0.0F, tight);
+                if (icon_button("reset", icon::kRotateCcw, tr(language, UiTextKey::ResetTable))) {
+                    state.table = std::move(*state.original);
+                    state.title = state.original_title;
+                    state.original.reset();
+                    state.undo.reset();
+                    state.visible.assign(state.table.headers.size(), true);
+                    table_replaced();
+                    return end_table_view();
+                }
+            }
+            ImGui::SameLine(0.0F, group_gap);
         }
-        if (toolbar_button(with_icon(icon::kInfo, tr(language, UiTextKey::Statistics)))) state.show_stats = !state.show_stats;
-        if (toolbar_button(with_icon(icon::kChart, tr(language, UiTextKey::Chart)))) {
-            open_chart_from_table(chart, table, rows, default_chart_path);
+        // A summary has no first row to promote.
+        ImGui::BeginDisabled(state.original.has_value());
+        const bool toggle_header = icon_button("header-row", icon::kHeaderRow, tr(language, UiTextKey::HeaderRow), table.has_header);
+        ImGui::EndDisabled();
+        if (toggle_header) {
+            TableData before = table;
+            if (set_header_row(table, !table.has_header)) {
+                state.undo = std::move(before);
+                table_replaced();
+                return end_table_view();
+            }
         }
-        if (toolbar_button(with_icon(icon::kListOrdered, tr(language, UiTextKey::Summarize)))) ImGui::OpenPopup("table-summarize");
-        if (draw_summarize_popup(state, rows, language)) return end_table_view();
-        if (toolbar_button(with_icon(icon::kPlus, tr(language, UiTextKey::FormulaColumn)))) ImGui::OpenPopup("table-formula");
-        if (draw_formula_popup(state, language)) return end_table_view();
-        if (state.original && toolbar_button(with_icon(icon::kUndo, tr(language, UiTextKey::ResetTable)))) {
-            state.table = std::move(*state.original);
-            state.title = state.original_title;
-            state.original.reset();
-            state.visible.assign(state.table.headers.size(), true);
-            state.sort_column = -1;
+        ImGui::SameLine(0.0F, tight);
+        if (icon_button("columns", icon::kColumns, tr(language, UiTextKey::Columns))) open_tool_popup(state, "table-columns");
+        ImGui::SameLine(0.0F, tight);
+        if (icon_button("replace", icon::kReplace, tr(language, UiTextKey::FindReplace))) {
+            state.replace_column = -1;
+            open_tool_popup(state, "table-replace");
+        }
+        ImGui::SameLine(0.0F, group_gap);
+        if (icon_button("stats", icon::kSigma, tr(language, UiTextKey::Statistics), state.show_stats)) state.show_stats = !state.show_stats;
+        ImGui::SameLine(0.0F, tight);
+        if (icon_button("chart", icon::kChart, tr(language, UiTextKey::Chart))) open_chart_from_table(chart, table, rows, default_chart_path);
+        ImGui::SameLine(0.0F, tight);
+        if (icon_button("summarize", icon::kMerge, tr(language, UiTextKey::Summarize))) open_tool_popup(state, "table-summarize");
+        ImGui::SameLine(0.0F, tight);
+        if (icon_button("formula", icon::kFunction, tr(language, UiTextKey::FormulaColumn))) open_tool_popup(state, "table-formula");
+        ImGui::SameLine(0.0F, group_gap);
+        if (icon_button("close", icon::kClose, tr(language, UiTextKey::Close))) state.open = false;
+
+        draw_columns_popup(state, language);
+        if (state.open_replace) {
+            state.open_replace = false;
+            state.popup_anchor_x = -1.0F;  // from a header menu: open at the mouse
+            ImGui::OpenPopup("table-replace");
+        }
+        draw_replace_popup(state, rows, language);
+        if (draw_summarize_popup(state, rows, language)) {
+            state.undo.reset();
             return end_table_view();
         }
+        if (draw_formula_popup(state, language)) return end_table_view();
+
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        input_text_hint("##table-filter", (std::string{ui_fonts().icons ? icon::kSearch : ""} + " " + tr(language, UiTextKey::Filter)).c_str(), state.filter);
 
         const float footer = footer_height();
         const int column_count = static_cast<int>(std::max<std::size_t>(1, columns.size()));
@@ -654,7 +916,24 @@ void draw_table_view(TableViewState& state, ChartViewState& chart, const DataVie
                                         numeric ? ImGuiTableColumnFlags_PreferSortDescending : ImGuiTableColumnFlags_None,
                                         numeric ? 0.6F : 1.0F, static_cast<ImGuiID>(column));
             }
-            ImGui::TableHeadersRow();
+            // Headers carry the column type glyph; right-click one to rename,
+            // retype, search or hide that column.
+            ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+            for (int index = 0; index < static_cast<int>(columns.size()); ++index) {
+                if (!ImGui::TableSetColumnIndex(index)) continue;
+                const auto column = columns[static_cast<std::size_t>(index)];
+                ImGui::PushID(static_cast<int>(column));
+                ImGui::TableHeader(with_icon(column_type_icon(table.stats[column].type), table.headers[column]).c_str());
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+                    ImGui::SetTooltip("%s \xC2\xB7 %s", column_type_label(table.stats[column].type, language).c_str(),
+                                      tr(language, UiTextKey::ColumnsHelp).c_str());
+                }
+                if (ImGui::BeginPopupContextItem("column-menu")) {
+                    draw_column_menu(state, column, language);
+                    ImGui::EndPopup();
+                }
+                ImGui::PopID();
+            }
             if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs(); sort && sort->SpecsDirty) {
                 if (sort->SpecsCount > 0) {
                     state.sort_column = static_cast<int>(sort->Specs[0].ColumnUserID);
@@ -689,7 +968,7 @@ void draw_table_view(TableViewState& state, ChartViewState& chart, const DataVie
                         const auto& cell = table.rows[rows[static_cast<std::size_t>(row)]][column];
                         if (table.stats[column].type == ColumnType::Number) {
                             const float text_width = ImGui::CalcTextSize(cell.c_str()).x;
-                            const float offset = ImGui::GetColumnWidth() - text_width - ImGui::GetStyle().CellPadding.x;
+                            const float offset = ImGui::GetColumnWidth() - text_width - style.CellPadding.x;
                             if (offset > 0.0F) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset);
                         }
                         ImGui::TextUnformatted(cell.c_str());

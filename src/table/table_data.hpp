@@ -25,6 +25,9 @@ struct TableData {
     std::vector<std::string> headers;
     std::vector<std::vector<std::string>> rows;  // every row has headers.size() cells
     std::vector<ColumnStats> stats;
+    // Types chosen by the user, by column; unset entries keep the detected type.
+    std::vector<std::optional<ColumnType>> type_overrides;
+    bool has_header = true;  // headers came from the data (first row or JSON keys)
     bool truncated = false;  // rows beyond the limit were dropped
 };
 
@@ -56,6 +59,31 @@ std::string table_to_sql(const TableData& table, const std::vector<std::size_t>&
                          const std::vector<std::size_t>& columns, std::string_view table_name = "data");
 
 std::string column_type_name(ColumnType type);
+
+// First row as header: true promotes the first row to the header, false
+// pushes the header back into the data as row 1 and names the columns
+// "Column N". Returns false when there is nothing to change.
+bool set_header_row(TableData& table, bool header);
+// Empty names fall back to "Column N".
+void rename_column(TableData& table, std::size_t column, std::string_view name);
+// nullopt returns the column to its detected type. Number columns sort
+// numerically and feed charts and summaries; cells are left as they are.
+void set_column_type(TableData& table, std::size_t column, std::optional<ColumnType> type);
+
+struct ReplaceSpec {
+    std::optional<std::size_t> column;  // empty: every column
+    std::string find;
+    std::string replacement;  // with regex, $1.. and $& refer to the match
+    bool regex = false;
+    bool match_case = false;
+};
+struct ReplaceResult {
+    std::size_t cells = 0;  // cells that match (dry run) or were changed
+    std::string error;      // invalid pattern
+};
+// Replaces every match in the given rows (all rows when null). With apply
+// false it only counts the matching cells.
+ReplaceResult replace_in_table(TableData& table, const ReplaceSpec& spec, const std::vector<std::size_t>* rows, bool apply);
 
 // Reduction applied to value columns per group (the chart's Y operator).
 enum class Aggregate { None, Sum, Avg, Min, Max, Count };
