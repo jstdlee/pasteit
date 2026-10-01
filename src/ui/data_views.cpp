@@ -449,7 +449,7 @@ bool column_combo(const char* id, const TableData& table, int& column, bool numb
     const std::string preview = column < 0 ? std::string{extra ? extra : ""}
         : static_cast<std::size_t>(column) < table.headers.size() ? table.headers[static_cast<std::size_t>(column)] : std::string{};
     bool changed = false;
-    if (ImGui::BeginCombo(id, preview.c_str())) {
+    if (begin_combo(id, preview.c_str())) {
         if (extra != nullptr && ImGui::Selectable(extra, column < 0)) {
             column = -1;
             changed = true;
@@ -798,7 +798,7 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
             ImGui::SetNextItemWidth(170.0F);
             const std::string x_preview = state.x_column < 0 ? tr(language, UiTextKey::RowNumber)
                                                              : table.headers[static_cast<std::size_t>(state.x_column)];
-            if (ImGui::BeginCombo("##chart-x", x_preview.c_str())) {
+            if (begin_combo("##chart-x", x_preview.c_str())) {
                 if (ImGui::Selectable(tr(language, UiTextKey::RowNumber).c_str(), state.x_column < 0)) {
                     state.x_column = -1;
                     state.dirty = true;
@@ -820,7 +820,7 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
             }
             if (y_preview.empty()) y_preview = "(none)";
             ImGui::SetNextItemWidth(200.0F);
-            if (ImGui::BeginCombo("##chart-y", y_preview.c_str())) {
+            if (begin_combo("##chart-y", y_preview.c_str())) {
                 for (std::size_t column = 0; column < table.headers.size(); ++column) {
                     if (table.stats[column].type != ColumnType::Number) continue;
                     bool selected = state.y_columns[column];
@@ -843,7 +843,7 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
             ImGui::SetNextItemWidth(110.0F);
             const int count = static_cast<int>(std::size(kAggregates));
             state.aggregate = std::clamp(state.aggregate, 0, count - 1);
-            if (ImGui::BeginCombo("##chart-aggregate", aggregate_label(kAggregates[state.aggregate], language).c_str())) {
+            if (begin_combo("##chart-aggregate", aggregate_label(kAggregates[state.aggregate], language).c_str())) {
                 for (int index = 0; index < count; ++index) {
                     if (ImGui::Selectable(aggregate_label(kAggregates[index], language).c_str(), state.aggregate == index)) {
                         state.aggregate = index;

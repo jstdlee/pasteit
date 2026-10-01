@@ -799,6 +799,8 @@ int run_desktop_runtime() {
     bool preview_edit_apply_requested = false;
     DecisionState decision_state = DecisionState::Idle;
     SettingsPage settings_page = SettingsPage::Home;
+    enum class MainTab { Smart, Paths, History, Settings };
+    int main_tab = static_cast<int>(MainTab::Smart);
     HotkeyEditorState hotkey_editor_state;
     bool fit_popup_pending = false;
     bool popup_drag_armed = false;
@@ -840,7 +842,7 @@ int run_desktop_runtime() {
                 }
             }
             form_row(tr(language, UiTextKey::AllowAnyProgram), tr(language, UiTextKey::AllowAnyProgramHelp));
-            ImGui::Checkbox("##allow-any", &settings_draft.pipelines.allow_any_program);
+            toggle_switch("##allow-any", &settings_draft.pipelines.allow_any_program);
             end_form();
         }
         separator_heading(tr(language, UiTextKey::CustomCommands));
@@ -848,10 +850,11 @@ int run_desktop_runtime() {
         ImGui::TextColored(pal.text_muted, "%s", tr(language, UiTextKey::CustomCommandsHelp).c_str());
         ImGui::PopTextWrapPos();
         std::optional<std::size_t> remove_command;
-        if (ImGui::BeginTable("settings-custom-commands", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+        begin_group("settings-custom-commands-group");
+        if (ImGui::BeginTable("settings-custom-commands", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn(tr(language, UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 0.8F);
             ImGui::TableSetupColumn(tr(language, UiTextKey::Command).c_str(), ImGuiTableColumnFlags_WidthStretch, 3.0F);
-            ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, 32.0F);
+            ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
             ImGui::TableHeadersRow();
             for (std::size_t index = 0; index < settings_draft.pipelines.custom_commands.size(); ++index) {
                 auto& custom = settings_draft.pipelines.custom_commands[index];
@@ -864,11 +867,12 @@ int run_desktop_runtime() {
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 input_text_string("##command", custom.command);
                 ImGui::TableNextColumn();
-                if (ImGui::SmallButton(ui_fonts().icons ? icon::kTrash : "x")) remove_command = index;
+                if (icon_button("remove", icon::kTrash, tr(language, UiTextKey::Delete))) remove_command = index;
                 ImGui::PopID();
             }
             ImGui::EndTable();
         }
+        end_group();
         if (remove_command) {
             settings_draft.pipelines.custom_commands.erase(settings_draft.pipelines.custom_commands.begin() +
                                                            static_cast<std::ptrdiff_t>(*remove_command));
@@ -878,12 +882,13 @@ int run_desktop_runtime() {
         }
         separator_heading(tr(language, UiTextKey::Recipes));
         std::optional<std::size_t> remove;
-        if (ImGui::BeginTable("settings-recipes", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+        begin_group("settings-recipes-group");
+        if (ImGui::BeginTable("settings-recipes", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn(tr(language, UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 56.0F);
             ImGui::TableSetupColumn(tr(language, UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.4F);
             ImGui::TableSetupColumn(tr(language, UiTextKey::AppliesTo).c_str(), ImGuiTableColumnFlags_WidthStretch, 0.8F);
             ImGui::TableSetupColumn(tr(language, UiTextKey::Command).c_str(), ImGuiTableColumnFlags_WidthStretch, 2.6F);
-            ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, 32.0F);
+            ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
             ImGui::TableHeadersRow();
             for (std::size_t index = 0; index < settings_draft.pipelines.recipes.size(); ++index) {
                 auto& recipe = settings_draft.pipelines.recipes[index];
@@ -901,11 +906,12 @@ int run_desktop_runtime() {
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 input_text_string("##command", recipe.command);
                 ImGui::TableNextColumn();
-                if (ImGui::SmallButton(ui_fonts().icons ? icon::kTrash : "x")) remove = index;
+                if (icon_button("remove", icon::kTrash, tr(language, UiTextKey::Delete))) remove = index;
                 ImGui::PopID();
             }
             ImGui::EndTable();
         }
+        end_group();
         if (remove) settings_draft.pipelines.recipes.erase(settings_draft.pipelines.recipes.begin() + static_cast<std::ptrdiff_t>(*remove));
         if (ImGui::Button(with_icon(icon::kPlus, tr(language, UiTextKey::NewRecipe)).c_str())) {
             settings_draft.pipelines.recipes.push_back({.id = "custom-" + std::to_string(current_time_ms()), .name = "New recipe",
@@ -938,16 +944,16 @@ int run_desktop_runtime() {
             int style = static_cast<int>(replacement_style_from_name(privacy.replacement_style));
             const std::string labels[] = {tr(language, UiTextKey::StylePlaceholder), tr(language, UiTextKey::StyleMask),
                                           tr(language, UiTextKey::StyleFake), tr(language, UiTextKey::StyleRedact)};
-            if (ImGui::BeginCombo("##style", labels[style].c_str())) {
+            if (begin_combo("##style", labels[style].c_str())) {
                 for (int index = 0; index < 4; ++index) {
                     if (ImGui::Selectable(labels[index].c_str(), style == index)) privacy.replacement_style = style_names[index];
                 }
                 ImGui::EndCombo();
             }
             form_row(tr(language, UiTextKey::AnonymizeBeforeLlm), tr(language, UiTextKey::AnonymizeBeforeLlmHelp));
-            ImGui::Checkbox("##before-llm", &privacy.anonymize_before_llm);
+            toggle_switch("##before-llm", &privacy.anonymize_before_llm);
             form_row(tr(language, UiTextKey::AllowPageFetch));
-            ImGui::Checkbox("##page-fetch", &privacy.allow_page_fetch);
+            toggle_switch("##page-fetch", &privacy.allow_page_fetch);
             form_row(tr(language, UiTextKey::AlwaysHide));
             lines_field("##always-hide", privacy.always_hide);
             form_row(tr(language, UiTextKey::NeverHide));
@@ -955,6 +961,7 @@ int run_desktop_runtime() {
             end_form();
         }
         separator_heading(tr(language, UiTextKey::Detect));
+        begin_group("privacy-categories-group");
         if (ImGui::BeginTable("privacy-categories", 2, ImGuiTableFlags_SizingStretchSame)) {
             for (const auto category : all_pii_categories()) {
                 ImGui::TableNextColumn();
@@ -969,6 +976,7 @@ int run_desktop_runtime() {
             }
             ImGui::EndTable();
         }
+        end_group();
     };
     std::string settings_status = settings_load.warning;
     if (!clipboard_history_load.warning.empty()) {
@@ -1928,7 +1936,7 @@ int run_desktop_runtime() {
                 total += dot_radius * 2.0F + 5.0F + ImGui::CalcTextSize(indicator.name).x + gap * 1.5F;
             }
             float x = tab_row_right - total + gap * 1.5F;
-            const float row_height = ImGui::GetFrameHeight();
+            const float row_height = ImGui::GetFrameHeight() + 4.0F * ImGui::GetStyle().FontScaleDpi;
             for (const auto& indicator : indicators) {
                 const auto& health = *indicator.health;
                 const ImVec4 color = health.state == ProviderHealthState::Ok   ? pal.success
@@ -1964,8 +1972,17 @@ int run_desktop_runtime() {
             // Back to the row start: the tab bar is the next item (no dangling cursor move).
             ImGui::SetCursorScreenPos(tab_row_pos);
         }
-        if (ImGui::BeginTabBar("main-tabs")) {
-        if (ImGui::BeginTabItem((with_icon(icon::kZap, tr(ui_language,UiTextKey::SmartActions)) + "###tab-smart").c_str())) {
+        {
+            const std::string tab_labels[] = {
+                with_icon(icon::kZap, tr(ui_language, UiTextKey::SmartActions)),
+                with_icon(icon::kFolder, tr(ui_language, UiTextKey::RecentPaths)),
+                with_icon(icon::kHistory, tr(ui_language, UiTextKey::ClipboardHistory)),
+                with_icon(icon::kSettings, tr(ui_language, UiTextKey::Settings)),
+            };
+            (void)segmented_control("main-tabs", tab_labels, main_tab);
+            ImGui::Spacing();
+        }
+        if (main_tab == static_cast<int>(MainTab::Smart)) {
         ImGui::BeginChild("smart-actions-body", ImVec2(0.0F, 0.0F), false);
         const float body_top = ImGui::GetCursorScreenPos().y;
         const ClipboardItem* current_item = active_batch.request.snapshot.clipboard_items.empty()
@@ -2007,7 +2024,6 @@ int run_desktop_runtime() {
 
         // Preview card.
         ImGui::PushStyleColor(ImGuiCol_ChildBg, theme_palette.surface);
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0F);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0F, 10.0F));
         const auto preview = current_item == nullptr ? std::string{}
             : preview_excerpt(clipboard_preview_text.empty() ? current_item->preview : clipboard_preview_text, 3);
@@ -2021,8 +2037,8 @@ int run_desktop_runtime() {
         const float preview_height = preview_texture.id != 0
             ? std::min(120.0F, static_cast<float>(preview_texture.height)) + 20.0F
             : preview_lines_height + 20.0F;
-        ImGui::BeginChild("clipboard-preview", ImVec2(0.0F, preview_height), ImGuiChildFlags_AlwaysUseWindowPadding,
-                          ImGuiWindowFlags_NoScrollbar);
+        ImGui::BeginChild("clipboard-preview", ImVec2(0.0F, preview_height),
+                          ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
         if (preview_texture.id != 0) {
             const float scale = std::min(260.0F / static_cast<float>(preview_texture.width),
                                          std::min(120.0F, static_cast<float>(preview_texture.height)) /
@@ -2058,11 +2074,12 @@ int run_desktop_runtime() {
                 // the field) applies the edit as a new clipboard item.
                 ImGui::PushStyleColor(ImGuiCol_FrameBg, theme_palette.surface);
                 ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0F, 0.0F));
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0F);
                 // Multiline ImGui input: Enter adds a line, Ctrl+Enter validates.
                 (void)input_text_string("##preview-edit", preview_edit_text, true, 0, preview_lines_height, -button_room);
                 const bool left_after_edit = ImGui::IsItemDeactivatedAfterEdit();
                 if (ImGui::IsItemHovered() && !ImGui::IsItemActive()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::EditHint).c_str());
-                ImGui::PopStyleVar();
+                ImGui::PopStyleVar(2);
                 ImGui::PopStyleColor();
                 if (left_after_edit) preview_edit_apply_requested = true;
             } else {
@@ -2099,7 +2116,7 @@ int run_desktop_runtime() {
             ImGui::TextColored(theme_palette.text_muted, "%s", tr(ui_language,UiTextKey::NoClipboard).c_str());
         }
         ImGui::EndChild();
-        ImGui::PopStyleVar(2);
+        ImGui::PopStyleVar();
         ImGui::PopStyleColor();
 
         // Quick tools that open a dialog rather than run immediately.
@@ -2114,7 +2131,7 @@ int run_desktop_runtime() {
             if (any_tool) ImGui::SameLine(0.0F, 6.0F);
             any_tool = true;
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 999.0F);
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.0F, 4.0F));
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(14.0F, ImGui::GetStyle().FramePadding.y));
             if (ImGui::Button(with_icon(glyph, tr(ui_language, key)).c_str())) activated_action = choice->id;
             ImGui::PopStyleVar(2);
         };
@@ -2174,11 +2191,11 @@ int run_desktop_runtime() {
             ImGui::PopTextWrapPos();
             if (last_execution.has_value() && !last_execution->output_paths.empty()) {
                 const auto& output = last_execution->output_paths.front();
-                if (ImGui::SmallButton(tr(ui_language,UiTextKey::CopyPath).c_str())) platform->copy_text(path_to_utf8_string(output));
+                if (ImGui::Button(with_icon(icon::kCopy, tr(ui_language,UiTextKey::CopyPath)).c_str())) platform->copy_text(path_to_utf8_string(output));
                 ImGui::SameLine();
-                if (ImGui::SmallButton(tr(ui_language,UiTextKey::OpenResult).c_str())) platform->open_path(output);
+                if (ImGui::Button(with_icon(icon::kOpen, tr(ui_language,UiTextKey::OpenResult)).c_str())) platform->open_path(output);
                 ImGui::SameLine();
-                if (ImGui::SmallButton(tr(ui_language,UiTextKey::OpenFolder).c_str())) platform->open_path(output.parent_path());
+                if (ImGui::Button(with_icon(icon::kFolderOpen, tr(ui_language,UiTextKey::OpenFolder)).c_str())) platform->open_path(output.parent_path());
             }
         }
         // A new status line must stay visible below the cards.
@@ -2198,9 +2215,8 @@ int run_desktop_runtime() {
             fit_popup_to(static_cast<int>(std::ceil(content_height + chrome)));
         }
         ImGui::EndChild();
-        ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem((with_icon(icon::kFolder, tr(ui_language,UiTextKey::RecentPaths)) + "###tab-paths").c_str())) {
+        if (main_tab == static_cast<int>(MainTab::Paths)) {
             const auto recent_model = build_recent_paths_model(path_history.recent(100), recent_paths_state,
                                                                active_batch.catalog);
             const auto command = render_recent_paths_panel(recent_paths_state, recent_model, ui_language);
@@ -2216,9 +2232,8 @@ int run_desktop_runtime() {
                     if (command.kind == RecentPathCommandKind::UseAsDestination) manual_destination = location->path;
                 }
             }
-            ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem((with_icon(icon::kHistory, tr(ui_language,UiTextKey::ClipboardHistory)) + "###tab-history").c_str())) {
+        if (main_tab == static_cast<int>(MainTab::History)) {
             auto history_model = build_clipboard_history_model(
                 clipboard_store.items_newest_first(50), clipboard_history_state);
             if (history_model.detail && !history_model.detail->is_image) {
@@ -2271,9 +2286,8 @@ int run_desktop_runtime() {
                     activated_action = save.id;
                 }
             }
-            ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem((with_icon(icon::kSettings, tr(ui_language,UiTextKey::Settings)) + "###tab-settings").c_str())) {
+        if (main_tab == static_cast<int>(MainTab::Settings)) {
             const auto& pal = palette();
             struct SettingsSectionEntry { SettingsPage page; const char* glyph; UiTextKey label; };
             static constexpr SettingsSectionEntry sections[] = {
@@ -2289,7 +2303,7 @@ int run_desktop_runtime() {
             };
             const float body_height = ImGui::GetContentRegionAvail().y - footer_height();
             // Section list.
-            ImGui::BeginChild("settings-nav", ImVec2(150.0F * ImGui::GetStyle().FontScaleDpi, body_height), false);
+            ImGui::BeginChild("settings-nav", ImVec2(158.0F * ImGui::GetStyle().FontScaleDpi, body_height), false);
             for (const auto& entry : sections) {
                 const bool selected = settings_page == entry.page;
                 if (nav_item(tr(ui_language, entry.label).c_str(), with_icon(entry.glyph, tr(ui_language, entry.label)),
@@ -2299,11 +2313,14 @@ int run_desktop_runtime() {
             }
             ImGui::EndChild();
             ImGui::SameLine();
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, pal.surface);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0F, 14.0F));
+            {
+                const ImVec2 at = ImGui::GetCursorScreenPos();
+                ImGui::GetWindowDrawList()->AddLine(ImVec2(at.x, at.y), ImVec2(at.x, at.y + body_height),
+                                                    ImGui::GetColorU32(ImGuiCol_Separator));
+            }
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0F, 6.0F));
             ImGui::BeginChild("settings-page", ImVec2(0.0F, body_height), ImGuiChildFlags_AlwaysUseWindowPadding);
             ImGui::PopStyleVar();
-            ImGui::PopStyleColor();
             const auto path_field = [&](const char* id, std::filesystem::path& value) {
                 auto text = path_to_utf8_string(value);
                 if (input_text_string(id, text)) value = path_from_utf8_string(text);
@@ -2355,10 +2372,10 @@ int run_desktop_runtime() {
                 if (ImGui::BeginTable("home-principles", 2, ImGuiTableFlags_SizingStretchSame)) {
                     for (const auto& principle : principles) {
                         ImGui::TableNextColumn();
-                        ImGui::PushStyleColor(ImGuiCol_ChildBg, pal.background);
-                        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0F);
-                        ImGui::BeginChild(tr(ui_language, principle.title).c_str(), ImVec2(0.0F, ImGui::GetTextLineHeightWithSpacing() * 4.3F),
-                                          ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar);
+                        ImGui::PushStyleColor(ImGuiCol_ChildBg, pal.surface);
+                        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0F, 10.0F));
+                        ImGui::BeginChild(tr(ui_language, principle.title).c_str(), ImVec2(0.0F, ImGui::GetTextLineHeightWithSpacing() * 4.6F),
+                                          ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
                         ImGui::TextColored(pal.accent, "%s", with_icon(principle.glyph, tr(ui_language, principle.title)).c_str());
                         ImGui::PushTextWrapPos(0.0F);
                         ImGui::TextColored(pal.text_muted, "%s", tr(ui_language, principle.body).c_str());
@@ -2370,6 +2387,7 @@ int run_desktop_runtime() {
                     ImGui::EndTable();
                 }
                 separator_heading(tr(ui_language, UiTextKey::HowToUse));
+                begin_group("home-how-to");
                 ImGui::PushTextWrapPos(0.0F);
                 {
                     auto how_to = tr(ui_language, UiTextKey::HowToUseBody);
@@ -2378,6 +2396,7 @@ int run_desktop_runtime() {
                     ImGui::TextUnformatted(how_to.c_str());
                 }
                 ImGui::PopTextWrapPos();
+                end_group();
 
                 separator_heading(tr(ui_language, UiTextKey::Providers));
                 const auto provider_row = [&](const char* id, const char* glyph, UiTextKey name, const ProviderSettings& provider,
@@ -2387,7 +2406,7 @@ int run_desktop_runtime() {
                                           ImVec2(170.0F * ImGui::GetStyle().FontScaleDpi, 0.0F))) settings_page = page;
                     ImGui::SameLine();
                     ImGui::BeginDisabled(provider.endpoint.empty() || pending_provider_test.has_value());
-                    if (ImGui::SmallButton(with_icon(icon::kPlay, tr(ui_language, UiTextKey::Test)).c_str())) start_test();
+                    if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language, UiTextKey::Test)).c_str())) start_test();
                     ImGui::EndDisabled();
                     if (!status.empty()) {
                         ImGui::SameLine();
@@ -2405,8 +2424,11 @@ int run_desktop_runtime() {
                     ImGui::Unindent(ImGui::GetFrameHeight());
                     ImGui::PopID();
                 };
+                begin_group("home-providers");
                 provider_row("home-djev", icon::kGauge, UiTextKey::Djev, settings_draft.djev, djev_test_status, start_djev_test, SettingsPage::Ranking);
+                ImGui::Separator();
                 provider_row("home-llm", icon::kAi, UiTextKey::GeneralLlm, settings_draft.general_llm, llm_test_status, start_llm_test, SettingsPage::Llm);
+                end_group();
 
                 separator_heading(tr(ui_language, UiTextKey::AtAGlance));
                 std::size_t learned = 0;
@@ -2418,6 +2440,7 @@ int run_desktop_runtime() {
                     {settings_draft.prompt_templates.size(), UiTextKey::PromptsStat},
                     {settings_draft.pipelines.recipes.size(), UiTextKey::RecipesStat},
                 };
+                begin_group("home-stats-group");
                 if (ImGui::BeginTable("home-stats", 5, ImGuiTableFlags_SizingStretchSame)) {
                     for (const auto& [value, label] : stats) {
                         ImGui::TableNextColumn();
@@ -2430,6 +2453,7 @@ int run_desktop_runtime() {
                     }
                     ImGui::EndTable();
                 }
+                end_group();
                 ImGui::Spacing();
                 if (ImGui::Button(with_icon(icon::kLink, tr(ui_language, UiTextKey::OpenRepository)).c_str())) {
                     (void)platform->open_uri("https://github.com/jstdlee/pasteit");
@@ -2453,13 +2477,23 @@ int run_desktop_runtime() {
                     form_row(tr(ui_language, UiTextKey::Language));
                     int language = static_cast<int>(settings_draft.language);
                     const char* languages[] = {"System", "English", "简体中文"};
-                    if (ImGui::Combo("##language", &language, languages, 3)) settings_draft.language = static_cast<UiLanguage>(language);
+                    if (begin_combo("##language", languages[language])) {
+                        for (int index = 0; index < 3; ++index) {
+                            if (ImGui::Selectable(languages[index], language == index)) settings_draft.language = static_cast<UiLanguage>(index);
+                        }
+                        ImGui::EndCombo();
+                    }
                     form_row(tr(ui_language, UiTextKey::Theme));
                     int theme = static_cast<int>(settings_draft.theme);
                     const auto dark_label = tr(ui_language, UiTextKey::ThemeDark);
                     const auto light_label = tr(ui_language, UiTextKey::ThemeLight);
                     const char* themes[] = {dark_label.c_str(), light_label.c_str()};
-                    if (ImGui::Combo("##theme", &theme, themes, 2)) settings_draft.theme = static_cast<UiTheme>(theme);
+                    if (begin_combo("##theme", themes[theme])) {
+                        for (int index = 0; index < 2; ++index) {
+                            if (ImGui::Selectable(themes[index], theme == index)) settings_draft.theme = static_cast<UiTheme>(index);
+                        }
+                        ImGui::EndCombo();
+                    }
                     form_row(tr(ui_language, UiTextKey::Opacity));
                     if (ImGui::SliderFloat("##opacity", &settings_draft.window_opacity, 0.55F, 1.0F, "%.2f") &&
                         !platform->set_popup_opacity(settings_draft.window_opacity)) glfwSetWindowOpacity(window, settings_draft.window_opacity);
@@ -2471,11 +2505,13 @@ int run_desktop_runtime() {
                 }
                 ImGui::Spacing();
                 separator_heading(tr(ui_language, UiTextKey::ClipboardHistory));
+                begin_group("settings-history");
                 if (ImGui::Button(tr(ui_language,UiTextKey::KeepLatest10).c_str())) rewrite_history(10, ui_language);
                 ImGui::SameLine();
                 ImGui::PushStyleColor(ImGuiCol_Text, pal.danger);
                 if (ImGui::Button(tr(ui_language,UiTextKey::DeleteAllHistory).c_str())) rewrite_history(0, ui_language);
                 ImGui::PopStyleColor();
+                end_group();
                 break;
             }
             case SettingsPage::Ranking: {
@@ -2517,7 +2553,7 @@ int run_desktop_runtime() {
                     const float refresh_width = ImGui::CalcTextSize(tr(ui_language,UiTextKey::RefreshModels).c_str()).x +
                                                 ImGui::GetStyle().FramePadding.x * 2.0F + ImGui::GetStyle().ItemSpacing.x;
                     ImGui::SetNextItemWidth(-refresh_width);
-                    if (ImGui::BeginCombo("##llm-model-list", model_preview.c_str())) {
+                    if (begin_combo("##llm-model-list", model_preview.c_str())) {
                         for (const auto& model_id : general_llm_models) {
                             const bool selected = settings_draft.general_llm.model_id == model_id;
                             if (ImGui::Selectable(model_id.c_str(), selected)) settings_draft.general_llm.model_id = model_id;
@@ -2602,21 +2638,13 @@ int run_desktop_runtime() {
                                               tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                         }
                         ImGui::TableNextColumn();
-                        const auto icon_button = [&](const char* glyph, const char* fallback, const char* id) {
-                            const auto label = std::string{ui_fonts().icons ? glyph : fallback} + id;
-                            return ImGui::SmallButton(label.c_str());
-                        };
-                        if (icon_button(icon::kEye, "View", "##view")) view_id = row.id;
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::View).c_str());
+                        if (icon_button("view", icon::kEye, tr(ui_language, UiTextKey::View))) view_id = row.id;
                         ImGui::SameLine();
-                        if (icon_button(icon::kEdit, "Edit", "##edit")) edit_id = row.id;
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::Edit).c_str());
+                        if (icon_button("edit", icon::kEdit, tr(ui_language, UiTextKey::Edit))) edit_id = row.id;
                         ImGui::SameLine();
-                        if (icon_button(icon::kCopy, "Dup", "##duplicate")) duplicate_id = row.id;
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::Duplicate).c_str());
+                        if (icon_button("duplicate", icon::kCopy, tr(ui_language, UiTextKey::Duplicate))) duplicate_id = row.id;
                         ImGui::SameLine();
-                        if (icon_button(icon::kTrash, "Del", "##delete")) delete_id = row.id;
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::Delete).c_str());
+                        if (icon_button("delete", icon::kTrash, tr(ui_language, UiTextKey::Delete))) delete_id = row.id;
                         ImGui::PopID();
                     }
                     ImGui::EndTable();
@@ -2649,7 +2677,7 @@ int run_desktop_runtime() {
                             form_row(tr(ui_language,UiTextKey::TemplateName));
                             input_text_string("##template-name", prompt_panel_model.draft->name);
                             form_row(tr(ui_language,UiTextKey::Enabled));
-                            ImGui::Checkbox("##template-enabled", &prompt_panel_model.draft->enabled);
+                            toggle_switch("##template-enabled", &prompt_panel_model.draft->enabled);
                             form_row(tr(ui_language,UiTextKey::Temperature));
                             float temperature = static_cast<float>(prompt_panel_model.draft->temperature);
                             if (ImGui::SliderFloat("##template-temperature", &temperature, 0.0F, 2.0F, "%.1f")) prompt_panel_model.draft->temperature = temperature;
@@ -2741,11 +2769,11 @@ int run_desktop_runtime() {
                     form_row(tr(UiTextKey::DownloadResumeDirectory));
                     path_field("##download-dir", settings_draft.downloads.resume_directory);
                     form_row(tr(UiTextKey::KeepPartFiles));
-                    ImGui::Checkbox("##keep-part", &settings_draft.downloads.keep_part_files);
+                    toggle_switch("##keep-part", &settings_draft.downloads.keep_part_files);
                     end_form();
                 }
                 separator_heading(tr(UiTextKey::TerminalAndFiles));
-                if (begin_form("settings-terminal")) {
+                if (begin_form("settings-terminal", 190.0F)) {
                     form_row(tr(UiTextKey::TerminalCommand));
                     auto terminal_command = join_argv(settings_draft.terminal.command);
                     if (input_text_string("##terminal-command", terminal_command)) settings_draft.terminal.command = split_argv_field(terminal_command);
@@ -2754,9 +2782,9 @@ int run_desktop_runtime() {
                     bool sha256 = std::find(settings_draft.hash.default_algorithms.begin(), settings_draft.hash.default_algorithms.end(), "sha256") != settings_draft.hash.default_algorithms.end();
                     bool sha512 = std::find(settings_draft.hash.default_algorithms.begin(), settings_draft.hash.default_algorithms.end(), "sha512") != settings_draft.hash.default_algorithms.end();
                     form_row(tr(UiTextKey::ShowSha256));
-                    const bool hash_changed_256 = ImGui::Checkbox("##sha256", &sha256);
+                    const bool hash_changed_256 = toggle_switch("##sha256", &sha256);
                     form_row(tr(UiTextKey::ShowSha512));
-                    const bool hash_changed_512 = ImGui::Checkbox("##sha512", &sha512);
+                    const bool hash_changed_512 = toggle_switch("##sha512", &sha512);
                     if (hash_changed_256 || hash_changed_512) {
                         settings_draft.hash.default_algorithms.clear();
                         if (sha256) settings_draft.hash.default_algorithms.push_back("sha256");
@@ -2870,9 +2898,6 @@ int run_desktop_runtime() {
                 }
             }
             if (dirty && settings_status == tr(ui_language, UiTextKey::Saved)) settings_status.clear();
-            ImGui::EndTabItem();
-        }
-        ImGui::EndTabBar();
         }
         if (modal_open) {
             ImGui::EndDisabled();
@@ -2928,7 +2953,7 @@ int run_desktop_runtime() {
                     [&](const PromptTemplate& prompt) { return prompt.id == custom_prompt_dialog.template_id; });
                 const bool custom = selected == settings.prompt_templates.end();
                 ImGui::SetNextItemWidth(-FLT_MIN);
-                if (ImGui::BeginCombo("##ask-template", custom ? custom_label.c_str() : selected->name.c_str())) {
+                if (begin_combo("##ask-template", custom ? custom_label.c_str() : selected->name.c_str())) {
                     if (ImGui::Selectable(custom_label.c_str(), custom)) {
                         custom_prompt_dialog.template_id.clear();
                         custom_prompt_dialog.thinking = false;

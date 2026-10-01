@@ -61,7 +61,7 @@ void draw_contact_result_panel(const ContactResultState& state, bool& open, bool
                 ImGui::TableNextColumn();
                 copyable_text(row.value);
                 ImGui::TableNextColumn();
-                if (ImGui::SmallButton(row.copy_command.label.c_str())) {
+                if (ImGui::Button(row.copy_command.label.c_str())) {
                     ImGui::SetClipboardText(row.copy_command.value.c_str());
                 }
                 ImGui::PopID();

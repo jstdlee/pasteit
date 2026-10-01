@@ -198,64 +198,68 @@ const UiPalette& palette() {
     return current_palette;
 }
 
-// The look follows GPU HUD: a dark glass panel with a thin accent outline,
-// controls drawn as translucent white (dark) or black (light) washes that
-// take the accent colour on hover, and a green accent for state. Light mode
-// keeps the same shapes and alphas on a pale panel.
+// The look follows macOS: system blue accent, neutral controls with a
+// hairline border, generous rounding, and settings laid out as rounded
+// group boxes on a slightly darker window. Controls stay neutral on hover;
+// the accent marks selection, focus and the default button only.
 void apply_theme(UiTheme theme, float dpi_scale) {
     const bool light = theme == UiTheme::Light;
     current_palette = light ? UiPalette{
-        .background = rgb(0xF3F5F4),
+        .background = rgb(0xF0F0F3),
         .surface = rgb(0xFFFFFF),
-        .surface_hover = rgb(0xE9EDEB),
-        .border = rgb(0xD9DFDC),
-        .text = rgb(0x1A1F1C),
-        .text_muted = rgb(0x5E6A64),
-        .accent = rgb(0x1E9E55),
-        .accent_soft = rgb(0x1E9E55, 0.14F),
-        .success = rgb(0x1E9E55),
-        .warning = rgb(0xC98A12),
-        .danger = rgb(0xD64545),
+        .surface_hover = rgb(0xE8E8ED),
+        .border = rgb(0xD5D5DA),
+        .text = rgb(0x1D1D1F),
+        .text_muted = rgb(0x6E6E73),
+        .accent = rgb(0x007AFF),
+        .accent_soft = rgb(0x007AFF, 0.13F),
+        .success = rgb(0x1F9D4C),
+        .warning = rgb(0xC77C02),
+        .danger = rgb(0xE0352B),
     } : UiPalette{
-        .background = rgb(0x0F1217),
-        .surface = rgb(0x171A1F),
-        .surface_hover = rgb(0x22262B),
-        .border = rgb(0x2A2E34),
-        .text = rgb(0xECEEF1),
-        .text_muted = rgb(0xA4ABB5),
-        .accent = rgb(0x4CC778),
-        .accent_soft = rgb(0x4CC778, 0.18F),
-        .success = rgb(0x4CC778),
-        .warning = rgb(0xF2AD38),
-        .danger = rgb(0xED4D47),
+        .background = rgb(0x1E1E20),
+        .surface = rgb(0x2A2A2D),
+        .surface_hover = rgb(0x343437),
+        .border = rgb(0x3A3A3D),
+        .text = rgb(0xF2F2F7),
+        .text_muted = rgb(0x98989F),
+        .accent = rgb(0x0A84FF),
+        .accent_soft = rgb(0x0A84FF, 0.22F),
+        .success = rgb(0x32D74B),
+        .warning = rgb(0xFF9F0A),
+        .danger = rgb(0xFF453A),
     };
     const auto& p = current_palette;
-    // Control washes: white over the dark panel, black over the light one.
+    // Neutral washes: white over the dark window, black over the light one.
     const auto wash = [light](float alpha) { return light ? ImVec4(0, 0, 0, alpha * 0.75F) : ImVec4(1, 1, 1, alpha); };
     const auto tint = [&p](float alpha) { return with_alpha(p.accent, alpha); };
 
     ImGuiStyle& style = ImGui::GetStyle();
     style = ImGuiStyle();
-    style.WindowPadding = ImVec2(12.0F, 10.0F);
-    style.FramePadding = ImVec2(9.0F, 5.0F);
-    style.ItemSpacing = ImVec2(8.0F, 6.0F);
-    style.ItemInnerSpacing = ImVec2(6.0F, 5.0F);
-    style.CellPadding = ImVec2(8.0F, 4.0F);
-    style.ScrollbarSize = 9.0F;
-    style.GrabMinSize = 10.0F;
-    style.WindowRounding = 10.0F;
-    style.ChildRounding = 8.0F;
-    style.FrameRounding = 5.0F;
-    style.PopupRounding = 6.0F;
-    style.ScrollbarRounding = 5.0F;
-    style.GrabRounding = 4.0F;
-    style.TabRounding = 5.0F;
-    // Only windows get an outline (the accent hairline); controls are flat.
+    style.WindowPadding = ImVec2(14.0F, 12.0F);
+    style.FramePadding = ImVec2(10.0F, 6.0F);
+    style.ItemSpacing = ImVec2(8.0F, 7.0F);
+    style.ItemInnerSpacing = ImVec2(7.0F, 6.0F);
+    style.CellPadding = ImVec2(8.0F, 5.0F);
+    style.IndentSpacing = 20.0F;
+    style.ScrollbarSize = 10.0F;
+    style.GrabMinSize = 14.0F;
+    style.WindowRounding = 12.0F;
+    style.ChildRounding = 10.0F;
+    style.FrameRounding = 7.0F;
+    style.PopupRounding = 9.0F;
+    style.ScrollbarRounding = 12.0F;
+    style.GrabRounding = 7.0F;
+    style.TabRounding = 7.0F;
+    style.WindowTitleAlign = ImVec2(0.5F, 0.5F);
+    style.DisabledAlpha = 0.45F;
+    // Hairline borders on windows, group boxes and controls, like AppKit.
     style.WindowBorderSize = 1.0F;
     style.ChildBorderSize = 1.0F;
-    style.FrameBorderSize = 0.0F;
+    style.FrameBorderSize = 1.0F;
     style.PopupBorderSize = 1.0F;
     style.TabBorderSize = 0.0F;
+    style.TabBarBorderSize = 0.0F;
     style.SeparatorTextBorderSize = 1.0F;
     style.SeparatorTextPadding = ImVec2(0.0F, 4.0F);
     style.FontSizeBase = current_fonts.body;
@@ -267,53 +271,53 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_TextDisabled] = p.text_muted;
     c[ImGuiCol_WindowBg] = p.background;
     c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_PopupBg] = light ? rgb(0xFFFFFF, 0.98F) : ImVec4(0.08F, 0.09F, 0.11F, 0.97F);
-    c[ImGuiCol_Border] = tint(0.35F);
+    c[ImGuiCol_PopupBg] = light ? rgb(0xFFFFFF, 0.98F) : rgb(0x2C2C2F, 0.98F);
+    c[ImGuiCol_Border] = wash(0.12F);
     c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_FrameBg] = wash(0.08F);
-    c[ImGuiCol_FrameBgHovered] = wash(0.14F);
-    c[ImGuiCol_FrameBgActive] = tint(0.35F);
+    c[ImGuiCol_FrameBg] = light ? rgb(0xFFFFFF) : wash(0.06F);
+    c[ImGuiCol_FrameBgHovered] = light ? rgb(0xF7F7F9) : wash(0.09F);
+    c[ImGuiCol_FrameBgActive] = light ? rgb(0xFFFFFF) : wash(0.11F);
     c[ImGuiCol_TitleBg] = p.background;
-    c[ImGuiCol_TitleBgActive] = p.surface;
+    c[ImGuiCol_TitleBgActive] = p.background;
     c[ImGuiCol_TitleBgCollapsed] = p.background;
     c[ImGuiCol_MenuBarBg] = p.surface;
     c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_ScrollbarGrab] = wash(0.14F);
-    c[ImGuiCol_ScrollbarGrabHovered] = tint(0.45F);
-    c[ImGuiCol_ScrollbarGrabActive] = tint(0.70F);
+    c[ImGuiCol_ScrollbarGrab] = wash(0.22F);
+    c[ImGuiCol_ScrollbarGrabHovered] = wash(0.32F);
+    c[ImGuiCol_ScrollbarGrabActive] = wash(0.42F);
     c[ImGuiCol_CheckMark] = p.accent;
     c[ImGuiCol_SliderGrab] = p.accent;
-    c[ImGuiCol_SliderGrabActive] = p.accent;
-    c[ImGuiCol_Button] = wash(0.08F);
-    c[ImGuiCol_ButtonHovered] = tint(0.45F);
-    c[ImGuiCol_ButtonActive] = tint(0.70F);
-    c[ImGuiCol_Header] = tint(0.30F);
-    c[ImGuiCol_HeaderHovered] = tint(0.45F);
-    c[ImGuiCol_HeaderActive] = tint(0.55F);
+    c[ImGuiCol_SliderGrabActive] = mix(p.accent, p.text, 0.15F);
+    c[ImGuiCol_Button] = light ? rgb(0xFFFFFF) : wash(0.10F);
+    c[ImGuiCol_ButtonHovered] = light ? rgb(0xF2F2F5) : wash(0.15F);
+    c[ImGuiCol_ButtonActive] = light ? rgb(0xE3E3E8) : wash(0.22F);
+    c[ImGuiCol_Header] = tint(0.20F);
+    c[ImGuiCol_HeaderHovered] = tint(0.12F);
+    c[ImGuiCol_HeaderActive] = tint(0.28F);
     c[ImGuiCol_Separator] = wash(0.10F);
     c[ImGuiCol_SeparatorHovered] = tint(0.60F);
     c[ImGuiCol_SeparatorActive] = p.accent;
-    c[ImGuiCol_ResizeGrip] = tint(0.25F);
-    c[ImGuiCol_ResizeGripHovered] = tint(0.55F);
+    c[ImGuiCol_ResizeGrip] = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_ResizeGripHovered] = tint(0.45F);
     c[ImGuiCol_ResizeGripActive] = p.accent;
     c[ImGuiCol_InputTextCursor] = p.accent;
     c[ImGuiCol_Tab] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_TabHovered] = wash(0.08F);
-    c[ImGuiCol_TabSelected] = wash(0.08F);
-    c[ImGuiCol_TabSelectedOverline] = p.accent;
+    c[ImGuiCol_TabHovered] = wash(0.06F);
+    c[ImGuiCol_TabSelected] = light ? rgb(0xFFFFFF) : wash(0.12F);
+    c[ImGuiCol_TabSelectedOverline] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_TabDimmed] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_TabDimmedSelected] = wash(0.06F);
-    c[ImGuiCol_TabDimmedSelectedOverline] = tint(0.5F);
+    c[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_PlotLines] = p.accent;
-    c[ImGuiCol_PlotLinesHovered] = rgb(0x739EFA);
+    c[ImGuiCol_PlotLinesHovered] = mix(p.accent, p.text, 0.2F);
     c[ImGuiCol_PlotHistogram] = p.accent;
     c[ImGuiCol_PlotHistogramHovered] = mix(p.accent, p.text, 0.2F);
-    c[ImGuiCol_TableHeaderBg] = wash(0.06F);
+    c[ImGuiCol_TableHeaderBg] = wash(0.04F);
     c[ImGuiCol_TableBorderStrong] = wash(0.10F);
-    c[ImGuiCol_TableBorderLight] = wash(0.06F);
+    c[ImGuiCol_TableBorderLight] = wash(0.08F);
     c[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_TableRowBgAlt] = wash(0.05F);
-    c[ImGuiCol_TextSelectedBg] = tint(0.35F);
+    c[ImGuiCol_TableRowBgAlt] = wash(0.03F);
+    c[ImGuiCol_TextSelectedBg] = tint(0.30F);
     c[ImGuiCol_DragDropTarget] = p.accent;
     c[ImGuiCol_NavCursor] = p.accent;
     c[ImGuiCol_ModalWindowDimBg] = ImVec4(0, 0, 0, light ? 0.2F : 0.5F);
@@ -419,17 +423,29 @@ bool icon_cell(const char* glyph, ImVec4 color, float size) {
 }
 
 bool icon_button(const char* id, const char* glyph, const std::string& tooltip) {
-    const auto label = std::string{current_fonts.icons && glyph != nullptr ? glyph : tooltip.c_str()} + "##" + id;
-    const bool clicked = ImGui::SmallButton(label.c_str());
+    const bool has_glyph = current_fonts.icons && glyph != nullptr;
+    const auto label = std::string{has_glyph ? glyph : tooltip.c_str()} + "##" + id;
+    // Toolbar style: no fill or border until hovered, square hit target.
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, current_palette.surface_hover);
+    const float side = ImGui::GetFrameHeight();
+    const bool clicked = ImGui::Button(label.c_str(), has_glyph ? ImVec2(side, side) : ImVec2(0.0F, side));
+    ImGui::PopStyleColor(3);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
     return clicked;
+}
+
+float icon_buttons_width(int count) {
+    if (count <= 0) return 0.0F;
+    return ImGui::GetFrameHeight() * static_cast<float>(count) + ImGui::GetStyle().ItemSpacing.x * static_cast<float>(count - 1);
 }
 
 float pill(std::string_view text, ImVec4 color, bool filled) {
     const auto& fonts = current_fonts;
     ImGui::PushFont(fonts.bold, fonts.small);
     const ImVec2 text_size = ImGui::CalcTextSize(text.data(), text.data() + text.size());
-    const ImVec2 padding(8.0F, 2.0F);
+    const ImVec2 padding(9.0F, 3.0F);
     const ImVec2 size(text_size.x + padding.x * 2, text_size.y + padding.y * 2);
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     auto* draw = ImGui::GetWindowDrawList();
@@ -456,22 +472,21 @@ bool action_card(const char* id, const ActionCardModel& model) {
 
     auto* draw = ImGui::GetWindowDrawList();
     const ImVec2 end(pos.x + width, pos.y + height);
-    const float rounding = 8.0F * scale;
+    const float rounding = 10.0F * scale;
     if (model.selected) {
         draw->AddRectFilled(pos, end, ImGui::GetColorU32(p.accent_soft), rounding);
-        draw->AddRectFilled(pos, ImVec2(pos.x + 3.0F * scale, end.y), ImGui::GetColorU32(p.accent), rounding,
-                            ImDrawFlags_RoundCornersLeft);
+        draw->AddRect(pos, end, ImGui::GetColorU32(with_alpha(p.accent, 0.45F)), rounding, 0, 1.0F);
     } else if (hovered) {
         draw->AddRectFilled(pos, end, ImGui::GetColorU32(p.surface_hover), rounding);
     }
     const float alpha = model.enabled ? 1.0F : 0.45F;
 
     // Category badge.
-    const float badge = 32.0F * scale;
+    const float badge = 34.0F * scale;
     const ImVec2 badge_min(pos.x + 12.0F * scale, pos.y + (height - badge) * 0.5F);
     const auto tint = category_color(model.category);
     draw->AddRectFilled(badge_min, ImVec2(badge_min.x + badge, badge_min.y + badge),
-                        ImGui::GetColorU32(with_alpha(tint, 0.16F * alpha)), 8.0F * scale);
+                        ImGui::GetColorU32(with_alpha(tint, 0.16F * alpha)), 9.0F * scale);
     const ImVec2 badge_center(badge_min.x + badge * 0.5F, badge_min.y + badge * 0.5F);
     if (model.glyph != nullptr && current_fonts.icons) {
         const float font_size = badge * 0.5F * 1.15F;
@@ -490,10 +505,12 @@ bool action_card(const char* id, const ActionCardModel& model) {
     if (model.shortcut > 0) {
         const char key[2] = {static_cast<char>('0' + model.shortcut), '\0'};
         ImGui::PushFont(fonts.bold, fonts.small);
-        const float key_size = 20.0F * scale;
+        const float key_size = 22.0F * scale;
         const ImVec2 key_min(right - key_size, pos.y + 8.0F * scale);
-        draw->AddRect(key_min, ImVec2(right, key_min.y + key_size), ImGui::GetColorU32(with_alpha(p.text_muted, 0.5F * alpha)),
-                      5.0F * scale);
+        draw->AddRectFilled(key_min, ImVec2(right, key_min.y + key_size),
+                            ImGui::GetColorU32(with_alpha(p.text_muted, 0.10F * alpha)), 6.0F * scale);
+        draw->AddRect(key_min, ImVec2(right, key_min.y + key_size), ImGui::GetColorU32(with_alpha(p.text_muted, 0.35F * alpha)),
+                      6.0F * scale);
         const ImVec2 key_text = ImGui::CalcTextSize(key);
         draw->AddText(ImVec2(key_min.x + (key_size - key_text.x) * 0.5F, key_min.y + (key_size - key_text.y) * 0.5F),
                       ImGui::GetColorU32(with_alpha(p.text_muted, alpha)), key);
@@ -501,8 +518,8 @@ bool action_card(const char* id, const ActionCardModel& model) {
     }
     if (model.probability > 0.0) {
         const float fraction = static_cast<float>(std::clamp(model.probability, 0.0, 1.0));
-        const float bar_y = end.y - 14.0F * scale;
-        draw_meter(draw, ImVec2(right - bar_width, bar_y), ImVec2(right, bar_y + 6.0F * scale), fraction,
+        const float bar_y = end.y - 13.0F * scale;
+        draw_meter(draw, ImVec2(right - bar_width, bar_y), ImVec2(right, bar_y + 4.0F * scale), fraction,
                    model.selected ? p.accent : p.text_muted, alpha);
         if (hovered) {
             ImGui::SetTooltip("%.0f%%", model.probability * 100.0);
@@ -515,7 +532,7 @@ bool action_card(const char* id, const ActionCardModel& model) {
     ImGui::PushFont(fonts.bold, fonts.body);
     const float label_height = ImGui::GetFontSize();
     const bool has_detail = !model.detail.empty();
-    const float label_y = has_detail ? pos.y + 8.0F * scale : pos.y + (height - label_height) * 0.5F;
+    const float label_y = has_detail ? pos.y + 9.0F * scale : pos.y + (height - label_height) * 0.5F;
     draw->AddText(nullptr, 0.0F, ImVec2(text_x, label_y), ImGui::GetColorU32(with_alpha(p.text, alpha)),
                   model.label.data(), model.label.data() + model.label.size(), 0.0F, &clip);
     ImGui::PopFont();
@@ -557,14 +574,20 @@ float footer_height() {
     return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y * 2.0F + 1.0F;
 }
 
+float button_width(const std::string& label) {
+    const float text = ImGui::CalcTextSize(label.c_str(), nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0F;
+    return std::max(text, 84.0F * ImGui::GetStyle().FontScaleDpi);
+}
+
 bool primary_button(const std::string& label) {
     const auto& p = current_palette;
     ImGui::PushStyleColor(ImGuiCol_Button, p.accent);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, mix(p.accent, p.text, 0.15F));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, mix(p.accent, p.background, 0.2F));
-    ImGui::PushStyleColor(ImGuiCol_Text, p.background);
-    const bool clicked = ImGui::Button(label.c_str());
-    ImGui::PopStyleColor(4);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, mix(p.accent, ImVec4(1, 1, 1, 1), 0.12F));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, mix(p.accent, ImVec4(0, 0, 0, 1), 0.15F));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+    const bool clicked = ImGui::Button(label.c_str(), ImVec2(button_width(label), 0.0F));
+    ImGui::PopStyleColor(5);
     return clicked;
 }
 
@@ -572,7 +595,7 @@ int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view
     const auto& style = ImGui::GetStyle();
     float width = 0.0F;
     for (const auto& button : buttons) {
-        width += ImGui::CalcTextSize(button.label.c_str(), nullptr, true).x + style.FramePadding.x * 2.0F + style.ItemSpacing.x;
+        width += button_width(button.label) + style.ItemSpacing.x;
     }
     const float bottom = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     if (ImGui::GetCursorPosY() < bottom - style.ItemSpacing.y) ImGui::SetCursorPosY(bottom - style.ItemSpacing.y);
@@ -589,7 +612,8 @@ int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view
     for (const auto& button : buttons) {
         if (index != 0) ImGui::SameLine();
         if (!button.enabled) ImGui::BeginDisabled();
-        const bool pressed = button.primary ? primary_button(button.label) : ImGui::Button(button.label.c_str());
+        const bool pressed = button.primary ? primary_button(button.label)
+                                            : ImGui::Button(button.label.c_str(), ImVec2(button_width(button.label), 0.0F));
         if (!button.enabled) ImGui::EndDisabled();
         if (pressed) clicked = index;
         ++index;
@@ -599,7 +623,7 @@ int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view
 
 void draw_meter(ImDrawList* draw, ImVec2 min, ImVec2 max, float fraction, ImVec4 fill, float alpha) {
     const bool light = current_palette.background.x > 0.5F;
-    const float rounding = (max.y - min.y) * 0.35F;
+    const float rounding = (max.y - min.y) * 0.5F;
     draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, 0.08F * alpha) : ImVec4(1, 1, 1, 0.10F * alpha)),
                         rounding);
     fraction = std::clamp(fraction, 0.0F, 1.0F);
@@ -629,7 +653,7 @@ void meter(float fraction, std::string_view overlay, float height, bool load) {
 bool nav_item(const char* id, std::string_view label, bool selected) {
     const auto& p = current_palette;
     const float scale = ImGui::GetStyle().FontScaleDpi;
-    const float height = ImGui::GetFrameHeight() + 6.0F * scale;
+    const float height = ImGui::GetFrameHeight() + 4.0F * scale;
     const float width = ImGui::GetContentRegionAvail().x;
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     ImGui::PushID(id);
@@ -639,10 +663,10 @@ bool nav_item(const char* id, std::string_view label, bool selected) {
     ImGui::PopID();
     auto* draw = ImGui::GetWindowDrawList();
     const ImVec2 end(pos.x + width, pos.y + height);
-    const float rounding = 6.0F * scale;
+    const float rounding = 7.0F * scale;
     const bool light = p.background.x > 0.5F;
     if (selected) {
-        draw->AddRectFilled(pos, end, ImGui::GetColorU32(with_alpha(p.accent, held ? 0.30F : 0.20F)), rounding);
+        draw->AddRectFilled(pos, end, ImGui::GetColorU32(held ? mix(p.accent, ImVec4(0, 0, 0, 1), 0.15F) : p.accent), rounding);
     } else if (hovered) {
         const float alpha = held ? 0.12F : 0.07F;
         draw->AddRectFilled(pos, end, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, alpha) : ImVec4(1, 1, 1, alpha)), rounding);
@@ -650,22 +674,28 @@ bool nav_item(const char* id, std::string_view label, bool selected) {
     const ImVec2 text_size = ImGui::CalcTextSize(label.data(), label.data() + label.size());
     const ImVec2 text_pos(pos.x + 10.0F * scale, pos.y + (height - text_size.y) * 0.5F);
     const ImVec4 clip(pos.x, pos.y, end.x - 4.0F * scale, end.y);
-    draw->AddText(nullptr, 0.0F, text_pos, ImGui::GetColorU32(selected ? p.accent : p.text), label.data(),
+    draw->AddText(nullptr, 0.0F, text_pos, ImGui::GetColorU32(selected ? ImVec4(1, 1, 1, 1) : p.text), label.data(),
                   label.data() + label.size(), 0.0F, &clip);
     if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     return clicked;
 }
 
 void separator_heading(std::string_view title) {
-    ImGui::PushStyleColor(ImGuiCol_Text, current_palette.accent);
-    ImGui::SeparatorText(std::string{title}.c_str());
-    ImGui::PopStyleColor();
+    // macOS group title: bold, above its group box, no rule.
+    ImGui::Dummy(ImVec2(0.0F, ImGui::GetStyle().ItemSpacing.y));
+    ImGui::PushFont(current_fonts.bold, current_fonts.body);
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 4.0F * ImGui::GetStyle().FontScaleDpi);
+    ImGui::TextUnformatted(title.data(), title.data() + title.size());
+    ImGui::PopFont();
 }
 
 void section_heading(const char* glyph, std::string_view title, std::string_view help) {
-    ImGui::PushFont(current_fonts.bold, current_fonts.heading);
-    const auto text = with_icon(glyph, title);
-    ImGui::TextColored(current_palette.accent, "%s", text.c_str());
+    ImGui::PushFont(current_fonts.bold, current_fonts.heading * 1.15F);
+    if (current_fonts.icons && glyph != nullptr) {
+        ImGui::TextColored(current_palette.accent, "%s", glyph);
+        ImGui::SameLine(0.0F, ImGui::GetStyle().ItemInnerSpacing.x * 1.5F);
+    }
+    ImGui::TextUnformatted(title.data(), title.data() + title.size());
     ImGui::PopFont();
     if (!help.empty()) {
         ImGui::PushTextWrapPos(0.0F);
@@ -675,8 +705,133 @@ void section_heading(const char* glyph, std::string_view title, std::string_view
     ImGui::Spacing();
 }
 
+bool segmented_control(const char* id, std::span<const std::string> labels, int& selected) {
+    const auto& p = current_palette;
+    const bool light = p.background.x > 0.5F;
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    const float inset = 2.0F * scale;
+    const float pad_x = 14.0F * scale;
+    const float height = ImGui::GetFrameHeight() + inset * 2.0F;
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    float total = inset * 2.0F;
+    for (const auto& label : labels) total += ImGui::CalcTextSize(label.c_str()).x + pad_x * 2.0F;
+
+    auto* draw = ImGui::GetWindowDrawList();
+    const float rounding = 9.0F * scale;
+    draw->AddRectFilled(origin, ImVec2(origin.x + total, origin.y + height),
+                        ImGui::GetColorU32(light ? ImVec4(0, 0, 0, 0.06F) : ImVec4(1, 1, 1, 0.07F)), rounding);
+    bool changed = false;
+    float x = origin.x + inset;
+    ImGui::PushID(id);
+    for (int index = 0; index < static_cast<int>(labels.size()); ++index) {
+        const auto& label = labels[static_cast<std::size_t>(index)];
+        const ImVec2 text_size = ImGui::CalcTextSize(label.c_str());
+        const float width = text_size.x + pad_x * 2.0F;
+        const ImVec2 min(x, origin.y + inset);
+        const ImVec2 max(x + width, origin.y + height - inset);
+        ImGui::SetCursorScreenPos(min);
+        ImGui::PushID(index);
+        if (ImGui::InvisibleButton("segment", ImVec2(width, max.y - min.y)) && selected != index) {
+            selected = index;
+            changed = true;
+        }
+        const bool hovered = ImGui::IsItemHovered();
+        ImGui::PopID();
+        const bool active = selected == index;
+        if (active) {
+            // Raised segment: soft drop shadow, then the face.
+            draw->AddRectFilled(ImVec2(min.x, min.y + 1.0F * scale), ImVec2(max.x, max.y + 1.0F * scale),
+                                ImGui::GetColorU32(ImVec4(0, 0, 0, light ? 0.10F : 0.30F)), rounding - inset);
+            draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(1, 1, 1, 1) : ImVec4(1, 1, 1, 0.16F)),
+                                rounding - inset);
+        } else if (hovered) {
+            draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, 0.04F) : ImVec4(1, 1, 1, 0.05F)),
+                                rounding - inset);
+        }
+        draw->AddText(ImVec2(min.x + pad_x, min.y + (max.y - min.y - text_size.y) * 0.5F),
+                      ImGui::GetColorU32(active || hovered ? p.text : p.text_muted), label.c_str());
+        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        x += width;
+    }
+    ImGui::PopID();
+    ImGui::SetCursorScreenPos(origin);
+    ImGui::Dummy(ImVec2(total, height));
+    return changed;
+}
+
+bool begin_group(const char* id) {
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, current_palette.surface);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0F * scale, 8.0F * scale));
+    const bool visible = ImGui::BeginChild(id, ImVec2(0.0F, 0.0F),
+                                           ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |
+                                               ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened,
+                                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+    return visible;
+}
+
+void end_group() {
+    ImGui::EndChild();
+}
+
+bool toggle_switch(const char* id, bool* value) {
+    const auto& p = current_palette;
+    const bool light = p.background.x > 0.5F;
+    const float height = std::round(ImGui::GetFrameHeight() * 0.8F);
+    const float width = std::round(height * 1.75F);
+    // Centre the switch on the row's frame height so it lines up with labels.
+    const ImVec2 cursor = ImGui::GetCursorScreenPos();
+    const ImVec2 pos(cursor.x, cursor.y + (ImGui::GetFrameHeight() - height) * 0.5F);
+    const bool clicked = ImGui::InvisibleButton(id, ImVec2(width, ImGui::GetFrameHeight()));
+    if (clicked) *value = !*value;
+    const bool hovered = ImGui::IsItemHovered();
+    auto* draw = ImGui::GetWindowDrawList();
+    const float radius = height * 0.5F;
+    const ImVec4 off = light ? ImVec4(0, 0, 0, hovered ? 0.16F : 0.12F) : ImVec4(1, 1, 1, hovered ? 0.20F : 0.16F);
+    draw->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ImGui::GetColorU32(*value ? p.accent : off), radius);
+    const float knob_x = *value ? pos.x + width - radius : pos.x + radius;
+    const ImVec2 knob(knob_x, pos.y + radius);
+    draw->AddCircleFilled(ImVec2(knob.x, knob.y + 0.5F), radius - 1.5F, IM_COL32(0, 0, 0, 40));
+    draw->AddCircleFilled(knob, radius - 2.0F, IM_COL32(255, 255, 255, 255));
+    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    return clicked;
+}
+
+bool begin_combo(const char* id, const char* preview, ImGuiComboFlags flags) {
+    if (!current_fonts.icons || (flags & ImGuiComboFlags_NoPreview) != 0) return ImGui::BeginCombo(id, preview, flags);
+    // Measure the frame first: once open, BeginCombo has moved on to the popup window.
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const float width = ImGui::CalcItemWidth();
+    const float height = ImGui::GetFrameHeight();
+    const float font_size = ImGui::GetFontSize();
+    const float pad = ImGui::GetStyle().FramePadding.x;
+    // The preview is drawn here too, clipped short of the chevron.
+    const bool open = ImGui::BeginCombo(id, nullptr, flags | ImGuiComboFlags_NoArrowButton);
+    const ImVec2 extent = current_fonts.regular->CalcTextSizeA(font_size, 1000.0F, 0.0F, icon::kChevronDown);
+    const float chevron_x = pos.x + width - pad - extent.x;
+    draw->AddText(current_fonts.regular, font_size, ImVec2(chevron_x, pos.y + (height - extent.y) * 0.5F),
+                  ImGui::GetColorU32(current_palette.text_muted), icon::kChevronDown);
+    if (preview != nullptr) {
+        const ImVec4 clip(pos.x, pos.y, chevron_x - pad * 0.5F, pos.y + height);
+        draw->AddText(nullptr, 0.0F, ImVec2(pos.x + pad, pos.y + (height - font_size) * 0.5F),
+                      ImGui::GetColorU32(ImGuiCol_Text), preview, nullptr, 0.0F, &clip);
+    }
+    return open;
+}
+
 bool begin_form(const char* id, float label_width) {
-    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp)) return false;
+    begin_group(id);
+    // Taller rows with hairlines between them, like a macOS settings group.
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0F * ImGui::GetStyle().FontScaleDpi, 7.0F * ImGui::GetStyle().FontScaleDpi));
+    const bool open = ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerH);
+    ImGui::PopStyleVar();
+    if (!open) {
+        end_group();
+        return false;
+    }
     ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed, label_width * ImGui::GetStyle().FontScaleDpi);
     ImGui::TableSetupColumn("field", ImGuiTableColumnFlags_WidthStretch);
     return true;
@@ -696,6 +851,7 @@ void form_row(std::string_view label, std::string_view help) {
 
 void end_form() {
     ImGui::EndTable();
+    end_group();
 }
 
 #endif

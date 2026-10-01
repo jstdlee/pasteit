@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <initializer_list>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -60,8 +61,11 @@ void draw_category_icon(ImDrawList* draw, ImVec2 center, float size, ActionCateg
 // Draws an icon glyph in a size x size cell and advances the cursor; returns
 // false (drawing nothing) when the icon font is unavailable.
 bool icon_cell(const char* glyph, ImVec4 color, float size = 18.0F);
-// Small icon button with a tooltip; falls back to the text label.
+// Square, borderless toolbar button (frame height) with a tooltip; falls
+// back to the text label.
 bool icon_button(const char* id, const char* glyph, const std::string& tooltip);
+// Width of `count` icon buttons laid out with SameLine().
+float icon_buttons_width(int count);
 
 // Rounded pill label; returns its width.
 float pill(std::string_view text, ImVec4 color, bool filled = false);
@@ -80,7 +84,7 @@ struct ActionCardModel {
     bool enabled = true;
 };
 
-inline constexpr float kActionCardHeight = 52.0F;
+inline constexpr float kActionCardHeight = 56.0F;
 
 // --- Shared sub-window layout -------------------------------------------
 // Opens an independent, top-most sub-window: centered and focused when
@@ -101,6 +105,8 @@ float footer_height();
 // accent color. Returns the clicked index or -1.
 int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view status = {});
 bool primary_button(const std::string& label);
+// Button width with the macOS minimum push-button width applied.
+float button_width(const std::string& label);
 // GPU HUD meter: rounded track with an accent fill that turns amber at 70%
 // and red at 90% when `load` is set, and optional centred overlay text.
 void draw_meter(ImDrawList* draw, ImVec2 min, ImVec2 max, float fraction, ImVec4 fill, float alpha = 1.0F);
@@ -108,12 +114,28 @@ void meter(float fraction, std::string_view overlay = {}, float height = 0.0F, b
 // Sidebar entry: full-width rounded highlight on hover/selection, label
 // left-aligned and vertically centred.
 bool nav_item(const char* id, std::string_view label, bool selected);
-// SeparatorText with the title in the accent colour, like GPU HUD sections.
+// Bold group title placed above a group box.
 void separator_heading(std::string_view title);
 void section_heading(const char* glyph, std::string_view title, std::string_view help = {});
 
-// Two-column form: labels on the left, full-width fields on the right.
-bool begin_form(const char* id, float label_width = 190.0F);
+// macOS segmented control: one raised segment in a rounded track. Returns
+// true when the selection changed.
+bool segmented_control(const char* id, std::span<const std::string> labels, int& selected);
+
+// Rounded group box that sizes to its content. Always pair with end_group().
+bool begin_group(const char* id);
+void end_group();
+
+// macOS switch for an on/off setting; returns true when toggled.
+bool toggle_switch(const char* id, bool* value);
+
+// BeginCombo with a slim chevron in place of ImGui's filled arrow button.
+// Pair with ImGui::EndCombo() when it returns true, like BeginCombo.
+bool begin_combo(const char* id, const char* preview, ImGuiComboFlags flags = 0);
+
+// Two-column form inside a group box: labels on the left, full-width fields
+// on the right, hairlines between rows.
+bool begin_form(const char* id, float label_width = 150.0F);
 void form_row(std::string_view label, std::string_view help = {});
 void end_form();
 

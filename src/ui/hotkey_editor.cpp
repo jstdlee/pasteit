@@ -152,10 +152,8 @@ bool draw_hotkey_editor(const char* id, std::string& value, HotkeyEditorState& s
     const bool highlighted = state.capturing;
     if (highlighted) ImGui::PushStyleColor(ImGuiCol_Button, palette.accent_soft);
     const auto fallback = std::string(kDefaultHotkey);
-    const auto reset_label = with_icon(icon::kUndo, fallback);
-    const auto& style = ImGui::GetStyle();
-    const float reset_width = ImGui::CalcTextSize(reset_label.c_str()).x + style.FramePadding.x * 2.0F;
-    const float capture_width = std::max(120.0F, ImGui::GetContentRegionAvail().x - reset_width - style.ItemSpacing.x);
+    const float reset_width = icon_buttons_width(1);
+    const float capture_width = std::max(120.0F, ImGui::GetContentRegionAvail().x - reset_width - ImGui::GetStyle().ItemSpacing.x);
     if (ImGui::Button((label + "###capture").c_str(), ImVec2(capture_width, 0.0F))) {
         state.capturing = !state.capturing;
     }
@@ -163,7 +161,7 @@ bool draw_hotkey_editor(const char* id, std::string& value, HotkeyEditorState& s
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(language, UiTextKey::ChangeShortcut).c_str());
     ImGui::SameLine();
     ImGui::BeginDisabled(value == fallback);
-    if (ImGui::Button(reset_label.c_str())) {
+    if (icon_button("reset", icon::kUndo, tr(language, UiTextKey::RestoreDefaults) + ": " + fallback)) {
         value = fallback;
         state.capturing = false;
         changed = true;

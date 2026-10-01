@@ -101,7 +101,7 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
             if (icon_button("remove", icon::kTrash, tr(language, UiTextKey::Delete))) remove = index;
             ImGui::PopID();
         }
-        if (ImGui::SmallButton(with_icon(icon::kPlus, tr(language, UiTextKey::AddStage)).c_str())) {
+        if (ImGui::Button(with_icon(icon::kPlus, tr(language, UiTextKey::AddStage)).c_str())) {
             stages.emplace_back();
             state.active_stage = static_cast<int>(stages.size()) - 1;
             stages_changed = true;
@@ -138,9 +138,12 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
         ImGui::TextColored(p.text_muted, "%s", tr(language, UiTextKey::StageTemplates).c_str());
         const auto chip = [&](const std::string& label, const std::string& text, const std::string& tooltip, const ImVec4* color) {
             ImGui::SameLine(0.0F, 4.0F);
-            if (ImGui::GetCursorPosX() + ImGui::CalcTextSize(label.c_str()).x + 24.0F > ImGui::GetContentRegionMax().x) ImGui::NewLine();
+            if (ImGui::GetCursorPosX() + ImGui::CalcTextSize(label.c_str()).x + 28.0F > ImGui::GetContentRegionMax().x) ImGui::NewLine();
             if (color) ImGui::PushStyleColor(ImGuiCol_Text, *color);
-            if (ImGui::SmallButton((label + "##chip").c_str())) insert_stage(text);
+            // Rounded chips, a full frame tall so they are easy to hit.
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 999.0F);
+            if (ImGui::Button((label + "##chip").c_str())) insert_stage(text);
+            ImGui::PopStyleVar();
             if (color) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
         };

@@ -130,7 +130,7 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
         ImGui::TableSetupColumn(tr(language, UiTextKey::Source).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Size).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Captured).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
-        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 96.0F);
+        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, icon_buttons_width(3));
         ImGui::TableHeadersRow();
 
         for (std::size_t index = 0; index < model.rows.size(); ++index) {

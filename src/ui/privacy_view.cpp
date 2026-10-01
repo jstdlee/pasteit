@@ -107,7 +107,7 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
             const std::string preview = state.prompt_choice >= 0 && static_cast<std::size_t>(state.prompt_choice) < host.templates.size()
                 ? host.templates[static_cast<std::size_t>(state.prompt_choice)].second : custom_label;
             ImGui::SetNextItemWidth(200.0F * ImGui::GetStyle().FontScaleDpi);
-            if (ImGui::BeginCombo("##ask-template", preview.c_str())) {
+            if (begin_combo("##ask-template", preview.c_str())) {
                 if (ImGui::Selectable(custom_label.c_str(), state.prompt_choice < 0)) state.prompt_choice = -1;
                 for (std::size_t index = 0; index < host.templates.size(); ++index) {
                     if (ImGui::Selectable(host.templates[index].second.c_str(), state.prompt_choice == static_cast<int>(index))) {

@@ -69,7 +69,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
         ImGui::TableSetupColumn(tr(language, UiTextKey::Source).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Uses).c_str(), ImGuiTableColumnFlags_WidthFixed, 48.0F);
         ImGui::TableSetupColumn(tr(language, UiTextKey::Seen).c_str(), ImGuiTableColumnFlags_WidthStretch, 1.4F);
-        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 96.0F);
+        ImGui::TableSetupColumn(tr(language, UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, icon_buttons_width(3));
         ImGui::TableHeadersRow();
 
         for (const auto& row : model.rows) {
@@ -126,14 +126,14 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
         ImGui::SetNextWindowClass(&window_class);
         ImGui::SetNextWindowSize(ImVec2(700.0F, 360.0F), ImGuiCond_FirstUseEver);
         if (ImGui::Begin((tr(UiTextKey::RecentPathDetail) + "##recent-path-detail").c_str(), &detail_open, ImGuiWindowFlags_NoSavedSettings)) {
-            if (ImGui::SmallButton(tr(language, UiTextKey::CopyPath).c_str())) {
+            if (ImGui::Button(tr(language, UiTextKey::CopyPath).c_str())) {
                 command = copy_recent_path(model, model.detail->ref);
             }
             ImGui::SameLine();
             if (!model.detail->can_open) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::SmallButton(tr(language, UiTextKey::Open).c_str())) {
+            if (ImGui::Button(tr(language, UiTextKey::Open).c_str())) {
                 command = open_recent_path(model, model.detail->ref);
             }
             if (!model.detail->can_open) {
@@ -143,7 +143,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             if (!model.detail->can_open_parent) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::SmallButton(tr(language, UiTextKey::OpenParent).c_str())) {
+            if (ImGui::Button(tr(language, UiTextKey::OpenParent).c_str())) {
                 command = open_recent_path_parent(model, model.detail->ref);
             }
             if (!model.detail->can_open_parent) {
@@ -153,7 +153,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             if (!model.detail->can_copy_here) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::SmallButton(tr(language, UiTextKey::CopyHere).c_str())) {
+            if (ImGui::Button(tr(language, UiTextKey::CopyHere).c_str())) {
                 command = copy_here_recent_path(model, model.detail->ref);
             }
             if (!model.detail->can_copy_here) {
@@ -163,7 +163,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             if (!model.detail->can_move_here) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::SmallButton(tr(language, UiTextKey::MoveHere).c_str())) {
+            if (ImGui::Button(tr(language, UiTextKey::MoveHere).c_str())) {
                 command = move_here_recent_path(model, model.detail->ref);
             }
             if (!model.detail->can_move_here) {
@@ -173,14 +173,14 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
             if (!model.detail->can_use_as_destination) {
                 ImGui::BeginDisabled();
             }
-            if (ImGui::SmallButton(tr(language, UiTextKey::UseAsDestination).c_str())) {
+            if (ImGui::Button(tr(language, UiTextKey::UseAsDestination).c_str())) {
                 command = use_recent_path_as_destination(model, model.detail->ref);
             }
             if (!model.detail->can_use_as_destination) {
                 ImGui::EndDisabled();
             }
             ImGui::SameLine();
-            if (ImGui::SmallButton(tr(language, UiTextKey::Close).c_str())) {
+            if (ImGui::Button(tr(language, UiTextKey::Close).c_str())) {
                 detail_open = false;
             }
             ImGui::Separator();
