@@ -80,7 +80,7 @@ void draw_mermaid_preview_panel(const RendererResultState& state, RendererPrevie
             if (!command.enabled) ImGui::EndDisabled();
         }
         input_text_string("Destination", panel.destination);
-        ImGui::Checkbox(tr(UiTextKey::ConfirmOverwrite).c_str(), &panel.confirm_overwrite);
+        toggle_switch(tr(UiTextKey::ConfirmOverwrite).c_str(), &panel.confirm_overwrite);
         if (!panel.status_text.empty()) copyable_text(panel.status_text, true);
         if (!model.preview_available) {
             copyable_text(model.status_text.empty() ? "Mermaid renderer unavailable; source is shown below." : model.status_text,

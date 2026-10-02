@@ -22,3 +22,6 @@ compile_commands.json
 *.so
 *.part
 /.claude/
+
+# Cloudflare cf CLI local cache
+.cloudflare/

@@ -506,7 +506,7 @@ bool draw_summarize_popup(TableViewState& state, const std::vector<std::size_t>&
         if (!count && table.stats[column].type != ColumnType::Number) continue;
         if (static_cast<int>(column) == state.group_column) continue;
         bool selected = state.group_values[column];
-        if (ImGui::Checkbox((table.headers[column] + "##sum" + std::to_string(column)).c_str(), &selected)) state.group_values[column] = selected;
+        if (toggle_switch((table.headers[column] + "##sum" + std::to_string(column)).c_str(), &selected)) state.group_values[column] = selected;
         if (selected) values.push_back(column);
     }
     bool replaced = false;
@@ -602,7 +602,7 @@ bool draw_formula_popup(TableViewState& state, UiLanguage language) {
 
 const char* column_type_icon(ColumnType type) {
     switch (type) {
-        case ColumnType::Number: return icon::kHash;
+        case ColumnType::Number: return icon::kNumber;
         case ColumnType::Date: return icon::kCalendar;
         case ColumnType::Text:
         case ColumnType::Empty: return icon::kType;
@@ -734,7 +734,7 @@ void draw_replace_popup(TableViewState& state, const std::vector<std::size_t>& r
     input_text_hint("##replacement", tr(language, UiTextKey::ReplaceWith).c_str(), state.replacement);
     const bool filtered = rows.size() != table.rows.size();
     if (filtered) {
-        ImGui::Checkbox((tr(language, UiTextKey::OnlyFilteredRows) + " (" + std::to_string(rows.size()) + ")").c_str(),
+        toggle_switch((tr(language, UiTextKey::OnlyFilteredRows) + " (" + std::to_string(rows.size()) + ")").c_str(),
                         &state.replace_filtered_only);
     }
     const bool only_filtered = filtered && state.replace_filtered_only;
@@ -1003,7 +1003,7 @@ void draw_markdown_view(MarkdownViewState& state, const DataViewHost& host, UiLa
     if (!state.open) return;
     const auto title = with_icon(icon::kBook, tr(language, UiTextKey::PreviewMarkdown)) + "###markdown-view";
     if (begin_tool_window(title, &state.open, ImVec2(720.0F, 620.0F), &state.focus_pending)) {
-        ImGui::Checkbox(tr(language, UiTextKey::ShowSource).c_str(), &state.show_source);
+        toggle_switch(tr(language, UiTextKey::ShowSource).c_str(), &state.show_source);
         const auto& p = palette();
         ImGui::PushStyleColor(ImGuiCol_ChildBg, p.background);
         ImGui::BeginChild("markdown-body", ImVec2(0.0F, -footer_height()), ImGuiChildFlags_AlwaysUseWindowPadding);
@@ -1103,7 +1103,7 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
                 for (std::size_t column = 0; column < table.headers.size(); ++column) {
                     if (table.stats[column].type != ColumnType::Number) continue;
                     bool selected = state.y_columns[column];
-                    if (ImGui::Checkbox((table.headers[column] + "##y" + std::to_string(column)).c_str(), &selected)) {
+                    if (toggle_switch((table.headers[column] + "##y" + std::to_string(column)).c_str(), &selected)) {
                         state.y_columns[column] = selected;
                         state.dirty = true;
                     }
@@ -1111,9 +1111,9 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
                 ImGui::EndCombo();
             }
         } else {
-            state.dirty |= ImGui::Checkbox(tr(language, UiTextKey::HeaderRow).c_str(), &state.header);
+            state.dirty |= toggle_switch(tr(language, UiTextKey::HeaderRow).c_str(), &state.header);
             ImGui::SameLine();
-            state.dirty |= ImGui::Checkbox(tr(language, UiTextKey::ConvertDates).c_str(), &state.convert_dates);
+            state.dirty |= toggle_switch(tr(language, UiTextKey::ConvertDates).c_str(), &state.convert_dates);
         }
         if (static_cast<ChartKind>(state.kind) != ChartKind::Histogram) {
             // Agg reduces rows sharing an X value; with X = row number it

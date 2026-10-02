@@ -4,6 +4,7 @@
 #include "detect/resume_detector.hpp"
 #include "decision/fallback_ranker.hpp"
 #include "executor/action_executor.hpp"
+#include "executor/utility_executor.hpp"
 #include "ui/theme.hpp"
 #include "transform/text_transforms.hpp"
 #include "util/json.hpp"
@@ -319,7 +320,23 @@ void execution() {
 
 }  // namespace
 
+void previews() {
+    // Previews compute the copied text without touching any clipboard.
+    ActionInstance upper{.kind = ActionKind::ToUpperCase};
+    assert(preview_text_action(upper, "abc") == std::optional<std::string>{"ABC"});
+    ActionInstance encode{.kind = ActionKind::Base64Encode};
+    assert(preview_text_action(encode, "hi") == std::optional<std::string>{"aGk="});
+    ActionInstance decode{.kind = ActionKind::Base64Decode};
+    assert(preview_text_action(decode, "aGk=") == std::optional<std::string>{"hi"});
+    ActionInstance pretty{.kind = ActionKind::PrettyJson};
+    assert(preview_text_action(pretty, "{\"a\":1}")->find('\n') != std::string::npos);
+    assert(!preview_text_action(pretty, "not json"));
+    assert(!can_preview_text_action(ActionKind::GenerateUuid) && !can_preview_text_action(ActionKind::SaveTextFile));
+    assert(can_preview_text_action(ActionKind::Base64Encode) && can_preview_text_action(ActionKind::SortLines));
+}
+
 int main() {
+    previews();
     transforms();
     encodings_and_networks();
     detectors();

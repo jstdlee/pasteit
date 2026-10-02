@@ -85,7 +85,7 @@ void draw_qr_preview_panel(const RendererResultState& state, RendererPreviewPane
         if (ImGui::BeginPopup("qr-save")) {
             ImGui::SetNextItemWidth(320.0F);
             input_text_hint("##qr-destination", tr(UiTextKey::Destination).c_str(), panel.destination);
-            ImGui::Checkbox(tr(UiTextKey::ConfirmOverwrite).c_str(), &panel.confirm_overwrite);
+            toggle_switch(tr(UiTextKey::ConfirmOverwrite).c_str(), &panel.confirm_overwrite);
             if (primary_button(tr(UiTextKey::Save)) && save_png != nullptr) {
                 panel.save(*save_png, ".png");
                 ImGui::CloseCurrentPopup();

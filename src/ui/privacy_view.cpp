@@ -62,7 +62,7 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
             const float width = ImGui::GetFrameHeight() + ImGui::CalcTextSize(label.c_str(), nullptr, true).x + 24.0F;
             ImGui::SameLine(0.0F, 10.0F);
             if (ImGui::GetCursorPosX() + width > ImGui::GetContentRegionMax().x) ImGui::NewLine();
-            if (ImGui::Checkbox(label.c_str(), &all)) {
+            if (toggle_switch(label.c_str(), &all)) {
                 for (std::size_t index = 0; index < state.findings.size(); ++index) {
                     if (state.findings[index].category == category) state.selected[index] = all;
                 }
@@ -79,7 +79,7 @@ void draw_anonymize_view(AnonymizeViewState& state, const AnonymizeViewHost& hos
             const auto& finding = state.findings[index];
             ImGui::PushID(static_cast<int>(index));
             bool keep = state.selected[index];
-            if (ImGui::Checkbox("##pick", &keep)) {
+            if (toggle_switch("##pick", &keep)) {
                 state.selected[index] = keep;
                 state.dirty = true;
             }

@@ -2,6 +2,7 @@
 
 #include "detect/fast_content_detector.hpp"
 #include "transform/text_transforms.hpp"
+#include "util/json.hpp"
 #include "util/path_utf8.hpp"
 
 #include <cstdlib>
@@ -197,6 +198,31 @@ bool is_utility_action(ActionKind kind) {
         default:
             return false;
     }
+}
+
+bool can_preview_text_action(ActionKind kind) {
+    switch (kind) {
+        case ActionKind::PrettyJson:
+            return true;
+        // Not a function of the clipboard text: paths, random values, opening.
+        case ActionKind::CopyPath:
+        case ActionKind::OpenPath:
+        case ActionKind::RevealPath:
+        case ActionKind::CopyFileName:
+        case ActionKind::CopyParentPath:
+        case ActionKind::GenerateUuid:
+            return false;
+        default:
+            return is_utility_action(kind);
+    }
+}
+
+std::optional<std::string> preview_text_action(const ActionInstance& action, std::string_view source) {
+    if (!can_preview_text_action(action.kind)) return std::nullopt;
+    if (action.kind == ActionKind::PrettyJson) return pretty_json(source);
+    auto output = transform(action, std::string{source});
+    if (!output) return std::nullopt;
+    return std::move(output->text);
 }
 
 ExecutionResult execute_utility_action(const ActionInstance& action, ExecutionContext& context) {

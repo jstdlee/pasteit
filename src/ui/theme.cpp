@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cfloat>
 #include <cstdlib>
+#include <cstring>
 
 namespace pasteit {
 
@@ -82,9 +83,16 @@ UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates, cons
     // base font is followed by its own icon merge.
     const auto merge_icons = [&] {
         if (!has_icons) return false;
+        // Only the Private Use Area: Font Awesome also maps a few icons onto
+        // ASCII (+, #, *), which must never stand in for text.
+        static const ImWchar icon_ranges[] = {icon::kFirstCodepoint, icon::kLastCodepoint, 0};
         ImFontConfig config;
         config.MergeMode = true;
-        config.GlyphOffset = ImVec2(0.0F, 2.0F);
+        config.GlyphRanges = icon_ranges;
+        // Slightly smaller than the text, one width for every icon.
+        config.ExtraSizeScale = 0.875F;
+        config.GlyphMinAdvanceX = fonts.body * 1.1F;
+        config.GlyphOffset = ImVec2(0.0F, 1.0F);
         return atlas.AddFontFromFileTTF(path_to_utf8_string(icon_font).c_str(), fonts.body, &config) != nullptr;
     };
     for (const auto& path : candidates) {
@@ -176,7 +184,7 @@ const char* action_icon(ActionKind kind) {
         case ActionKind::NumberBases:
         case ActionKind::NumberToHex:
         case ActionKind::NumberToDecimal:
-        case ActionKind::NumberToBinary: return icon::kHash;
+        case ActionKind::NumberToBinary: return icon::kNumber;
         case ActionKind::SubnetDetails:
         case ActionKind::SplitSubnet:
         case ActionKind::MaskDetails:
@@ -480,7 +488,7 @@ float pill(std::string_view text, ImVec4 color, bool filled) {
     return size.x;
 }
 
-bool action_card(const char* id, const ActionCardModel& model) {
+ActionCardEvent action_card(const char* id, const ActionCardModel& model) {
     const auto& p = current_palette;
     const auto& fonts = current_fonts;
     const float scale = ImGui::GetStyle().FontScaleDpi;
@@ -488,9 +496,13 @@ bool action_card(const char* id, const ActionCardModel& model) {
     const float height = kActionCardHeight * scale;
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     ImGui::PushID(id);
+    // The preview / compare icons sit on top of the card and take their own clicks.
+    if (model.previewable) ImGui::SetNextItemAllowOverlap();
     const bool clicked = ImGui::InvisibleButton("card", ImVec2(width, height)) && model.enabled;
-    const bool hovered = ImGui::IsItemHovered() && model.enabled;
-    ImGui::PopID();
+    const ImVec2 after_card = ImGui::GetCursorScreenPos();
+    const bool pointer_inside = ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + width, pos.y + height)) &&
+                                ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    const bool hovered = (ImGui::IsItemHovered() || (model.previewable && pointer_inside)) && model.enabled;
 
     auto* draw = ImGui::GetWindowDrawList();
     const ImVec2 end(pos.x + width, pos.y + height);
@@ -524,6 +536,27 @@ bool action_card(const char* id, const ActionCardModel& model) {
     const float right = end.x - 12.0F * scale;
     const float bar_width = 56.0F * scale;
     float text_limit = right - bar_width - 16.0F * scale;
+    // Preview | compare, left of the shortcut column; shown on hover, on the
+    // selected card, and while this card's result is in the input.
+    ActionCardEvent event = clicked ? ActionCardEvent::Activate : ActionCardEvent::None;
+    if (model.previewable && model.enabled) {
+        const float side = ImGui::GetFrameHeight();
+        const float gap = 2.0F * scale;
+        const float icons_left = right - bar_width - 12.0F * scale - side * 2.0F - gap;
+        text_limit = icons_left - 8.0F * scale;
+        if (hovered || model.selected || model.previewing) {
+            ImGui::SetCursorScreenPos(ImVec2(icons_left, pos.y + (height - side) * 0.5F));
+            const bool restore = model.previewing;
+            if (icon_button("preview", restore ? icon::kUndo : icon::kEye,
+                            std::string{restore ? model.restore_tooltip : model.preview_tooltip}, restore)) {
+                event = ActionCardEvent::Preview;
+            }
+            ImGui::SameLine(0.0F, gap);
+            if (icon_button("compare", icon::kCompare, std::string{model.compare_tooltip})) event = ActionCardEvent::Compare;
+            ImGui::SetCursorScreenPos(after_card);
+        }
+    }
+
     if (model.shortcut > 0) {
         const char key[2] = {static_cast<char>('0' + model.shortcut), '\0'};
         ImGui::PushFont(fonts.bold, fonts.small);
@@ -565,7 +598,8 @@ bool action_card(const char* id, const ActionCardModel& model) {
                       model.detail.data() + model.detail.size(), 0.0F, &clip);
         ImGui::PopFont();
     }
-    return clicked;
+    ImGui::PopID();
+    return event;
 }
 
 bool begin_tool_window(const std::string& title, bool* open, ImVec2 size, bool* focus_pending, ImGuiWindowFlags extra_flags) {
@@ -828,15 +862,21 @@ void end_group() {
     ImGui::EndChild();
 }
 
-bool toggle_switch(const char* id, bool* value) {
+bool toggle_switch(const char* label, bool* value) {
     const auto& p = current_palette;
     const bool light = p.background.x > 0.5F;
     const float height = std::round(ImGui::GetFrameHeight() * 0.8F);
     const float width = std::round(height * 1.75F);
+    // Text before "##" is shown to the right and clicks like the switch.
+    const char* hidden = std::strstr(label, "##");
+    const char* label_end = hidden != nullptr ? hidden : label + std::strlen(label);
+    const bool has_text = label_end != label;
+    const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float text_width = has_text ? ImGui::CalcTextSize(label, label_end).x : 0.0F;
     // Centre the switch on the row's frame height so it lines up with labels.
     const ImVec2 cursor = ImGui::GetCursorScreenPos();
     const ImVec2 pos(cursor.x, cursor.y + (ImGui::GetFrameHeight() - height) * 0.5F);
-    const bool clicked = ImGui::InvisibleButton(id, ImVec2(width, ImGui::GetFrameHeight()));
+    const bool clicked = ImGui::InvisibleButton(label, ImVec2(width + (has_text ? gap + text_width : 0.0F), ImGui::GetFrameHeight()));
     if (clicked) *value = !*value;
     const bool hovered = ImGui::IsItemHovered();
     auto* draw = ImGui::GetWindowDrawList();
@@ -845,8 +885,13 @@ bool toggle_switch(const char* id, bool* value) {
     draw->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), ImGui::GetColorU32(*value ? p.accent : off), radius);
     const float knob_x = *value ? pos.x + width - radius : pos.x + radius;
     const ImVec2 knob(knob_x, pos.y + radius);
-    draw->AddCircleFilled(ImVec2(knob.x, knob.y + 0.5F), radius - 1.5F, IM_COL32(0, 0, 0, 40));
-    draw->AddCircleFilled(knob, radius - 2.0F, IM_COL32(255, 255, 255, 255));
+    const float alpha = ImGui::GetStyle().Alpha;  // dimmed inside BeginDisabled
+    draw->AddCircleFilled(ImVec2(knob.x, knob.y + 0.5F), radius - 1.5F, ImGui::GetColorU32(ImVec4(0, 0, 0, 0.16F)));
+    draw->AddCircleFilled(knob, radius - 2.0F, ImGui::GetColorU32(ImVec4(1, 1, 1, alpha)));
+    if (has_text) {
+        draw->AddText(ImVec2(cursor.x + width + gap, cursor.y + ImGui::GetStyle().FramePadding.y),
+                      ImGui::GetColorU32(ImGuiCol_Text), label, label_end);
+    }
     return clicked;
 }
 

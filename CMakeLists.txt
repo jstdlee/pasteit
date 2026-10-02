@@ -5,7 +5,7 @@ project(pasteit LANGUAGES CXX)
 option(PASTEIT_BUILD_TESTS "Build PasteIt tests" ON)
 
 # One output folder for every configuration (MSBuild would otherwise use
-# build/Release/), so programs sit next to the copied lucide.ttf and
+# build/Release/), so programs sit next to the copied fa-solid-900.ttf and
 # mermaid.min.js exactly as on Linux.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 foreach(config Debug Release RelWithDebInfo MinSizeRel)
@@ -220,6 +220,7 @@ add_library(pasteit_core
     src/ui/imgui_widgets.cpp
     src/ui/theme.cpp
     src/ui/data_views.cpp
+    src/ui/diff_view.cpp
     src/ui/pipeline_view.cpp
     src/ui/privacy_view.cpp
     src/ui/prompt_parameters.cpp
@@ -232,6 +233,7 @@ add_library(pasteit_core
     src/ui/multi_viewport.cpp
     src/ui/provider_test_request.cpp
     src/util/json.cpp
+    src/util/text_diff.cpp
     src/util/replace_file.cpp
 )
 
@@ -305,9 +307,9 @@ install(TARGETS pasteit RUNTIME DESTINATION bin)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/mermaid.min.js
                ${CMAKE_CURRENT_BINARY_DIR}/mermaid.min.js COPYONLY)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/mermaid.min.js DESTINATION bin)
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/lucide.ttf
-               ${CMAKE_CURRENT_BINARY_DIR}/lucide.ttf COPYONLY)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/lucide.ttf DESTINATION bin)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf
+               ${CMAKE_CURRENT_BINARY_DIR}/fa-solid-900.ttf COPYONLY)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf DESTINATION bin)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/MERMAID_LICENSE DESTINATION bin)
 
 if (PASTEIT_BUILD_TESTS)
@@ -563,6 +565,10 @@ if (PASTEIT_BUILD_TESTS)
     add_executable(content_profile_test tests/content_profile_test.cpp)
     target_link_libraries(content_profile_test PRIVATE pasteit_core)
     add_test(NAME content_profile_test COMMAND content_profile_test)
+
+    add_executable(text_diff_test tests/text_diff_test.cpp)
+    target_link_libraries(text_diff_test PRIVATE pasteit_core)
+    add_test(NAME text_diff_test COMMAND text_diff_test)
 
     add_executable(data_views_test tests/data_views_test.cpp)
     target_link_libraries(data_views_test PRIVATE pasteit_core)

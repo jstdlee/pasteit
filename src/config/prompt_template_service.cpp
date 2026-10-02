@@ -55,6 +55,17 @@ bool PromptTemplateService::set_thinking(std::string_view id,bool thinking,std::
     auto it=std::find_if(templates_.begin(),templates_.end(),[&](const auto&t){return t.id==id;});
     if(it==templates_.end()){error="Template not found.";return false;}it->thinking=thinking;error.clear();return true;
 }
+bool PromptTemplateService::reset_to_default(std::string_view id){
+    const auto defaults=default_prompt_templates();
+    const auto shipped=std::find_if(defaults.begin(),defaults.end(),[&](const auto& t){return t.id==id;});
+    const auto current=std::find_if(templates_.begin(),templates_.end(),[&](const auto& t){return t.id==id;});
+    if(shipped==defaults.end()||current==templates_.end()) return false;
+    const bool enabled=current->enabled;
+    *current=*shipped;
+    current->enabled=enabled;
+    return true;
+}
+
 void PromptTemplateService::restore_defaults(){
     for(auto value:default_prompt_templates()){
         if(has_template(templates_, value)) continue;

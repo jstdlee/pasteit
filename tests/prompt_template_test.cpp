@@ -72,4 +72,12 @@ int main() {
     assert(edited_code != settings.prompt_templates.end());
     assert(edited_code->name == "Explain source code");
     assert(edited_code->system_prompt == "Custom explanation for {text}");
+
+    // Reset puts one built-in template back; user templates have no default.
+    assert(second_service.set_enabled("builtin-explain-code", false, error));
+    assert(second_service.reset_to_default("builtin-explain-code"));
+    const auto reset_code = find_prompt(settings.prompt_templates, "builtin-explain-code");
+    assert(reset_code->system_prompt != "Custom explanation for {text}" && reset_code->system_prompt.find("{text}") != std::string::npos);
+    assert(!reset_code->enabled);
+    assert(!second_service.reset_to_default(duplicate->id));
 }

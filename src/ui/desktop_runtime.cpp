@@ -40,6 +40,8 @@
 #include "ui/icons.hpp"
 #include "util/utf8.hpp"
 #include "ui/data_views.hpp"
+#include "ui/diff_view.hpp"
+#include "executor/utility_executor.hpp"
 #include "ui/pipeline_view.hpp"
 #include "ui/privacy_view.hpp"
 #include "ui/prompt_parameters.hpp"
@@ -587,7 +589,7 @@ int run_desktop_runtime() {
     ImGui::CreateContext();
     // Dear ImGui 1.92 rasterizes glyphs on demand, so CJK text needs no
     // pre-baked glyph ranges and any font size can be pushed per widget.
-    load_ui_fonts(platform->preferred_ui_fonts(), executable_directory() / "lucide.ttf");
+    load_ui_fonts(platform->preferred_ui_fonts(), executable_directory() / "fa-solid-900.ttf");
     float dpi_scale = 1.0F;
     {
         float scale_x = 1.0F;
@@ -666,6 +668,10 @@ int run_desktop_runtime() {
     ChartViewState chart_view;
     TableViewState table_view;
     MarkdownViewState markdown_view;
+    // Text actions previewed in the input, and the side-by-side comparison.
+    DiffViewState diff_view;
+    std::string diff_action_id;
+    std::string previewing_action_id;
     PipelineViewState pipeline_view;
     AnonymizeViewState anonymize_view;
     // Pending first-use consent for Summarize page.
@@ -895,7 +901,7 @@ int run_desktop_runtime() {
                 ImGui::PushID(static_cast<int>(index));
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::Checkbox("##enabled", &recipe.enabled);
+                toggle_switch("##enabled", &recipe.enabled);
                 ImGui::TableNextColumn();
                 ImGui::SetNextItemWidth(-FLT_MIN);
                 input_text_string("##name", recipe.name);
@@ -964,7 +970,7 @@ int run_desktop_runtime() {
                 auto& disabled = privacy.disabled_categories;
                 const auto found = std::find(disabled.begin(), disabled.end(), name);
                 bool enabled = found == disabled.end();
-                if (ImGui::Checkbox(pii_category_label(category).c_str(), &enabled)) {
+                if (toggle_switch(pii_category_label(category).c_str(), &enabled)) {
                     if (enabled) disabled.erase(found);
                     else disabled.push_back(name);
                 }
@@ -1165,6 +1171,7 @@ int run_desktop_runtime() {
             preview_edit_text.clear();
         }
         preview_edit_source = preview_edit_text;
+        previewing_action_id.clear();
         prompt_parameter_dialog = {};
         execution_status.clear();
         last_execution.reset();
@@ -2026,9 +2033,9 @@ int run_desktop_runtime() {
         const float preview_lines_height = preview_editable && current_item != nullptr && preview_texture.id == 0
             // The editable area keeps four rows so there is room to type; it scrolls beyond that.
             ? line_height * 4.0F + ImGui::GetStyle().ItemSpacing.y
-            : std::min(line_height * 3.0F + ImGui::GetStyle().ItemSpacing.y,
-                  std::max(ImGui::GetFrameHeight(), ImGui::CalcTextSize(preview.c_str(), nullptr, false,
-                                                            ImGui::GetContentRegionAvail().x - 24.0F - 80.0F).y));
+            : std::max(ImGui::GetFrameHeight() * 2.0F + 4.0F,
+                  std::min(line_height * 3.0F + ImGui::GetStyle().ItemSpacing.y,
+                           ImGui::CalcTextSize(preview.c_str(), nullptr, false, ImGui::GetContentRegionAvail().x - 24.0F - 80.0F).y));
         const float preview_height = preview_texture.id != 0
             ? std::min(120.0F, static_cast<float>(preview_texture.height)) + 20.0F
             : preview_lines_height + 20.0F;
@@ -2087,25 +2094,31 @@ int run_desktop_runtime() {
                 ImGui::EndGroup();
                 ImGui::PopTextWrapPos();
             }
-            // Copy and Ask LLM live in the preview's top-right corner.
+            // Copy and Ask LLM stacked in the top-right corner; Copy always
+            // takes what the input shows now, a preview included. Apply /
+            // Revert stand beside them while the text differs from the clipboard.
             const auto custom_action = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
                 [](const ActionInstance& action) { return action.kind == ActionKind::CustomPrompt && action.enabled; });
-            const float buttons_width = (ImGui::GetFrameHeight() + 6.0F) * (custom_action != active_batch.catalog.actions.end() ? 2.0F : 1.0F);
-            ImGui::SetCursorPos(ImVec2(ImGui::GetWindowContentRegionMax().x - buttons_width, ImGui::GetStyle().WindowPadding.y));
-            if (edited) {
-                // While an edit is pending the corner offers Apply / Revert instead.
-                ImGui::SetCursorPos(ImVec2(ImGui::GetWindowContentRegionMax().x - (ImGui::GetFrameHeight() + 6.0F) * 2.0F,
-                                           ImGui::GetStyle().WindowPadding.y));
-                if (icon_button("preview-apply", icon::kCheck, tr(ui_language, UiTextKey::ApplyEdit))) preview_edit_apply_requested = true;
-                ImGui::SameLine(0.0F, 6.0F);
-                if (icon_button("preview-revert", icon::kUndo, tr(ui_language, UiTextKey::RevertEdit))) preview_edit_text = preview_edit_source;
-            } else if (icon_button("preview-copy", icon::kCopy, tr(ui_language, UiTextKey::CopyClipboardText))) {
-                platform->copy_text(clipboard_store.read_text(current_item->ref));
+            const float side = ImGui::GetFrameHeight();
+            const float corner_top = ImGui::GetStyle().WindowPadding.y;
+            const float column_x = ImGui::GetWindowContentRegionMax().x - side;
+            ImGui::SetCursorPos(ImVec2(column_x, corner_top));
+            if (icon_button("preview-copy", icon::kCopy, tr(ui_language, UiTextKey::CopyClipboardText))) {
+                platform->copy_text(preview_editable ? preview_edit_text : clipboard_store.read_text(current_item->ref));
                 execution_status = tr(ui_language, UiTextKey::Copied);
             }
-            if (!edited && custom_action != active_batch.catalog.actions.end()) {
-                ImGui::SameLine(0.0F, 6.0F);
+            if (custom_action != active_batch.catalog.actions.end()) {
+                ImGui::SetCursorPos(ImVec2(column_x, corner_top + side + 4.0F));
                 if (icon_button("preview-ask", icon::kAi, tr(ui_language, UiTextKey::AskLlmTitle))) activated_action = custom_action->id;
+            }
+            if (edited) {
+                ImGui::SetCursorPos(ImVec2(column_x - side - 6.0F, corner_top));
+                if (icon_button("preview-apply", icon::kCheck, tr(ui_language, UiTextKey::ApplyEdit))) preview_edit_apply_requested = true;
+                ImGui::SetCursorPos(ImVec2(column_x - side - 6.0F, corner_top + side + 4.0F));
+                if (icon_button("preview-revert", icon::kUndo, tr(ui_language, UiTextKey::RevertEdit))) {
+                    preview_edit_text = preview_edit_source;
+                    previewing_action_id.clear();
+                }
             }
         } else {
             ImGui::TextColored(theme_palette.text_muted, "%s", tr(ui_language,UiTextKey::NoClipboard).c_str());
@@ -2136,6 +2149,8 @@ int run_desktop_runtime() {
         tool_button(ActionKind::RunPipeline, UiTextKey::Pipeline, icon::kPipeline);
         tool_button(ActionKind::AnonymizeText, UiTextKey::Anonymize, icon::kEyeOff);
         tool_button(ActionKind::AnnotateImage, UiTextKey::AnnotateImage, icon::kEdit);
+        tool_button(ActionKind::Base64Encode, UiTextKey::Base64EncodeTool, icon::kCode);
+        tool_button(ActionKind::Base64Decode, UiTextKey::Base64DecodeTool, icon::kCode);
 
         if (popup_model.rows.empty()) {
             ImGui::Spacing();
@@ -2151,9 +2166,21 @@ int run_desktop_runtime() {
                 selected_row = std::min(static_cast<int>(popup_model.rows.size()) - 1, selected_row + 1);
             }
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0F, 4.0F));
+            const auto preview_tip = tr(ui_language, UiTextKey::PreviewResult);
+            const auto restore_tip = tr(ui_language, UiTextKey::RestoreOriginal);
+            const auto compare_tip = tr(ui_language, UiTextKey::CompareResult);
+            // The text an action would produce from the clipboard, without running it.
+            const auto preview_of = [&](const std::string& action_id) -> std::optional<std::string> {
+                const auto found = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+                                                [&](const ActionInstance& action) { return action.id == action_id; });
+                if (found == active_batch.catalog.actions.end()) return std::nullopt;
+                return preview_text_action(*found, preview_edit_source);
+            };
             for (std::size_t index = 0; index < popup_model.rows.size(); ++index) {
                 const auto& row = popup_model.rows[index];
                 const int shortcut = index < 9 ? static_cast<int>(index) + 1 : 0;
+                const bool previewable = preview_editable && row.enabled && can_preview_text_action(row.kind);
+                const bool previewing = previewable && previewing_action_id == row.action_id && preview_edit_text != preview_edit_source;
                 const ActionCardModel card{
                     .glyph = action_icon(row.kind),
                     .label = row.label,
@@ -2164,12 +2191,39 @@ int run_desktop_runtime() {
                     .shortcut = shortcut,
                     .selected = static_cast<int>(index) == selected_row,
                     .enabled = row.enabled,
+                    .previewable = previewable,
+                    .previewing = previewing,
+                    .preview_tooltip = preview_tip,
+                    .restore_tooltip = restore_tip,
+                    .compare_tooltip = compare_tip,
                 };
                 const bool shortcut_pressed = shortcut > 0 && !typing &&
                     ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_1 + shortcut - 1), false);
-                if ((action_card(row.action_id.c_str(), card) || shortcut_pressed) && row.enabled) {
+                const auto event = action_card(row.action_id.c_str(), card);
+                if ((event == ActionCardEvent::Activate || shortcut_pressed) && row.enabled) {
                     selected_row = static_cast<int>(index);
                     activated_action = row.action_id;
+                }
+                if (event == ActionCardEvent::Preview) {
+                    selected_row = static_cast<int>(index);
+                    if (previewing) {
+                        preview_edit_text = preview_edit_source;
+                        previewing_action_id.clear();
+                    } else if (auto result = preview_of(row.action_id)) {
+                        preview_edit_text = std::move(*result);
+                        previewing_action_id = row.action_id;
+                    } else {
+                        execution_status = tr(ui_language, UiTextKey::NoPreview);
+                    }
+                }
+                if (event == ActionCardEvent::Compare) {
+                    selected_row = static_cast<int>(index);
+                    if (auto result = preview_of(row.action_id)) {
+                        open_diff_view(diff_view, row.label, preview_edit_source, std::move(*result));
+                        diff_action_id = row.action_id;
+                    } else {
+                        execution_status = tr(ui_language, UiTextKey::NoPreview);
+                    }
                 }
             }
             ImGui::PopStyleVar();
@@ -2565,19 +2619,6 @@ int run_desktop_runtime() {
                 if (ImGui::Button(with_icon(icon::kPlay, tr(ui_language,UiTextKey::TestGeneralLlm)).c_str())) start_llm_test();
                 ImGui::SameLine();
                 if (!llm_test_status.empty()) ImGui::TextColored(pal.text_muted, "%s", llm_test_status.c_str());
-                // Instructions used by Prompt templates > Optimize with LLM.
-                ImGui::Spacing();
-                separator_heading(tr(ui_language, UiTextKey::PromptOptimizerInstructions));
-                ImGui::PushTextWrapPos(0.0F);
-                ImGui::TextColored(pal.text_muted, "%s", tr(ui_language, UiTextKey::PromptOptimizerInstructionsHelp).c_str());
-                ImGui::PopTextWrapPos();
-                input_text_string("##prompt-optimizer-system", settings_draft.prompt_optimizer_system, true, 0,
-                                  ImGui::GetTextLineHeightWithSpacing() * 9.0F);
-                ImGui::BeginDisabled(settings_draft.prompt_optimizer_system == default_prompt_optimizer_system());
-                if (ImGui::Button(with_icon(icon::kUndo, tr(ui_language, UiTextKey::RestoreDefaults)).c_str())) {
-                    settings_draft.prompt_optimizer_system = default_prompt_optimizer_system();
-                }
-                ImGui::EndDisabled();
                 break;
             }
             case SettingsPage::Prompts: {
@@ -2585,37 +2626,35 @@ int run_desktop_runtime() {
                 PromptTemplateService service(settings_draft.prompt_templates);
                 if (prompt_panel_model.modal == PromptTemplateModal::None) prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates);
                 std::string view_id, edit_id, duplicate_id, delete_id;
-                if (ImGui::BeginTable("settings-prompt-templates", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
-                                      ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp)) {
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed, 52);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 3);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Temperature).c_str(), ImGuiTableColumnFlags_WidthFixed, 110);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::ThinkingColumn).c_str(), ImGuiTableColumnFlags_WidthFixed, 80);
-                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, 150);
+                // Name, on/off and thinking per template; temperature lives in the editor.
+                if (ImGui::BeginTable("settings-prompt-templates", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                                      ImGuiTableFlags_SizingStretchProp)) {
+                    const float toggle_column = std::round(ImGui::GetFrameHeight() * 0.8F * 1.75F) + 8.0F;
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Enabled).c_str(), ImGuiTableColumnFlags_WidthFixed,
+                                            std::max(toggle_column, ImGui::CalcTextSize(tr(ui_language,UiTextKey::Enabled).c_str()).x));
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Name).c_str(), ImGuiTableColumnFlags_WidthStretch, 1);
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::ThinkingColumn).c_str(), ImGuiTableColumnFlags_WidthFixed,
+                                            std::max(toggle_column, ImGui::CalcTextSize(tr(ui_language,UiTextKey::ThinkingColumn).c_str()).x));
+                    ImGui::TableSetupColumn(tr(ui_language,UiTextKey::Actions).c_str(), ImGuiTableColumnFlags_WidthFixed, icon_buttons_width(4));
                     ImGui::TableHeadersRow();
                     for (const auto& row : prompt_panel_model.rows) {
                         ImGui::PushID(("settings-"+row.id).c_str());
                         ImGui::TableNextRow(); ImGui::TableNextColumn();
                         bool enabled = row.enabled;
-                        if (ImGui::Checkbox("##enabled", &enabled)) { std::string error; service.set_enabled(row.id, enabled, error); }
+                        if (toggle_switch("##enabled", &enabled)) { std::string error; service.set_enabled(row.id, enabled, error); }
                         ImGui::TableNextColumn();
                         ImGui::AlignTextToFramePadding();
                         // Built-in templates are marked by a muted name and a tooltip.
                         ImGui::TextColored(row.built_in ? pal.text_muted : pal.text, "%s", row.name.c_str());
-                        if (row.built_in && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language,UiTextKey::BuiltIn).c_str());
-                        ImGui::TableNextColumn();
-                        // 0 = deterministic (translate, code); higher = more varied wording.
-                        float temperature = static_cast<float>(row.temperature);
-                        ImGui::SetNextItemWidth(-FLT_MIN);
-                        if (ImGui::SliderFloat("##temperature", &temperature, 0.0F, 1.5F, "%.1f")) {
-                            for (auto& prompt : settings_draft.prompt_templates) {
-                                if (prompt.id == row.id) prompt.temperature = std::round(temperature * 10.0F) / 10.0;
-                            }
+                        if (ImGui::IsItemHovered()) {
+                            char temperature[32];
+                            std::snprintf(temperature, sizeof temperature, "%.1f", row.temperature);
+                            ImGui::SetTooltip("%s%s%s %s", row.built_in ? tr(ui_language,UiTextKey::BuiltIn).c_str() : "",
+                                              row.built_in ? "\n" : "", tr(ui_language, UiTextKey::Temperature).c_str(), temperature);
                         }
-                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::TemperatureHelp).c_str());
                         ImGui::TableNextColumn();
                         bool thinking = row.thinking;
-                        if (ImGui::Checkbox("##thinking", &thinking)) { std::string error; service.set_thinking(row.id, thinking, error); }
+                        if (toggle_switch("##thinking", &thinking)) { std::string error; service.set_thinking(row.id, thinking, error); }
                         if (ImGui::IsItemHovered()) {
                             ImGui::SetTooltip("%s\n%s", tr(ui_language, UiTextKey::PromptThinking).c_str(),
                                               tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
@@ -2639,7 +2678,22 @@ int run_desktop_runtime() {
                 ImGui::Spacing();
                 if (ImGui::Button(with_icon(icon::kPlus, tr(ui_language,UiTextKey::NewTemplate)).c_str())) { std::string error; if (const auto created = service.create("New Prompt", "Transform {text}", 0.2, error)) { prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); begin_prompt_template_edit(prompt_panel_model, created->id); } }
                 ImGui::SameLine();
-                if (ImGui::Button(with_icon(icon::kUndo, tr(ui_language,UiTextKey::RestoreDefaults)).c_str())) { service.restore_defaults(); prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); }
+                if (ImGui::Button(with_icon(icon::kUndo, tr(ui_language,UiTextKey::RestoreDefaultTemplates)).c_str())) { service.restore_defaults(); prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::RestoreDefaultTemplatesHelp).c_str());
+                // Instructions used by Optimize with LLM in the template editor.
+                separator_heading(tr(ui_language, UiTextKey::PromptOptimizerInstructions));
+                begin_group("settings-prompt-optimizer");
+                ImGui::PushTextWrapPos(0.0F);
+                ImGui::TextColored(pal.text_muted, "%s", tr(ui_language, UiTextKey::PromptOptimizerInstructionsHelp).c_str());
+                ImGui::PopTextWrapPos();
+                input_text_string("##prompt-optimizer-system", settings_draft.prompt_optimizer_system, true, 0,
+                                  ImGui::GetTextLineHeightWithSpacing() * 9.0F);
+                ImGui::BeginDisabled(settings_draft.prompt_optimizer_system == default_prompt_optimizer_system());
+                if (ImGui::Button(with_icon(icon::kUndo, tr(ui_language, UiTextKey::ResetPrompt)).c_str())) {
+                    settings_draft.prompt_optimizer_system = default_prompt_optimizer_system();
+                }
+                ImGui::EndDisabled();
+                end_group();
                 if (prompt_panel_model.modal == PromptTemplateModal::View && prompt_panel_model.draft) {
                     bool detail_open = true;
                     if (begin_tool_window(prompt_panel_model.draft->name + "###settings-prompt-detail", &detail_open, ImVec2(540, 360))) {
@@ -2665,7 +2719,7 @@ int run_desktop_runtime() {
                             float temperature = static_cast<float>(prompt_panel_model.draft->temperature);
                             if (ImGui::SliderFloat("##template-temperature", &temperature, 0.0F, 2.0F, "%.1f")) prompt_panel_model.draft->temperature = temperature;
                             form_row(tr(ui_language,UiTextKey::ThinkingColumn));
-                            ImGui::Checkbox(tr(ui_language,UiTextKey::PromptThinking).c_str(), &prompt_panel_model.draft->thinking);
+                            toggle_switch(tr(ui_language,UiTextKey::PromptThinking).c_str(), &prompt_panel_model.draft->thinking);
                             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                             end_form();
                         }
@@ -2682,9 +2736,25 @@ int run_desktop_runtime() {
                         const auto optimize_label = with_icon(icon::kWand, tr(ui_language, UiTextKey::OptimizePrompt));
                         const auto revert_label = with_icon(icon::kUndo, tr(ui_language, UiTextKey::RevertOptimization));
                         const auto& style = ImGui::GetStyle();
+                        const auto reset_label = with_icon(icon::kRotateCcw, tr(ui_language, UiTextKey::ResetPrompt));
+                        const auto defaults = default_prompt_templates();
+                        const auto shipped = std::find_if(defaults.begin(), defaults.end(), [&](const auto& value) { return value.id == draft.id; });
+                        const bool built_in = shipped != defaults.end();
                         float buttons = ImGui::CalcTextSize(optimize_label.c_str()).x + style.FramePadding.x * 2.0F;
+                        if (built_in) buttons += button_width(reset_label) + style.ItemSpacing.x;
                         if (!prompt_optimize_original.empty()) buttons += ImGui::CalcTextSize(revert_label.c_str()).x + style.FramePadding.x * 2.0F + style.ItemSpacing.x;
                         ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttons));
+                        if (built_in) {
+                            // Back to the shipped prompt, in case the edits went astray.
+                            ImGui::BeginDisabled(draft.system_prompt == shipped->system_prompt);
+                            if (ImGui::Button(reset_label.c_str(), ImVec2(button_width(reset_label), 0.0F))) {
+                                draft.system_prompt = shipped->system_prompt;
+                                prompt_optimize_original.clear();
+                                prompt_optimize_status.clear();
+                            }
+                            ImGui::EndDisabled();
+                            ImGui::SameLine();
+                        }
                         const bool llm_ready = !settings_draft.general_llm.endpoint.empty() && !settings_draft.general_llm.model_id.empty();
                         ImGui::BeginDisabled(pending_prompt_optimize.has_value() || !llm_ready || trim(draft.system_prompt).empty());
                         if (ImGui::Button(optimize_label.c_str())) {
@@ -2965,7 +3035,7 @@ int run_desktop_runtime() {
                         (void)draw_prompt_parameter_fields("ask-llm-parameters", names, values);
                     }
                 }
-                ImGui::Checkbox(tr(ui_language, UiTextKey::PromptThinking).c_str(), &custom_prompt_dialog.thinking);
+                toggle_switch(tr(ui_language, UiTextKey::PromptThinking).c_str(), &custom_prompt_dialog.thinking);
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                 const bool can_run = !custom || !trim(custom_prompt_dialog.prompt).empty();
                 const auto privacy_note = settings.privacy.anonymize_before_llm ? tr(ui_language, UiTextKey::AskLlmHelp) : std::string{};
@@ -3003,6 +3073,12 @@ int run_desktop_runtime() {
         draw_chart_view(chart_view, data_view_host, ui_language);
         if (chart_view.open) remember_choice("chart.kind", std::to_string(chart_view.kind));
         draw_table_view(table_view, chart_view, data_view_host, ui_language, default_chart_path());
+        draw_diff_view(diff_view, ui_language, data_view_host.copy_text, [&] {
+            // Preview in input: the compared result replaces the input text.
+            if (!preview_editable) return;
+            preview_edit_text = diff_view.right;
+            previewing_action_id = diff_action_id;
+        });
         draw_markdown_view(markdown_view, data_view_host, ui_language);
         {
             PipelineOptions pipeline_options;

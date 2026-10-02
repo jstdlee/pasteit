@@ -56,7 +56,7 @@ jobs:
         run: |
           test -x build/pasteit
           mkdir -p dist/pasteit
-          cp build/pasteit build/lucide.ttf build/mermaid.min.js README.md dist/pasteit/
+          cp build/pasteit build/fa-solid-900.ttf build/mermaid.min.js README.md assets/FONTAWESOME_LICENSE.txt dist/pasteit/
           cat > dist/pasteit/pasteit.desktop <<'EOF'
           [Desktop Entry]
           Type=Application
@@ -97,7 +97,7 @@ jobs:
           $exe = Get-ChildItem build -Recurse -Filter pasteit.exe | Select-Object -First 1
           if (-not $exe) { throw "pasteit.exe was not built" }
           New-Item -ItemType Directory -Force dist/pasteit | Out-Null
-          Copy-Item $exe.FullName, assets/lucide.ttf, assets/mermaid.min.js, README.md dist/pasteit/
+          Copy-Item $exe.FullName, assets/fa-solid-900.ttf, assets/mermaid.min.js, README.md, assets/FONTAWESOME_LICENSE.txt dist/pasteit/
           Compress-Archive -Path dist/pasteit -DestinationPath dist/pasteit-windows-x64.zip
 
       - uses: actions/upload-artifact@v4

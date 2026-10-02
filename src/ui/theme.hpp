@@ -83,7 +83,15 @@ struct ActionCardModel {
     int shortcut = 0;  // 1-9, 0 for none
     bool selected = false;
     bool enabled = true;
+    // Text actions: preview the result in the input, or compare it side by side.
+    bool previewable = false;
+    bool previewing = false;  // the input shows this action's result
+    std::string_view preview_tooltip;
+    std::string_view restore_tooltip;
+    std::string_view compare_tooltip;
 };
+
+enum class ActionCardEvent { None, Activate, Preview, Compare };
 
 inline constexpr float kActionCardHeight = 56.0F;
 
@@ -132,7 +140,9 @@ bool begin_group(const char* id);
 void end_group();
 
 // macOS switch for an on/off setting; returns true when toggled.
-bool toggle_switch(const char* id, bool* value);
+// Text before "##" in label is drawn to the right of the switch (like a
+// checkbox label) and is part of the hit target.
+bool toggle_switch(const char* label, bool* value);
 
 // BeginCombo with a slim chevron in place of ImGui's filled arrow button.
 // Pair with ImGui::EndCombo() when it returns true, like BeginCombo.
@@ -144,8 +154,9 @@ bool begin_form(const char* id, float label_width = 150.0F);
 void form_row(std::string_view label, std::string_view help = {});
 void end_form();
 
-// Draws one ranked action as a card; returns true when clicked.
-bool action_card(const char* id, const ActionCardModel& model);
+// Draws one ranked action as a card and reports a click on it or on its
+// preview / compare icons.
+ActionCardEvent action_card(const char* id, const ActionCardModel& model);
 
 #endif
 

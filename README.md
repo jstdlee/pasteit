@@ -286,5 +286,5 @@ The model adds a bounded bonus (≤ 0.20) to both the Jev and the fallback ranki
   - Zenity or KDialog is used for folder picking.
   - A non-fatal X error handler keeps a destroyed sub-window from ending the process.
 - **Windows:** the Win32 clipboard, WinHTTP, and native folder picker and focus adapters.
-- **Fonts:** Noto Sans CJK (regular and bold) with the Lucide icon font merged in. The UI is in English and Simplified Chinese, with dark and light themes.
+- **Fonts:** Noto Sans CJK (regular and bold) with the Font Awesome Free (Solid) icon font merged in. The UI is in English and Simplified Chinese, with dark and light themes.
 - **Single instance:** a per-user lock prevents duplicate processes.
