@@ -30,6 +30,7 @@ struct UiPalette {
     ImVec4 text_muted;
     ImVec4 accent;
     ImVec4 accent_soft;
+    ImVec4 track;  // segmented-control track, fields and dropdown pills
     ImVec4 success;
     ImVec4 warning;
     ImVec4 danger;
@@ -120,7 +121,11 @@ void section_heading(const char* glyph, std::string_view title, std::string_view
 
 // macOS segmented control: one raised segment in a rounded track. Returns
 // true when the selection changed.
-bool segmented_control(const char* id, std::span<const std::string> labels, int& selected);
+// `compact` is the in-row size: one frame tall, tighter segments.
+bool segmented_control(const char* id, std::span<const std::string> labels, int& selected, bool compact = false);
+// A pick-one setting: compact segments when every option fits the available
+// width, otherwise a dropdown. Returns true when the selection changed.
+bool choice_control(const char* id, std::span<const std::string> labels, int& selected);
 
 // Rounded group box that sizes to its content. Always pair with end_group().
 bool begin_group(const char* id);

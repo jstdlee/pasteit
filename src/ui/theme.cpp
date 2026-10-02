@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cfloat>
 #include <cstdlib>
 
@@ -204,27 +205,32 @@ const UiPalette& palette() {
 // the accent marks selection, focus and the default button only.
 void apply_theme(UiTheme theme, float dpi_scale) {
     const bool light = theme == UiTheme::Light;
+    // Tokens: soft grey page, white cards with a hairline, dim text that
+    // still passes WCAG AA at small sizes. Dark surfaces get lighter as they
+    // come forward: page, card, raised pill.
     current_palette = light ? UiPalette{
-        .background = rgb(0xF0F0F3),
+        .background = rgb(0xF4F4F6),
         .surface = rgb(0xFFFFFF),
         .surface_hover = rgb(0xE8E8ED),
-        .border = rgb(0xD5D5DA),
-        .text = rgb(0x1D1D1F),
-        .text_muted = rgb(0x6E6E73),
+        .border = rgb(0xE3E3E8),
+        .text = rgb(0x212126),
+        .text_muted = rgb(0x737379),
         .accent = rgb(0x007AFF),
         .accent_soft = rgb(0x007AFF, 0.13F),
+        .track = rgb(0xF1F1F4),
         .success = rgb(0x1F9D4C),
         .warning = rgb(0xC77C02),
-        .danger = rgb(0xE0352B),
+        .danger = rgb(0xFF3B30),
     } : UiPalette{
-        .background = rgb(0x1E1E20),
-        .surface = rgb(0x2A2A2D),
-        .surface_hover = rgb(0x343437),
-        .border = rgb(0x3A3A3D),
-        .text = rgb(0xF2F2F7),
-        .text_muted = rgb(0x98989F),
+        .background = rgb(0x1C1C1F),
+        .surface = rgb(0x252528),
+        .surface_hover = rgb(0x323237),
+        .border = rgb(0x303034),
+        .text = rgb(0xE8E8EC),
+        .text_muted = rgb(0x8E8E96),
         .accent = rgb(0x0A84FF),
         .accent_soft = rgb(0x0A84FF, 0.22F),
+        .track = rgb(0x2E2E33),
         .success = rgb(0x32D74B),
         .warning = rgb(0xFF9F0A),
         .danger = rgb(0xFF453A),
@@ -271,12 +277,13 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_TextDisabled] = p.text_muted;
     c[ImGuiCol_WindowBg] = p.background;
     c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_PopupBg] = light ? rgb(0xFFFFFF, 0.98F) : rgb(0x2C2C2F, 0.98F);
-    c[ImGuiCol_Border] = wash(0.12F);
+    c[ImGuiCol_PopupBg] = light ? rgb(0xFFFFFF, 0.98F) : rgb(0x2A2A2E, 0.98F);
+    c[ImGuiCol_Border] = p.border;
     c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_FrameBg] = light ? rgb(0xFFFFFF) : wash(0.06F);
-    c[ImGuiCol_FrameBgHovered] = light ? rgb(0xF7F7F9) : wash(0.09F);
-    c[ImGuiCol_FrameBgActive] = light ? rgb(0xFFFFFF) : wash(0.11F);
+    // Fields and dropdowns sit in the track fill; buttons are raised pills.
+    c[ImGuiCol_FrameBg] = p.track;
+    c[ImGuiCol_FrameBgHovered] = light ? rgb(0xEBEBEF) : rgb(0x343439);
+    c[ImGuiCol_FrameBgActive] = p.track;
     c[ImGuiCol_TitleBg] = p.background;
     c[ImGuiCol_TitleBgActive] = p.background;
     c[ImGuiCol_TitleBgCollapsed] = p.background;
@@ -288,13 +295,13 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_CheckMark] = p.accent;
     c[ImGuiCol_SliderGrab] = p.accent;
     c[ImGuiCol_SliderGrabActive] = mix(p.accent, p.text, 0.15F);
-    c[ImGuiCol_Button] = light ? rgb(0xFFFFFF) : wash(0.10F);
-    c[ImGuiCol_ButtonHovered] = light ? rgb(0xF2F2F5) : wash(0.15F);
-    c[ImGuiCol_ButtonActive] = light ? rgb(0xE3E3E8) : wash(0.22F);
+    c[ImGuiCol_Button] = light ? rgb(0xFFFFFF) : rgb(0x3A3A40);
+    c[ImGuiCol_ButtonHovered] = light ? rgb(0xF5F5F7) : rgb(0x434349);
+    c[ImGuiCol_ButtonActive] = light ? rgb(0xE6E6EB) : rgb(0x4C4C52);
     c[ImGuiCol_Header] = tint(0.20F);
     c[ImGuiCol_HeaderHovered] = tint(0.12F);
     c[ImGuiCol_HeaderActive] = tint(0.28F);
-    c[ImGuiCol_Separator] = wash(0.10F);
+    c[ImGuiCol_Separator] = light ? rgb(0xECECF0) : rgb(0x2C2C30);
     c[ImGuiCol_SeparatorHovered] = tint(0.60F);
     c[ImGuiCol_SeparatorActive] = p.accent;
     c[ImGuiCol_ResizeGrip] = ImVec4(0, 0, 0, 0);
@@ -314,7 +321,7 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_PlotHistogramHovered] = mix(p.accent, p.text, 0.2F);
     c[ImGuiCol_TableHeaderBg] = wash(0.04F);
     c[ImGuiCol_TableBorderStrong] = wash(0.10F);
-    c[ImGuiCol_TableBorderLight] = wash(0.08F);
+    c[ImGuiCol_TableBorderLight] = light ? rgb(0xECECF0) : rgb(0x2C2C30);
     c[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_TableRowBgAlt] = wash(0.03F);
     c[ImGuiCol_TextSelectedBg] = tint(0.30F);
@@ -426,15 +433,27 @@ bool icon_button(const char* id, const char* glyph, const std::string& tooltip, 
     const auto& p = current_palette;
     const bool has_glyph = current_fonts.icons && glyph != nullptr;
     const auto label = std::string{has_glyph ? glyph : tooltip.c_str()} + "##" + id;
-    // Toolbar style: no fill or border until hovered, square hit target;
-    // an active toggle sits in an accent wash with an accent glyph.
+    // Toolbar style: a dim glyph that darkens on hover over a soft square,
+    // no fill or border otherwise; an active toggle sits in an accent wash
+    // with an accent glyph.
     ImGui::PushStyleColor(ImGuiCol_Button, active ? p.accent_soft : ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, active ? with_alpha(p.accent, p.accent_soft.w + 0.08F) : p.surface_hover);
-    ImGui::PushStyleColor(ImGuiCol_Text, active ? p.accent : p.text);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, active ? with_alpha(p.accent, p.accent_soft.w + 0.14F) : p.border);
+    // The glyph is drawn after the button so its colour can follow the hover state.
+    ImGui::PushStyleColor(ImGuiCol_Text, has_glyph ? ImVec4(0, 0, 0, 0) : p.text);
     const float side = ImGui::GetFrameHeight();
     const bool clicked = ImGui::Button(label.c_str(), has_glyph ? ImVec2(side, side) : ImVec2(0.0F, side));
-    ImGui::PopStyleColor(4);
+    ImGui::PopStyleColor(5);
+    if (has_glyph) {
+        const ImVec2 min = ImGui::GetItemRectMin();
+        const ImVec2 extent = current_fonts.regular->CalcTextSizeA(ImGui::GetFontSize(), 1000.0F, 0.0F, glyph);
+        const ImVec4 tint = active ? p.accent : ImGui::IsItemHovered() || ImGui::IsItemActive() ? p.text : p.text_muted;
+        const float alpha = ImGui::GetStyle().Alpha;  // honours BeginDisabled
+        ImGui::GetWindowDrawList()->AddText(current_fonts.regular, ImGui::GetFontSize(),
+            ImVec2(std::round(min.x + (side - extent.x) * 0.5F), std::round(min.y + (side - extent.y) * 0.5F)),
+            ImGui::GetColorU32(with_alpha(tint, tint.w * alpha)), glyph);
+    }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
     return clicked;
 }
@@ -546,7 +565,6 @@ bool action_card(const char* id, const ActionCardModel& model) {
                       model.detail.data() + model.detail.size(), 0.0F, &clip);
         ImGui::PopFont();
     }
-    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     return clicked;
 }
 
@@ -615,8 +633,10 @@ int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view
     for (const auto& button : buttons) {
         if (index != 0) ImGui::SameLine();
         if (!button.enabled) ImGui::BeginDisabled();
-        const bool pressed = button.primary ? primary_button(button.label)
-                                            : ImGui::Button(button.label.c_str(), ImVec2(button_width(button.label), 0.0F));
+        // A disabled default button loses its accent rather than showing a faded one.
+        const bool pressed = button.primary && button.enabled
+                                 ? primary_button(button.label)
+                                 : ImGui::Button(button.label.c_str(), ImVec2(button_width(button.label), 0.0F));
         if (!button.enabled) ImGui::EndDisabled();
         if (pressed) clicked = index;
         ++index;
@@ -679,23 +699,28 @@ bool nav_item(const char* id, std::string_view label, bool selected) {
     const ImVec4 clip(pos.x, pos.y, end.x - 4.0F * scale, end.y);
     draw->AddText(nullptr, 0.0F, text_pos, ImGui::GetColorU32(selected ? ImVec4(1, 1, 1, 1) : p.text), label.data(),
                   label.data() + label.size(), 0.0F, &clip);
-    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     return clicked;
 }
 
 void separator_heading(std::string_view title) {
-    // macOS group title: bold, above its group box, no rule.
-    ImGui::Dummy(ImVec2(0.0F, ImGui::GetStyle().ItemSpacing.y));
-    ImGui::PushFont(current_fonts.bold, current_fonts.body);
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 4.0F * ImGui::GetStyle().FontScaleDpi);
-    ImGui::TextUnformatted(title.data(), title.data() + title.size());
+    // Section title above a card: small grey capitals (ASCII only; other
+    // scripts stay as written), a little air above, close to its card.
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    std::string caps{title};
+    for (auto& ch : caps) {
+        if (static_cast<unsigned char>(ch) < 0x80) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    }
+    ImGui::Dummy(ImVec2(0.0F, 8.0F * scale));
+    ImGui::PushFont(current_fonts.regular, current_fonts.small);
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 4.0F * scale);
+    ImGui::TextColored(current_palette.text_muted, "%s", caps.c_str());
     ImGui::PopFont();
 }
 
 void section_heading(const char* glyph, std::string_view title, std::string_view help) {
-    ImGui::PushFont(current_fonts.bold, current_fonts.heading * 1.15F);
+    ImGui::PushFont(current_fonts.regular, current_fonts.heading * 1.15F);
     if (current_fonts.icons && glyph != nullptr) {
-        ImGui::TextColored(current_palette.accent, "%s", glyph);
+        ImGui::TextColored(current_palette.text_muted, "%s", glyph);
         ImGui::SameLine(0.0F, ImGui::GetStyle().ItemInnerSpacing.x * 1.5F);
     }
     ImGui::TextUnformatted(title.data(), title.data() + title.size());
@@ -708,21 +733,25 @@ void section_heading(const char* glyph, std::string_view title, std::string_view
     ImGui::Spacing();
 }
 
-bool segmented_control(const char* id, std::span<const std::string> labels, int& selected) {
+static float segmented_width(std::span<const std::string> labels, float pad_x, float inset) {
+    float total = inset * 2.0F;
+    for (const auto& label : labels) total += ImGui::CalcTextSize(label.c_str()).x + pad_x * 2.0F;
+    return total;
+}
+
+bool segmented_control(const char* id, std::span<const std::string> labels, int& selected, bool compact) {
     const auto& p = current_palette;
     const bool light = p.background.x > 0.5F;
     const float scale = ImGui::GetStyle().FontScaleDpi;
     const float inset = 2.0F * scale;
-    const float pad_x = 14.0F * scale;
-    const float height = ImGui::GetFrameHeight() + inset * 2.0F;
+    const float pad_x = (compact ? 11.0F : 14.0F) * scale;
+    const float height = compact ? ImGui::GetFrameHeight() : ImGui::GetFrameHeight() + inset * 2.0F;
     const ImVec2 origin = ImGui::GetCursorScreenPos();
-    float total = inset * 2.0F;
-    for (const auto& label : labels) total += ImGui::CalcTextSize(label.c_str()).x + pad_x * 2.0F;
+    const float total = segmented_width(labels, pad_x, inset);
 
     auto* draw = ImGui::GetWindowDrawList();
-    const float rounding = 9.0F * scale;
-    draw->AddRectFilled(origin, ImVec2(origin.x + total, origin.y + height),
-                        ImGui::GetColorU32(light ? ImVec4(0, 0, 0, 0.06F) : ImVec4(1, 1, 1, 0.07F)), rounding);
+    const float rounding = 8.0F * scale;
+    draw->AddRectFilled(origin, ImVec2(origin.x + total, origin.y + height), ImGui::GetColorU32(p.track), rounding);
     bool changed = false;
     float x = origin.x + inset;
     ImGui::PushID(id);
@@ -741,24 +770,44 @@ bool segmented_control(const char* id, std::span<const std::string> labels, int&
         const bool hovered = ImGui::IsItemHovered();
         ImGui::PopID();
         const bool active = selected == index;
+        const bool held = ImGui::IsItemActive();
         if (active) {
-            // Raised segment: soft drop shadow, then the face.
+            // Raised pill: 1 px soft shadow, the face, a hairline.
             draw->AddRectFilled(ImVec2(min.x, min.y + 1.0F * scale), ImVec2(max.x, max.y + 1.0F * scale),
-                                ImGui::GetColorU32(ImVec4(0, 0, 0, light ? 0.10F : 0.30F)), rounding - inset);
-            draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(1, 1, 1, 1) : ImVec4(1, 1, 1, 0.16F)),
-                                rounding - inset);
-        } else if (hovered) {
-            draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, 0.04F) : ImVec4(1, 1, 1, 0.05F)),
+                                ImGui::GetColorU32(ImVec4(0, 0, 0, light ? 0.06F : 0.25F)), rounding - inset);
+            draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? rgb(0xFFFFFF) : rgb(0x3A3A40)), rounding - inset);
+            draw->AddRect(min, max, ImGui::GetColorU32(light ? p.border : rgb(0x45454B)), rounding - inset);
+        } else if (hovered || held) {
+            draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, held ? 0.08F : 0.04F)
+                                                                    : ImVec4(1, 1, 1, held ? 0.09F : 0.05F)),
                                 rounding - inset);
         }
         draw->AddText(ImVec2(min.x + pad_x, min.y + (max.y - min.y - text_size.y) * 0.5F),
                       ImGui::GetColorU32(active || hovered ? p.text : p.text_muted), label.c_str());
-        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        x += width;
+            x += width;
     }
     ImGui::PopID();
     ImGui::SetCursorScreenPos(origin);
     ImGui::Dummy(ImVec2(total, height));
+    return changed;
+}
+
+bool choice_control(const char* id, std::span<const std::string> labels, int& selected) {
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    if (segmented_width(labels, 11.0F * scale, 2.0F * scale) <= ImGui::GetContentRegionAvail().x) {
+        return segmented_control(id, labels, selected, true);
+    }
+    bool changed = false;
+    const auto& preview = labels[static_cast<std::size_t>(std::clamp(selected, 0, static_cast<int>(labels.size()) - 1))];
+    if (begin_combo(id, preview.c_str())) {
+        for (int index = 0; index < static_cast<int>(labels.size()); ++index) {
+            if (ImGui::Selectable(labels[static_cast<std::size_t>(index)].c_str(), selected == index) && selected != index) {
+                selected = index;
+                changed = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
     return changed;
 }
 
@@ -798,7 +847,6 @@ bool toggle_switch(const char* id, bool* value) {
     const ImVec2 knob(knob_x, pos.y + radius);
     draw->AddCircleFilled(ImVec2(knob.x, knob.y + 0.5F), radius - 1.5F, IM_COL32(0, 0, 0, 40));
     draw->AddCircleFilled(knob, radius - 2.0F, IM_COL32(255, 255, 255, 255));
-    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     return clicked;
 }
 
@@ -843,10 +891,27 @@ bool begin_form(const char* id, float label_width) {
 void form_row(std::string_view label, std::string_view help) {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(label.data(), label.data() + label.size());
-    if (!help.empty() && ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%.*s", static_cast<int>(help.size()), help.data());
+    if (help.empty()) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(label.data(), label.data() + label.size());
+    } else {
+        // Title, then one grey line saying what it does; cut with an
+        // ellipsis, the whole sentence on hover.
+        ImGui::TextUnformatted(label.data(), label.data() + label.size());
+        ImGui::PushFont(current_fonts.regular, current_fonts.small);
+        const float width = ImGui::GetContentRegionAvail().x;
+        std::string line{help};
+        bool cut = false;
+        while (line.size() > 8 && ImGui::CalcTextSize(line.c_str()).x > width) {
+            std::size_t end = line.size() - 1;
+            while (end > 0 && (static_cast<unsigned char>(line[end]) & 0xC0U) == 0x80U) --end;  // UTF-8 boundary
+            line.resize(end);
+            cut = true;
+        }
+        if (cut) line += "\xE2\x80\xA6";
+        ImGui::TextColored(current_palette.text_muted, "%s", line.c_str());
+        ImGui::PopFont();
+        if (cut && ImGui::IsItemHovered()) ImGui::SetTooltip("%.*s", static_cast<int>(help.size()), help.data());
     }
     ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(-FLT_MIN);

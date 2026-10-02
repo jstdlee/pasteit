@@ -826,7 +826,7 @@ int run_desktop_runtime() {
     const auto draw_pipeline_settings = [&](UiLanguage language) {
         const auto& pal = palette();
         section_heading(icon::kPipeline, tr(language, UiTextKey::Pipeline), tr(language, UiTextKey::PipelinesHelp));
-        if (begin_form("settings-pipelines", 170.0F)) {
+        if (begin_form("settings-pipelines", 250.0F)) {
             form_row(tr(language, UiTextKey::AllowedTools), tr(language, UiTextKey::AllowedToolsHelp));
             std::string tools;
             for (const auto& tool : settings_draft.pipelines.allowed_tools) tools += (tools.empty() ? "" : ", ") + tool;
@@ -944,12 +944,7 @@ int run_desktop_runtime() {
             int style = static_cast<int>(replacement_style_from_name(privacy.replacement_style));
             const std::string labels[] = {tr(language, UiTextKey::StylePlaceholder), tr(language, UiTextKey::StyleMask),
                                           tr(language, UiTextKey::StyleFake), tr(language, UiTextKey::StyleRedact)};
-            if (begin_combo("##style", labels[style].c_str())) {
-                for (int index = 0; index < 4; ++index) {
-                    if (ImGui::Selectable(labels[index].c_str(), style == index)) privacy.replacement_style = style_names[index];
-                }
-                ImGui::EndCombo();
-            }
+            if (choice_control("##style", labels, style)) privacy.replacement_style = style_names[style];
             form_row(tr(language, UiTextKey::AnonymizeBeforeLlm), tr(language, UiTextKey::AnonymizeBeforeLlmHelp));
             toggle_switch("##before-llm", &privacy.anonymize_before_llm);
             form_row(tr(language, UiTextKey::AllowPageFetch));
@@ -2476,24 +2471,12 @@ int run_desktop_runtime() {
                     }
                     form_row(tr(ui_language, UiTextKey::Language));
                     int language = static_cast<int>(settings_draft.language);
-                    const char* languages[] = {"System", "English", "简体中文"};
-                    if (begin_combo("##language", languages[language])) {
-                        for (int index = 0; index < 3; ++index) {
-                            if (ImGui::Selectable(languages[index], language == index)) settings_draft.language = static_cast<UiLanguage>(index);
-                        }
-                        ImGui::EndCombo();
-                    }
+                    static const std::string languages[] = {"System", "English", "简体中文"};
+                    if (choice_control("##language", languages, language)) settings_draft.language = static_cast<UiLanguage>(language);
                     form_row(tr(ui_language, UiTextKey::Theme));
                     int theme = static_cast<int>(settings_draft.theme);
-                    const auto dark_label = tr(ui_language, UiTextKey::ThemeDark);
-                    const auto light_label = tr(ui_language, UiTextKey::ThemeLight);
-                    const char* themes[] = {dark_label.c_str(), light_label.c_str()};
-                    if (begin_combo("##theme", themes[theme])) {
-                        for (int index = 0; index < 2; ++index) {
-                            if (ImGui::Selectable(themes[index], theme == index)) settings_draft.theme = static_cast<UiTheme>(index);
-                        }
-                        ImGui::EndCombo();
-                    }
+                    const std::string themes[] = {tr(ui_language, UiTextKey::ThemeDark), tr(ui_language, UiTextKey::ThemeLight)};
+                    if (choice_control("##theme", themes, theme)) settings_draft.theme = static_cast<UiTheme>(theme);
                     form_row(tr(ui_language, UiTextKey::Opacity));
                     if (ImGui::SliderFloat("##opacity", &settings_draft.window_opacity, 0.55F, 1.0F, "%.2f") &&
                         !platform->set_popup_opacity(settings_draft.window_opacity)) glfwSetWindowOpacity(window, settings_draft.window_opacity);
