@@ -158,7 +158,7 @@ bool draw_hotkey_editor(const char* id, std::string& value, HotkeyEditorState& s
         state.capturing = !state.capturing;
     }
     if (highlighted) ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(language, UiTextKey::ChangeShortcut).c_str());
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", tr(language, UiTextKey::ChangeShortcut).c_str());
     ImGui::SameLine();
     ImGui::BeginDisabled(value == fallback);
     if (icon_button("reset", icon::kUndo, tr(language, UiTextKey::RestoreDefaults) + ": " + fallback)) {

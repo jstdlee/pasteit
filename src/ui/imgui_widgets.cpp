@@ -83,7 +83,7 @@ bool copyable_text(std::string_view value, bool wrapped) {
     if (clicked) {
         ImGui::SetClipboardText(text.c_str());
     }
-    if (ImGui::IsItemHovered()) {
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
         ImGui::SetTooltip("Click to copy");
     }
     return clicked;
@@ -130,7 +130,7 @@ bool input_text_string(const char* label, std::string& value, bool multiline,
                               ImVec2(label_width, 0.0F))) {
             ImGui::SetClipboardText(visible_label.c_str());
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to copy");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("Click to copy");
         if (!multiline) {
             ImGui::SameLine();
         }

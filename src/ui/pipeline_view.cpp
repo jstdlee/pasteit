@@ -145,7 +145,7 @@ void draw_pipeline_view(PipelineViewState& state, const PipelineOptions& options
             if (ImGui::Button((label + "##chip").c_str())) insert_stage(text);
             ImGui::PopStyleVar();
             if (color) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", tooltip.c_str());
         };
         static const char* quick[] = {"sort", "sort -nr", "uniq -c", "wc -l", "head -n 10", "grep -i ''", "cut -d , -f 1",
                                       "sed 's/a/b/g'", "tr a-z A-Z", "column", "anonymize"};

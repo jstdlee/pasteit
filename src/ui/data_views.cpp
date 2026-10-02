@@ -1131,7 +1131,7 @@ void draw_chart_view(ChartViewState& state, const DataViewHost& host, UiLanguage
                 }
                 ImGui::EndCombo();
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(language, UiTextKey::Operator).c_str());
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", tr(language, UiTextKey::Operator).c_str());
         }
         const auto available = ImGui::GetContentRegionAvail();
         const float chart_height = std::max(160.0F, available.y - footer_height() - ImGui::GetFrameHeightWithSpacing() - 8.0F);

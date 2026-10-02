@@ -41,6 +41,8 @@
 #include "util/utf8.hpp"
 #include "ui/data_views.hpp"
 #include "ui/diff_view.hpp"
+#include "ui/command_palette.hpp"
+#include "ui/ui_state.hpp"
 #include "executor/utility_executor.hpp"
 #include "ui/pipeline_view.hpp"
 #include "ui/privacy_view.hpp"
@@ -563,7 +565,8 @@ int run_desktop_runtime() {
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    GLFWwindow* window = glfwCreateWindow(660, 520, "PasteIt", nullptr, nullptr);
+    UiLayoutState ui_layout = load_ui_layout(app_data_dir() / "ui-state.json");
+    GLFWwindow* window = glfwCreateWindow(ui_layout.popup_width, 520, "PasteIt", nullptr, nullptr);
     if (window == nullptr) {
         glfwTerminate();
         std::cerr << "Failed to create PasteIt popup window\n";
@@ -670,6 +673,9 @@ int run_desktop_runtime() {
     MarkdownViewState markdown_view;
     // Text actions previewed in the input, and the side-by-side comparison.
     DiffViewState diff_view;
+    CommandPaletteState command_palette;
+    bool hide_popup_requested = false;
+    int popup_resize_edge = 0;  // -1 left, 1 right while the popup's side is dragged
     std::string diff_action_id;
     std::string previewing_action_id;
     PipelineViewState pipeline_view;
@@ -1892,6 +1898,39 @@ int run_desktop_runtime() {
                                 page_consent.has_value();
         if (modal_open) ImGui::BeginDisabled();
         const auto& theme_palette = palette();
+        // The popup's left and right edges resize it (its height follows its
+        // content). The width is remembered.
+        {
+            const float edge = 6.0F * ImGui::GetStyle().FontScaleDpi;
+            const ImVec2 mouse = ImGui::GetIO().MousePos;
+            const bool inside_y = mouse.y >= main_viewport->Pos.y && mouse.y <= main_viewport->Pos.y + main_viewport->Size.y;
+            const float left = main_viewport->Pos.x;
+            const float right = main_viewport->Pos.x + main_viewport->Size.x;
+            const int near_edge = !inside_y ? 0 : mouse.x >= left && mouse.x < left + edge ? -1 : mouse.x <= right && mouse.x > right - edge ? 1 : 0;
+            const bool over_popup = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+            if (near_edge != 0 && over_popup && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) popup_resize_edge = near_edge;
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) && popup_resize_edge != 0) {
+                popup_resize_edge = 0;
+                int width = 0;
+                int height = 0;
+                glfwGetWindowSize(window, &width, &height);
+                ui_layout.popup_width = width;
+                (void)save_ui_layout(app_data_dir() / "ui-state.json", ui_layout);
+            }
+            if ((near_edge != 0 && over_popup) || popup_resize_edge != 0) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            if (popup_resize_edge != 0 && ImGui::GetIO().MouseDelta.x != 0.0F) {
+                int x = 0;
+                int y = 0;
+                int width = 0;
+                int height = 0;
+                glfwGetWindowPos(window, &x, &y);
+                glfwGetWindowSize(window, &width, &height);
+                const int delta = static_cast<int>(ImGui::GetIO().MouseDelta.x) * popup_resize_edge;
+                const int resized = std::clamp(width + delta, 480, 1600);
+                if (popup_resize_edge < 0) glfwSetWindowPos(window, x + (width - resized), y);
+                glfwSetWindowSize(window, resized, height);
+            }
+        }
         // Dragging anywhere on the tab row moves the undecorated window. Mouse
         // positions are desktop coordinates with viewports on, so moving the
         // window does not feed back into the delta.
@@ -1900,7 +1939,8 @@ int run_desktop_runtime() {
             const ImVec2 mouse = ImGui::GetIO().MousePos;
             const bool in_row = mouse.y >= main_viewport->Pos.y && mouse.y <= row_bottom &&
                                 mouse.x >= main_viewport->Pos.x && mouse.x <= main_viewport->Pos.x + main_viewport->Size.x;
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && in_row && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && in_row && popup_resize_edge == 0 &&
+                ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
                 popup_drag_armed = true;
             }
             if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) popup_drag_armed = false;
@@ -1915,6 +1955,114 @@ int run_desktop_runtime() {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
             } else if (in_row && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered()) {
                 ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+            }
+        }
+        // Theme and language from the palette or a shortcut apply and save at
+        // once, without touching other unsaved settings.
+        const auto save_appearance = [&](std::optional<UiTheme> theme, std::optional<UiLanguage> language) {
+            if (theme) settings.theme = settings_draft.theme = *theme;
+            if (language) settings.language = settings_draft.language = *language;
+            std::string error;
+            if (!settings_store.save(settings, error)) settings_status = error;
+        };
+        static constexpr UiTheme kThemeCycle[] = {UiTheme::System, UiTheme::Light, UiTheme::Dark, UiTheme::TokyoNight};
+        const auto next_theme = [&] {
+            const auto at = std::find(std::begin(kThemeCycle), std::end(kThemeCycle), settings_draft.theme);
+            return at == std::end(kThemeCycle) || at + 1 == std::end(kThemeCycle) ? kThemeCycle[0] : *(at + 1);
+        };
+        // App shortcuts (the global hotkey only opens the popup).
+        if (!modal_open && !hotkey_editor_state.capturing) {
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_P) || ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_K) ||
+                ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_P)) {
+                open_command_palette(command_palette);
+            }
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Comma)) main_tab = static_cast<int>(MainTab::Settings);
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_T)) save_appearance(next_theme(), std::nullopt);
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_L)) {
+                const auto ask = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
+                    [](const ActionInstance& action) { return action.kind == ActionKind::CustomPrompt && action.enabled; });
+                if (ask != active_batch.catalog.actions.end()) activated_action = ask->id;
+            }
+        }
+        // Command registry: the palette lists it; ids name what run_command does.
+        if (command_palette.open) {
+            std::vector<PaletteCommand> commands;
+            const auto add = [&](std::string id, UiTextKey label, const char* glyph, std::string keys, UiTextKey group,
+                                 std::string detail = {}) {
+                commands.push_back({.id = std::move(id), .label = tr(ui_language, label), .english = tr(UiLanguage::English, label),
+                                    .group = tr(ui_language, group), .glyph = glyph, .keys = std::move(keys), .detail = std::move(detail)});
+            };
+            add("go.smart", UiTextKey::SmartActions, icon::kZap, "", UiTextKey::GroupGoTo);
+            add("go.paths", UiTextKey::RecentPaths, icon::kFolder, "", UiTextKey::GroupGoTo);
+            add("go.history", UiTextKey::ClipboardHistory, icon::kHistory, "", UiTextKey::GroupGoTo);
+            add("go.settings", UiTextKey::Settings, icon::kSettings, "Ctrl+,", UiTextKey::GroupGoTo);
+            struct SettingsPageEntry { SettingsPage page; const char* glyph; UiTextKey label; };
+            static constexpr SettingsPageEntry pages[] = {
+                {SettingsPage::Home, icon::kBook, UiTextKey::Home}, {SettingsPage::General, icon::kSliders, UiTextKey::General},
+                {SettingsPage::Ranking, icon::kGauge, UiTextKey::Djev}, {SettingsPage::Llm, icon::kAi, UiTextKey::GeneralLlm},
+                {SettingsPage::Prompts, icon::kFileText, UiTextKey::PromptTemplates}, {SettingsPage::FastActions, icon::kZap, UiTextKey::FastActions},
+                {SettingsPage::Pipelines, icon::kPipeline, UiTextKey::Pipeline}, {SettingsPage::Privacy, icon::kShield, UiTextKey::Privacy},
+                {SettingsPage::Usage, icon::kChart, UiTextKey::UsageInsights}};
+            for (const auto& page : pages) {
+                commands.push_back({.id = "settings." + std::to_string(static_cast<int>(page.page)),
+                                    .label = tr(ui_language, UiTextKey::Settings) + " \xE2\x80\xBA " + tr(ui_language, page.label),
+                                    .english = "Settings " + tr(UiLanguage::English, page.label),
+                                    .group = tr(ui_language, UiTextKey::GroupGoTo), .glyph = page.glyph});
+            }
+            // Everything the current clipboard offers, not only the top cards.
+            for (const auto& action : active_batch.catalog.actions) {
+                if (!action.enabled) continue;
+                commands.push_back({.id = "action." + action.id, .label = action.label, .english = action.label,
+                                    .group = tr(ui_language, UiTextKey::GroupActions), .glyph = action_icon(action.kind),
+                                    .detail = action.description});
+            }
+            add("theme.cycle", UiTextKey::SwitchTheme, icon::kPalette, "Ctrl+Shift+T", UiTextKey::GroupAppearance);
+            const std::pair<UiTheme, std::string> themes[] = {
+                {UiTheme::System, tr(ui_language, UiTextKey::ThemeSystem)}, {UiTheme::Light, tr(ui_language, UiTextKey::ThemeLight)},
+                {UiTheme::Dark, tr(ui_language, UiTextKey::ThemeDark)}, {UiTheme::TokyoNight, "Tokyo Night"}};
+            for (const auto& [theme, name] : themes) {
+                commands.push_back({.id = "theme." + std::to_string(static_cast<int>(theme)),
+                                    .label = tr(ui_language, UiTextKey::Theme) + ": " + name, .english = "Theme " + name,
+                                    .group = tr(ui_language, UiTextKey::GroupAppearance), .glyph = icon::kPalette,
+                                    .enabled = settings_draft.theme != theme});
+            }
+            const std::pair<UiLanguage, const char*> languages[] = {
+                {UiLanguage::System, "System"}, {UiLanguage::English, "English"}, {UiLanguage::SimplifiedChinese, "简体中文"}};
+            for (const auto& [language, name] : languages) {
+                commands.push_back({.id = "language." + std::to_string(static_cast<int>(language)),
+                                    .label = tr(ui_language, UiTextKey::Language) + ": " + name, .english = std::string{"Language "} + name,
+                                    .group = tr(ui_language, UiTextKey::GroupAppearance), .glyph = icon::kLanguage,
+                                    .enabled = settings_draft.language != language});
+            }
+            for (const auto& item : clipboard_store.items_newest_first(15)) {
+                auto line = item.preview.substr(0, item.preview.find('\n'));
+                if (line.size() > 90) line = utf8_prefix_bytes(line, 90) + "\xE2\x80\xA6";
+                commands.push_back({.id = "history." + item.ref, .label = line, .english = line,
+                                    .group = tr(ui_language, UiTextKey::GroupHistory), .glyph = icon::kHistory,
+                                    .detail = human_size(item.size_bytes)});
+            }
+            add("app.check", UiTextKey::CheckProvidersNow, icon::kRefresh, "", UiTextKey::GroupApp);
+            add("app.hide", UiTextKey::HidePopup, icon::kClose, "Esc", UiTextKey::GroupApp);
+            if (const auto chosen = draw_command_palette(command_palette, commands, ui_language); !chosen.empty()) {
+                const auto suffix = [&](std::string_view prefix) { return chosen.substr(prefix.size()); };
+                if (chosen == "go.smart") main_tab = static_cast<int>(MainTab::Smart);
+                else if (chosen == "go.paths") main_tab = static_cast<int>(MainTab::Paths);
+                else if (chosen == "go.history") main_tab = static_cast<int>(MainTab::History);
+                else if (chosen == "go.settings") main_tab = static_cast<int>(MainTab::Settings);
+                else if (chosen.starts_with("settings.")) {
+                    main_tab = static_cast<int>(MainTab::Settings);
+                    settings_page = static_cast<SettingsPage>(std::stoi(suffix("settings.")));
+                } else if (chosen.starts_with("action.")) {
+                    main_tab = static_cast<int>(MainTab::Smart);
+                    activated_action = suffix("action.");
+                } else if (chosen == "theme.cycle") save_appearance(next_theme(), std::nullopt);
+                else if (chosen.starts_with("theme.")) save_appearance(static_cast<UiTheme>(std::stoi(suffix("theme."))), std::nullopt);
+                else if (chosen.starts_with("language.")) save_appearance(std::nullopt, static_cast<UiLanguage>(std::stoi(suffix("language."))));
+                else if (chosen.starts_with("history.")) {
+                    main_tab = static_cast<int>(MainTab::History);
+                    (void)view_clipboard_history_item(clipboard_history_state, suffix("history."));
+                } else if (chosen == "app.check") health_recheck_requested = true;
+                else if (chosen == "app.hide") hide_popup_requested = true;
             }
         }
         const auto& theme_fonts = ui_fonts();
@@ -1937,8 +2085,22 @@ int run_desktop_runtime() {
             for (const auto& indicator : indicators) {
                 total += dot_radius * 2.0F + 5.0F + ImGui::CalcTextSize(indicator.name).x + gap * 1.5F;
             }
-            float x = tab_row_right - total + gap * 1.5F;
-            const float row_height = ImGui::GetFrameHeight() + 4.0F * ImGui::GetStyle().FontScaleDpi;
+            // Utility cluster (top right, same place in every view): search, then settings.
+            const float scale = ImGui::GetStyle().FontScaleDpi;
+            const float icon_gap = 4.0F * scale;
+            const float cluster_width = icon_buttons_width(2) - ImGui::GetStyle().ItemSpacing.x + icon_gap;
+            const float cluster_x = tab_row_right - cluster_width;
+            float x = cluster_x - 10.0F * scale - total + gap * 1.5F;
+            const float row_height = ImGui::GetFrameHeight() + 4.0F * scale;
+            ImGui::SetCursorScreenPos(ImVec2(cluster_x, tab_row_pos.y + (row_height - ImGui::GetFrameHeight()) * 0.5F));
+            if (icon_button("cluster-search", icon::kSearch, tr(ui_language, UiTextKey::SearchCommand), command_palette.open, "Ctrl+P")) {
+                open_command_palette(command_palette);
+            }
+            ImGui::SameLine(0.0F, icon_gap);
+            const bool settings_open = main_tab == static_cast<int>(MainTab::Settings);
+            if (icon_button("cluster-settings", icon::kSettings, tr(ui_language, UiTextKey::Settings), settings_open, "Ctrl+,")) {
+                main_tab = settings_open ? static_cast<int>(MainTab::Smart) : static_cast<int>(MainTab::Settings);
+            }
             for (const auto& indicator : indicators) {
                 const auto& health = *indicator.health;
                 const ImVec4 color = health.state == ProviderHealthState::Ok   ? pal.success
@@ -1979,8 +2141,8 @@ int run_desktop_runtime() {
                 with_icon(icon::kZap, tr(ui_language, UiTextKey::SmartActions)),
                 with_icon(icon::kFolder, tr(ui_language, UiTextKey::RecentPaths)),
                 with_icon(icon::kHistory, tr(ui_language, UiTextKey::ClipboardHistory)),
-                with_icon(icon::kSettings, tr(ui_language, UiTextKey::Settings)),
             };
+            // Settings lives in the utility cluster; while it is open no segment is selected.
             (void)segmented_control("main-tabs", tab_labels, main_tab);
             ImGui::Spacing();
         }
@@ -2020,7 +2182,7 @@ int run_desktop_runtime() {
                                                         ImGui::GetColorU32(dot));
             ImGui::SetCursorScreenPos(ImVec2(at.x + 12.0F, at.y));
             ImGui::TextColored(theme_palette.text_muted, "%s", state_text.c_str());
-            if (ImGui::IsItemHovered() && !decision_status.empty()) ImGui::SetTooltip("%s", decision_status.c_str());
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip) && !decision_status.empty()) ImGui::SetTooltip("%s", decision_status.c_str());
             ImGui::PopFont();
         }
 
@@ -2080,7 +2242,7 @@ int run_desktop_runtime() {
                 // Multiline ImGui input: Enter adds a line, Ctrl+Enter validates.
                 (void)input_text_string("##preview-edit", preview_edit_text, true, 0, preview_lines_height, -button_room);
                 const bool left_after_edit = ImGui::IsItemDeactivatedAfterEdit();
-                if (ImGui::IsItemHovered() && !ImGui::IsItemActive()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::EditHint).c_str());
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip) && !ImGui::IsItemActive()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::EditHint).c_str());
                 ImGui::PopStyleVar(2);
                 ImGui::PopStyleColor();
                 if (left_after_edit) preview_edit_apply_requested = true;
@@ -2109,7 +2271,10 @@ int run_desktop_runtime() {
             }
             if (custom_action != active_batch.catalog.actions.end()) {
                 ImGui::SetCursorPos(ImVec2(column_x, corner_top + side + 4.0F));
-                if (icon_button("preview-ask", icon::kAi, tr(ui_language, UiTextKey::AskLlmTitle))) activated_action = custom_action->id;
+                // The feature highlight: accent-tinted, its own glyph, a shortcut.
+                if (icon_button("preview-ask", icon::kAi, tr(ui_language, UiTextKey::AskLlmTitle), true, "Ctrl+L")) {
+                    activated_action = custom_action->id;
+                }
             }
             if (edited) {
                 ImGui::SetCursorPos(ImVec2(column_x - side - 6.0F, corner_top));
@@ -2352,7 +2517,7 @@ int run_desktop_runtime() {
             };
             const float body_height = ImGui::GetContentRegionAvail().y - footer_height();
             // Section list.
-            ImGui::BeginChild("settings-nav", ImVec2(158.0F * ImGui::GetStyle().FontScaleDpi, body_height), false);
+            ImGui::BeginChild("settings-nav", ImVec2(ui_layout.settings_sidebar * ImGui::GetStyle().FontScaleDpi, body_height), false);
             for (const auto& entry : sections) {
                 const bool selected = settings_page == entry.page;
                 if (nav_item(tr(ui_language, entry.label).c_str(), with_icon(entry.glyph, tr(ui_language, entry.label)),
@@ -2361,12 +2526,13 @@ int run_desktop_runtime() {
                 }
             }
             ImGui::EndChild();
-            ImGui::SameLine();
-            {
-                const ImVec2 at = ImGui::GetCursorScreenPos();
-                ImGui::GetWindowDrawList()->AddLine(ImVec2(at.x, at.y), ImVec2(at.x, at.y + body_height),
-                                                    ImGui::GetColorU32(ImGuiCol_Separator));
+            ImGui::SameLine(0.0F, 0.0F);
+            // Sidebar | page splitter; the width is saved when the drag ends.
+            (void)vertical_splitter("##settings-splitter", ui_layout.settings_sidebar, 120.0F, 320.0F, 158.0F, body_height);
+            if (ImGui::IsItemDeactivated() || (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))) {
+                (void)save_ui_layout(app_data_dir() / "ui-state.json", ui_layout);
             }
+            ImGui::SameLine(0.0F, 0.0F);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0F, 6.0F));
             ImGui::BeginChild("settings-page", ImVec2(0.0F, body_height), ImGuiChildFlags_AlwaysUseWindowPadding);
             ImGui::PopStyleVar();
@@ -2528,9 +2694,12 @@ int run_desktop_runtime() {
                     static const std::string languages[] = {"System", "English", "简体中文"};
                     if (choice_control("##language", languages, language)) settings_draft.language = static_cast<UiLanguage>(language);
                     form_row(tr(ui_language, UiTextKey::Theme));
-                    int theme = static_cast<int>(settings_draft.theme);
-                    const std::string themes[] = {tr(ui_language, UiTextKey::ThemeDark), tr(ui_language, UiTextKey::ThemeLight)};
-                    if (choice_control("##theme", themes, theme)) settings_draft.theme = static_cast<UiTheme>(theme);
+                    // Shown System, Light, Dark, Tokyo Night; stored as UiTheme values.
+                    static constexpr UiTheme theme_order[] = {UiTheme::System, UiTheme::Light, UiTheme::Dark, UiTheme::TokyoNight};
+                    int theme = static_cast<int>(std::find(std::begin(theme_order), std::end(theme_order), settings_draft.theme) - std::begin(theme_order));
+                    const std::string themes[] = {tr(ui_language, UiTextKey::ThemeSystem), tr(ui_language, UiTextKey::ThemeLight),
+                                                  tr(ui_language, UiTextKey::ThemeDark), "Tokyo Night"};
+                    if (choice_control("##theme", themes, theme)) settings_draft.theme = theme_order[theme];
                     form_row(tr(ui_language, UiTextKey::Opacity));
                     if (ImGui::SliderFloat("##opacity", &settings_draft.window_opacity, 0.55F, 1.0F, "%.2f") &&
                         !platform->set_popup_opacity(settings_draft.window_opacity)) glfwSetWindowOpacity(window, settings_draft.window_opacity);
@@ -2646,7 +2815,7 @@ int run_desktop_runtime() {
                         ImGui::AlignTextToFramePadding();
                         // Built-in templates are marked by a muted name and a tooltip.
                         ImGui::TextColored(row.built_in ? pal.text_muted : pal.text, "%s", row.name.c_str());
-                        if (ImGui::IsItemHovered()) {
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
                             char temperature[32];
                             std::snprintf(temperature, sizeof temperature, "%.1f", row.temperature);
                             ImGui::SetTooltip("%s%s%s %s", row.built_in ? tr(ui_language,UiTextKey::BuiltIn).c_str() : "",
@@ -2655,7 +2824,7 @@ int run_desktop_runtime() {
                         ImGui::TableNextColumn();
                         bool thinking = row.thinking;
                         if (toggle_switch("##thinking", &thinking)) { std::string error; service.set_thinking(row.id, thinking, error); }
-                        if (ImGui::IsItemHovered()) {
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
                             ImGui::SetTooltip("%s\n%s", tr(ui_language, UiTextKey::PromptThinking).c_str(),
                                               tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                         }
@@ -2679,7 +2848,7 @@ int run_desktop_runtime() {
                 if (ImGui::Button(with_icon(icon::kPlus, tr(ui_language,UiTextKey::NewTemplate)).c_str())) { std::string error; if (const auto created = service.create("New Prompt", "Transform {text}", 0.2, error)) { prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); begin_prompt_template_edit(prompt_panel_model, created->id); } }
                 ImGui::SameLine();
                 if (ImGui::Button(with_icon(icon::kUndo, tr(ui_language,UiTextKey::RestoreDefaultTemplates)).c_str())) { service.restore_defaults(); prompt_panel_model = build_prompt_templates_panel_model(settings_draft.prompt_templates); }
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::RestoreDefaultTemplatesHelp).c_str());
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::RestoreDefaultTemplatesHelp).c_str());
                 // Instructions used by Optimize with LLM in the template editor.
                 separator_heading(tr(ui_language, UiTextKey::PromptOptimizerInstructions));
                 begin_group("settings-prompt-optimizer");
@@ -2720,7 +2889,7 @@ int run_desktop_runtime() {
                             if (ImGui::SliderFloat("##template-temperature", &temperature, 0.0F, 2.0F, "%.1f")) prompt_panel_model.draft->temperature = temperature;
                             form_row(tr(ui_language,UiTextKey::ThinkingColumn));
                             toggle_switch(tr(ui_language,UiTextKey::PromptThinking).c_str(), &prompt_panel_model.draft->thinking);
-                            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
+                            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                             end_form();
                         }
                         auto& draft = *prompt_panel_model.draft;
@@ -2958,8 +3127,9 @@ int run_desktop_runtime() {
                 main_viewport->Pos, ImVec2(main_viewport->Pos.x + main_viewport->Size.x, main_viewport->Pos.y + main_viewport->Size.y),
                 ImGui::GetColorU32(ImGuiCol_ModalWindowDimBg));
         }
-        if (!modal_open && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-            !ImGui::GetIO().WantTextInput && !hotkey_editor_state.capturing && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if ((hide_popup_requested || (!modal_open && !command_palette.open && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            !ImGui::GetIO().WantTextInput && !hotkey_editor_state.capturing && ImGui::IsKeyPressed(ImGuiKey_Escape)))) {
+            hide_popup_requested = false;
             popup_visible = false;
             const bool keep_visible=has_any_auxiliary_window();
             if (!keep_visible) {
@@ -3036,7 +3206,7 @@ int run_desktop_runtime() {
                     }
                 }
                 toggle_switch(tr(ui_language, UiTextKey::PromptThinking).c_str(), &custom_prompt_dialog.thinking);
-                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", tr(ui_language, UiTextKey::PromptThinkingHelp).c_str());
                 const bool can_run = !custom || !trim(custom_prompt_dialog.prompt).empty();
                 const auto privacy_note = settings.privacy.anonymize_before_llm ? tr(ui_language, UiTextKey::AskLlmHelp) : std::string{};
                 const int clicked = footer_buttons({{tr(ui_language, UiTextKey::Cancel)}, {tr(ui_language, UiTextKey::Generate), true, can_run}},

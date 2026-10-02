@@ -120,7 +120,8 @@ struct PrivacySettings {
     bool operator==(const PrivacySettings&) const = default;
 };
 
-enum class UiTheme { Dark = 0, Light = 1 };
+// Stored as numbers; System follows the desktop's light/dark preference.
+enum class UiTheme { Dark = 0, Light = 1, TokyoNight = 2, System = 3 };
 
 struct AppSettings {
     int schema_version = 1;

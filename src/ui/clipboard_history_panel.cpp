@@ -141,7 +141,7 @@ ClipboardHistoryCommand render_clipboard_history_panel(ClipboardHistoryState& st
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             draw_content_type_icon(row.kind);
-            if (ImGui::IsItemHovered()) {
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
                 ImGui::SetTooltip("%s", row.type_label.c_str());
             }
             ImGui::TableNextColumn();

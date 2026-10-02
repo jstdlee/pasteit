@@ -80,7 +80,8 @@ SettingsLoadResult SettingsStore::load() const {
     s.schema_version = static_cast<int>(number_value(root->get("schema_version"), s.schema_version));
     s.language = static_cast<UiLanguage>(static_cast<int>(number_value(root->get("language"), 0)));
     s.window_opacity = static_cast<float>(number_value(root->get("window_opacity"), s.window_opacity));
-    s.theme = number_value(root->get("theme"), 0) == 1 ? UiTheme::Light : UiTheme::Dark;
+    const auto theme = static_cast<int>(number_value(root->get("theme"), 0));
+    s.theme = theme >= 0 && theme <= 3 ? static_cast<UiTheme>(theme) : UiTheme::Dark;
     s.global_hotkey = string_value(root->get("global_hotkey"), s.global_hotkey);
     s.default_image_directory = path_from_utf8_string(string_value(
         root->get("default_image_directory"), path_to_utf8_string(s.default_image_directory)));

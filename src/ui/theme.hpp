@@ -34,6 +34,15 @@ struct UiPalette {
     ImVec4 success;
     ImVec4 warning;
     ImVec4 danger;
+    ImVec4 divider;      // 1 px between rows
+    ImVec4 pill;         // raised surfaces: selected segment, push buttons
+    ImVec4 pill_border;
+    ImVec4 pill_hover;
+    ImVec4 pill_active;
+    ImVec4 field_hover;
+    ImVec4 popup;
+    ImVec4 accent_2;     // second accent (gradients, the feature highlight ring)
+    bool light = false;  // washes are black over light themes, white over dark ones
 };
 
 struct UiFonts {
@@ -52,7 +61,11 @@ UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates,
 const char* category_icon(ActionCategory category);
 // Text with a leading icon when the icon font is available.
 std::string with_icon(const char* glyph, std::string_view text);
+// System resolves through system_prefers_dark().
 void apply_theme(UiTheme theme, float dpi_scale);
+// The desktop's light/dark preference: Windows AppsUseLightTheme, the
+// freedesktop/GNOME color-scheme on Linux. Dark when unknown.
+bool system_prefers_dark();
 const UiPalette& palette();
 const UiFonts& ui_fonts();
 
@@ -64,7 +77,15 @@ void draw_category_icon(ImDrawList* draw, ImVec2 center, float size, ActionCateg
 bool icon_cell(const char* glyph, ImVec4 color, float size = 18.0F);
 // Square, borderless toolbar button (frame height) with a tooltip; falls
 // back to the text label. `active` shows it pressed in, for toggles.
-bool icon_button(const char* id, const char* glyph, const std::string& tooltip, bool active = false);
+bool icon_button(const char* id, const char* glyph, const std::string& tooltip, bool active = false,
+                 std::string_view keys = {});
+
+// Seconds the pointer rests on a control before its tooltip shows.
+inline constexpr float kTooltipDelaySeconds = 2.0F;
+// Tooltip with the action's shortcut drawn as key chips: "Search  [Ctrl] [P]".
+void tooltip_with_keys(std::string_view text, std::string_view keys = {});
+// Inline key chips for "Ctrl+Shift+P"-style shortcuts.
+void key_chips(std::string_view keys);
 // Width of `count` icon buttons laid out with SameLine().
 float icon_buttons_width(int count);
 
@@ -134,6 +155,12 @@ bool segmented_control(const char* id, std::span<const std::string> labels, int&
 // A pick-one setting: compact segments when every option fits the available
 // width, otherwise a dropdown. Returns true when the selection changed.
 bool choice_control(const char* id, std::span<const std::string> labels, int& selected);
+
+// Vertical splitter between two panes: drag to resize `size` (logical px,
+// clamped to [min_size, max_size]), double-click to reset. Draws a 1 px
+// divider that turns accent while hovered or dragged. Returns true while it
+// changes the size.
+bool vertical_splitter(const char* id, float& size, float min_size, float max_size, float default_size, float height);
 
 // Rounded group box that sizes to its content. Always pair with end_group().
 bool begin_group(const char* id);

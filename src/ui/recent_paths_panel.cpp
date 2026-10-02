@@ -46,7 +46,7 @@ void draw_path_type_icon(const RecentPathRow& row) {
                       ImVec2(origin.x + 16.0F, origin.y + 6.0F), accent, 1.5F);
     }
     ImGui::Dummy(size);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", row.type_label.c_str());
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", row.type_label.c_str());
 }
 
 void detail_text(const char* label, const std::string& value) {
@@ -88,7 +88,7 @@ RecentPathCommand render_recent_paths_panel(RecentPathsState& state, const Recen
                 command = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ? open_recent_path(model, row.ref)
                                                                             : view_recent_path(state, row.ref);
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click for details \xC2\xB7 double-click to open");
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("Click for details \xC2\xB7 double-click to open");
             ImGui::TableNextColumn();
             copyable_text(row.source);
             ImGui::TableNextColumn();

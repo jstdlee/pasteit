@@ -450,7 +450,7 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
             if (selected) ImGui::PushStyleColor(ImGuiCol_Button, palette().accent_soft);
             if (ImGui::Button(info.label)) state.active_tool = info.tool;
             if (selected) ImGui::PopStyleColor();
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s  (%s)", info.label, info.hint);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s  (%s)", info.label, info.hint);
         }
         ImGui::SameLine(0.0F, 14.0F);
         for (std::size_t index = 0; index < std::size(kSwatches); ++index) {
@@ -480,7 +480,7 @@ void draw_image_annotation_panel(ImageAnnotationPanelState& state,
         }
         ImGui::SameLine();
         if (ImGui::Button(with_icon(icon::kUndo, tr(UiTextKey::Undo)).c_str())) (void)state.document.undo();
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Ctrl+Z");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("Ctrl+Z");
         ImGui::SameLine();
         if (ImGui::Button(with_icon(icon::kTrash, tr(UiTextKey::Clear)).c_str())) state.document.clear();
         ImGui::SameLine();

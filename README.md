@@ -173,6 +173,12 @@ Configuration:
 - Old settings pointing at the retired AutoJev default (`:8000`, model `autojev`) are migrated automatically.
 - Requests time out after 30 s, and the local fallback ranking is shown meanwhile.
 
+**Cloudflare Clef.** [Clef](https://blog.cloudflare.com/clef-decision-models) (`@cf/cloudflare/clef`, and the faster `@cf/cloudflare/clef-flash`) speaks the same protocol on Workers AI and works as the Jev endpoint:
+
+- Endpoint: `https://api.cloudflare.com/client/v4/accounts/<account-id>/ai/run/@cf/cloudflare/clef` (used as it is, no `/v1/systemone` suffix).
+- Model: `clef`; API key: a Cloudflare API token with Workers AI access.
+- PasteIt sends Clef the strict body (`model`, `state`, `questions` only) and reads the answer from Workers AI's `result` envelope.
+
 ### OpenAI-compatible LLM (`/v1/chat/completions`)
 
 Any OpenAI-compatible server works: OpenAI, OpenCode, vLLM, llama.cpp, Ollama, or a local diffusion LLM.
@@ -182,7 +188,8 @@ Any OpenAI-compatible server works: OpenAI, OpenCode, vLLM, llama.cpp, Ollama, o
 - A server that rejects `temperature` gets one retry without it, and PasteIt remembers that endpoint.
 - OpenCode Go endpoints get a per-request `x-opencode-session` header.
 - Settings → Home shows both providers, each with a one-click test.
-- **Prompt templates** can be edited in Settings. In the editor, **Optimize with LLM** rewrites a rough draft into a clear, precise prompt with an explicit output format, keeping every `{placeholder}` (and using `{text}` once); Revert restores the draft. Its instructions are the *Prompt optimizer* field under Settings → General LLM, saved in `settings.json` with the other LLM settings.
+- **Prompt templates** can be edited in Settings → Prompt templates. In the editor, **Optimize with LLM** rewrites a rough draft into a clear, precise prompt with an explicit output format, keeping every `{placeholder}` (and using `{text}` once); Revert restores the draft. Built-in templates also have **Reset to default**, which puts back the shipped prompt. *Restore default templates* brings back deleted built-in templates and leaves edited ones alone.
+- The **Prompt optimizer** instructions sit under the template list on the same page, with their own reset.
 - Placeholders such as `{source_language}` / `{target_language}` are editable wherever a template runs (the action card, the Ask LLM dialog and Anonymize → Ask LLM), with a dropdown of common languages; values are remembered per template.
 
 ## Download
@@ -221,16 +228,41 @@ Prerequisites:
 - **Open, run, hide.** Copy something, press `Ctrl+Alt+F`, then click a card, press `1`–`8`, or use Up/Down and Enter. Escape hides the popup.
 - **Your own shortcut.** Settings > General > Global shortcut: click the button and press a new combination. PasteIt checks it live (is another application holding it?), against your GNOME or KDE keybindings, and against well-known system and editing shortcuts (Alt+Tab, Win+L, Ctrl+V, AltGr combinations on Windows). A shortcut that cannot work is refused; one that shadows something else is saved with a warning. The old shortcut stays active until the new one is registered.
 - **Edit before acting.** The preview is an editable text area: change the text, then press Ctrl+Enter or click ✓. The edit becomes a new clipboard item and the actions re-rank.
-- **Window behaviour.** The popup has no title bar; drag the tab row to move it. It is a normal window (not always-on-top). Sub-windows (confirmations, views, results) are owned by the popup and stay in front of it.
-- **Tabs.** Smart Actions, Recent Paths (frecency-ranked), Clipboard History (newest 50), and Settings.
-- **Provider status.** Two dots at the right of the tab row show whether Jev and the general LLM are reachable: green is OK, yellow is down, grey is not configured. They are re-checked every minute (Jev `GET /health`, the LLM `GET /v1/models`, so no tokens are spent) and right after settings change; hover for details, click to check now.
+- **Preview and compare.** Cards whose result is text (case changes, JSON pretty/minify/YAML, Base64, URL encoding, sort, …) show two icons. **Preview** puts the result in the text area, and the icon turns into *restore*. **Compare** opens a side-by-side diff: removed and added lines are tinted, and the changed characters are marked. The copy button next to the text area always copies what is shown, a preview included.
+- **Ask LLM** is the highlighted button in the text area's corner (`Ctrl+L`), under Copy.
+- **Base64.** Encode / decode chips appear under the text area when those actions are not already among the ranked cards.
+- **Window behaviour.** The popup has no title bar; drag the tab row to move it, and drag its left or right edge to make it wider (the width is remembered; the height follows the content). It is a normal window (not always-on-top). Sub-windows (confirmations, views, results) are owned by the popup and stay in front of it.
+- **Tabs.** Smart Actions, Recent Paths (frecency-ranked) and Clipboard History (newest 50).
+- **Top right.** Provider status, then search and settings, in the same place on every tab:
+  - Two dots show whether Jev and the general LLM are reachable: green is OK, yellow is down, grey is not configured. They are re-checked every minute (Jev `GET /health`, the LLM `GET /v1/models`, so no tokens are spent) and right after settings change; hover for details, click to check now.
+  - **Search** (`Ctrl+P`, also `Ctrl+K`) opens the command palette: every action the current clipboard offers (not only the top eight), the tabs and settings pages, theme and language, the last 15 clipboard items, and app commands. It matches the English name in any language, and an empty search lists recent commands first.
+  - **Settings** (`Ctrl+,`) opens the settings pages. The sidebar border drags to resize; double-click resets it.
+- **Shortcuts.**
+
+  | Keys | Action |
+  |---|---|
+  | `Ctrl+Alt+F` (configurable) | Open PasteIt from any application |
+  | `1`–`8`, Up/Down, Enter | Run a card |
+  | `Ctrl+P` / `Ctrl+K` | Search actions, settings and history |
+  | `Ctrl+,` | Settings |
+  | `Ctrl+L` | Ask LLM about the clipboard |
+  | `Ctrl+Shift+T` | Switch theme (System → Light → Dark → Tokyo Night) |
+  | `Ctrl+Enter` | Apply an edit of the preview text |
+  | `Esc` | Close the palette or a sub-window; hide the popup |
+
+- **Tooltips** appear after the pointer rests for two seconds, then at once while you move between controls; icon buttons show their shortcut.
 - **Settings pages.** Home (overview, provider tests, stats), General, Jev, General LLM, Prompt templates, Fast actions, Pipelines, Privacy, and Usage insights.
 - **Saving files.** Save, download, copy and move actions open a confirmation window with an editable destination and a generated file name.
 
 ## Data views
 
 - **Table:**
-  - Sort, filter and hide columns, and show a statistics row (type, filled, distinct, sum/mean/min/max).
+  - The window has its own title bar: light icon tools at the right (header row, columns, find and replace, statistics, chart, summarize, formula, undo) and a close button in the top-right corner.
+  - **First row is header** can be switched on or off; off turns the header back into data and names the columns *Column 1…N*.
+  - **Columns:** rename, set the type (Auto, Text, Number, Date) and show or hide each column. Headers show a type icon; right-click a header for the same options. A Number type makes the column sort numerically and feed charts and summaries.
+  - **Find and replace** in one column or all of them, optionally only in the filtered rows, with **regular expressions** (`$1`, `$&` in the replacement) and match case. The number of matching cells updates as you type, and an invalid pattern shows its error.
+  - **Undo** reverts the last replace, header switch, type change or formula column.
+  - Sort, filter and show a statistics row (type, filled, distinct, sum/mean/min/max).
   - **Summarize** groups rows by a column and reduces the chosen value columns with **sum, avg, min, max or count**. The summary replaces the view, and Reset goes back.
   - **Formula** adds a computed number column `A + − × ÷ B`, where B is another column or a constant (for example `price × qty` or `ms ÷ 1000`).
   - Copy as Markdown, CSV, JSON or SQL `INSERT`.
@@ -286,5 +318,8 @@ The model adds a bounded bonus (≤ 0.20) to both the Jev and the fallback ranki
   - Zenity or KDialog is used for folder picking.
   - A non-fatal X error handler keeps a destroyed sub-window from ending the process.
 - **Windows:** the Win32 clipboard, WinHTTP, and native folder picker and focus adapters.
-- **Fonts:** Noto Sans CJK (regular and bold) with the Font Awesome Free (Solid) icon font merged in. The UI is in English and Simplified Chinese, with dark and light themes.
+- **Fonts:** Noto Sans CJK (regular and bold) with the Font Awesome Free 6 (Solid) icon font merged in.
+- **Themes:** System (follows the desktop's light/dark preference: GNOME `color-scheme` on Linux, `AppsUseLightTheme` on Windows), Light, Dark and Tokyo Night. A theme switch applies at once and is saved.
+- **Languages:** English and Simplified Chinese, or follow the system locale.
+- **Builds:** every release has Windows x64, Linux x86_64 and Linux arm64 zips, each built and tested in CI.
 - **Single instance:** a per-user lock prevents duplicate processes.

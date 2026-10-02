@@ -221,6 +221,8 @@ add_library(pasteit_core
     src/ui/theme.cpp
     src/ui/data_views.cpp
     src/ui/diff_view.cpp
+    src/ui/command_palette.cpp
+    src/ui/ui_state.cpp
     src/ui/pipeline_view.cpp
     src/ui/privacy_view.cpp
     src/ui/prompt_parameters.cpp
@@ -565,6 +567,10 @@ if (PASTEIT_BUILD_TESTS)
     add_executable(content_profile_test tests/content_profile_test.cpp)
     target_link_libraries(content_profile_test PRIVATE pasteit_core)
     add_test(NAME content_profile_test COMMAND content_profile_test)
+
+    add_executable(command_palette_test tests/command_palette_test.cpp)
+    target_link_libraries(command_palette_test PRIVATE pasteit_core)
+    add_test(NAME command_palette_test COMMAND command_palette_test)
 
     add_executable(text_diff_test tests/text_diff_test.cpp)
     target_link_libraries(text_diff_test PRIVATE pasteit_core)

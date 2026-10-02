@@ -9,7 +9,18 @@
 #include <cctype>
 #include <cfloat>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace pasteit {
 
@@ -38,6 +49,37 @@ std::string display_path(std::string_view path, std::size_t max_chars) {
 }
 
 #if defined(PASTEIT_HAS_DESKTOP_DEPS)
+
+bool system_prefers_dark() {
+#if defined(_WIN32)
+    DWORD light = 1;
+    DWORD size = sizeof light;
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                     L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &size) == ERROR_SUCCESS) {
+        return light == 0;
+    }
+    return true;
+#else
+    if (const char* gtk = std::getenv("GTK_THEME"); gtk != nullptr && std::strstr(gtk, ":dark") != nullptr) return true;
+    // GNOME 42+ and most freedesktop portals expose the preference here.
+    std::string answer;
+    if (FILE* pipe = popen("gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null", "r")) {
+        char buffer[128];
+        while (std::fgets(buffer, sizeof buffer, pipe) != nullptr) answer += buffer;
+        pclose(pipe);
+    }
+    if (answer.find("prefer-dark") != std::string::npos) return true;
+    if (answer.find("prefer-light") != std::string::npos) return false;
+    if (FILE* pipe = popen("gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null", "r")) {
+        char buffer[128];
+        answer.clear();
+        while (std::fgets(buffer, sizeof buffer, pipe) != nullptr) answer += buffer;
+        pclose(pipe);
+        if (!answer.empty()) return answer.find("dark") != std::string::npos || answer.find("Dark") != std::string::npos;
+    }
+    return true;
+#endif
+}
 
 namespace {
 
@@ -212,37 +254,42 @@ const UiPalette& palette() {
 // group boxes on a slightly darker window. Controls stay neutral on hover;
 // the accent marks selection, focus and the default button only.
 void apply_theme(UiTheme theme, float dpi_scale) {
-    const bool light = theme == UiTheme::Light;
-    // Tokens: soft grey page, white cards with a hairline, dim text that
-    // still passes WCAG AA at small sizes. Dark surfaces get lighter as they
-    // come forward: page, card, raised pill.
-    current_palette = light ? UiPalette{
-        .background = rgb(0xF4F4F6),
-        .surface = rgb(0xFFFFFF),
-        .surface_hover = rgb(0xE8E8ED),
-        .border = rgb(0xE3E3E8),
-        .text = rgb(0x212126),
-        .text_muted = rgb(0x737379),
-        .accent = rgb(0x007AFF),
-        .accent_soft = rgb(0x007AFF, 0.13F),
-        .track = rgb(0xF1F1F4),
-        .success = rgb(0x1F9D4C),
-        .warning = rgb(0xC77C02),
-        .danger = rgb(0xFF3B30),
-    } : UiPalette{
-        .background = rgb(0x1C1C1F),
-        .surface = rgb(0x252528),
-        .surface_hover = rgb(0x323237),
-        .border = rgb(0x303034),
-        .text = rgb(0xE8E8EC),
-        .text_muted = rgb(0x8E8E96),
-        .accent = rgb(0x0A84FF),
-        .accent_soft = rgb(0x0A84FF, 0.22F),
-        .track = rgb(0x2E2E33),
-        .success = rgb(0x32D74B),
-        .warning = rgb(0xFF9F0A),
-        .danger = rgb(0xFF453A),
-    };
+    // Tokens (polish-ui): soft grey page, white cards with a hairline, dim
+    // text that still passes WCAG AA at small sizes. Dark surfaces get
+    // lighter as they come forward: page, card, raised pill.
+    switch (theme == UiTheme::System ? (system_prefers_dark() ? UiTheme::Dark : UiTheme::Light) : theme) {
+        case UiTheme::Light:
+            current_palette = UiPalette{
+                .background = rgb(0xF4F4F6), .surface = rgb(0xFFFFFF), .surface_hover = rgb(0xE8E8ED),
+                .border = rgb(0xE3E3E8), .text = rgb(0x212126), .text_muted = rgb(0x737379),
+                .accent = rgb(0x007AFF), .accent_soft = rgb(0x007AFF, 0.13F), .track = rgb(0xF1F1F4),
+                .success = rgb(0x1F9D4C), .warning = rgb(0xC77C02), .danger = rgb(0xFF3B30),
+                .divider = rgb(0xECECF0), .pill = rgb(0xFFFFFF), .pill_border = rgb(0xE3E3E8),
+                .pill_hover = rgb(0xF5F5F7), .pill_active = rgb(0xE6E6EB), .field_hover = rgb(0xEBEBEF),
+                .popup = rgb(0xFFFFFF, 0.98F), .accent_2 = rgb(0xAF52DE), .light = true};
+            break;
+        case UiTheme::TokyoNight:
+            current_palette = UiPalette{
+                .background = rgb(0x1A1B26), .surface = rgb(0x1F2335), .surface_hover = rgb(0x292E42),
+                .border = rgb(0x292E42), .text = rgb(0xC0CAF5), .text_muted = rgb(0x8089B3),
+                .accent = rgb(0x7AA2F7), .accent_soft = rgb(0x7AA2F7, 0.20F), .track = rgb(0x292E42),
+                .success = rgb(0x9ECE6A), .warning = rgb(0xE0AF68), .danger = rgb(0xF7768E),
+                .divider = rgb(0x292E42), .pill = rgb(0x343A55), .pill_border = rgb(0x3B4261),
+                .pill_hover = rgb(0x3B4261), .pill_active = rgb(0x414868), .field_hover = rgb(0x2F3549),
+                .popup = rgb(0x1F2335, 0.98F), .accent_2 = rgb(0xBB9AF7), .light = false};
+            break;
+        default:
+            current_palette = UiPalette{
+                .background = rgb(0x1C1C1F), .surface = rgb(0x252528), .surface_hover = rgb(0x323237),
+                .border = rgb(0x303034), .text = rgb(0xE8E8EC), .text_muted = rgb(0x8E8E96),
+                .accent = rgb(0x0A84FF), .accent_soft = rgb(0x0A84FF, 0.22F), .track = rgb(0x2E2E33),
+                .success = rgb(0x32D74B), .warning = rgb(0xFF9F0A), .danger = rgb(0xFF453A),
+                .divider = rgb(0x2C2C30), .pill = rgb(0x3A3A40), .pill_border = rgb(0x45454B),
+                .pill_hover = rgb(0x434349), .pill_active = rgb(0x4C4C52), .field_hover = rgb(0x343439),
+                .popup = rgb(0x2A2A2E, 0.98F), .accent_2 = rgb(0xBF5AF2), .light = false};
+            break;
+    }
+    const bool light = current_palette.light;
     const auto& p = current_palette;
     // Neutral washes: white over the dark window, black over the light one.
     const auto wash = [light](float alpha) { return light ? ImVec4(0, 0, 0, alpha * 0.75F) : ImVec4(1, 1, 1, alpha); };
@@ -266,6 +313,13 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     style.GrabRounding = 7.0F;
     style.TabRounding = 7.0F;
     style.WindowTitleAlign = ImVec2(0.5F, 0.5F);
+    // Tooltips wait for the pointer to rest (polish-app: 2 s), then the next
+    // ones show at once while the pointer moves between controls.
+    style.HoverStationaryDelay = 0.15F;
+    style.HoverDelayNormal = kTooltipDelaySeconds;
+    style.HoverDelayShort = 0.15F;
+    style.HoverFlagsForTooltipMouse = ImGuiHoveredFlags_Stationary | ImGuiHoveredFlags_DelayNormal;
+    style.HoverFlagsForTooltipNav = ImGuiHoveredFlags_NoSharedDelay | ImGuiHoveredFlags_DelayShort;
     style.DisabledAlpha = 0.45F;
     // Hairline borders on windows, group boxes and controls, like AppKit.
     style.WindowBorderSize = 1.0F;
@@ -285,12 +339,12 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_TextDisabled] = p.text_muted;
     c[ImGuiCol_WindowBg] = p.background;
     c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
-    c[ImGuiCol_PopupBg] = light ? rgb(0xFFFFFF, 0.98F) : rgb(0x2A2A2E, 0.98F);
+    c[ImGuiCol_PopupBg] = p.popup;
     c[ImGuiCol_Border] = p.border;
     c[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
     // Fields and dropdowns sit in the track fill; buttons are raised pills.
     c[ImGuiCol_FrameBg] = p.track;
-    c[ImGuiCol_FrameBgHovered] = light ? rgb(0xEBEBEF) : rgb(0x343439);
+    c[ImGuiCol_FrameBgHovered] = p.field_hover;
     c[ImGuiCol_FrameBgActive] = p.track;
     c[ImGuiCol_TitleBg] = p.background;
     c[ImGuiCol_TitleBgActive] = p.background;
@@ -303,13 +357,13 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_CheckMark] = p.accent;
     c[ImGuiCol_SliderGrab] = p.accent;
     c[ImGuiCol_SliderGrabActive] = mix(p.accent, p.text, 0.15F);
-    c[ImGuiCol_Button] = light ? rgb(0xFFFFFF) : rgb(0x3A3A40);
-    c[ImGuiCol_ButtonHovered] = light ? rgb(0xF5F5F7) : rgb(0x434349);
-    c[ImGuiCol_ButtonActive] = light ? rgb(0xE6E6EB) : rgb(0x4C4C52);
+    c[ImGuiCol_Button] = p.pill;
+    c[ImGuiCol_ButtonHovered] = p.pill_hover;
+    c[ImGuiCol_ButtonActive] = p.pill_active;
     c[ImGuiCol_Header] = tint(0.20F);
     c[ImGuiCol_HeaderHovered] = tint(0.12F);
     c[ImGuiCol_HeaderActive] = tint(0.28F);
-    c[ImGuiCol_Separator] = light ? rgb(0xECECF0) : rgb(0x2C2C30);
+    c[ImGuiCol_Separator] = p.divider;
     c[ImGuiCol_SeparatorHovered] = tint(0.60F);
     c[ImGuiCol_SeparatorActive] = p.accent;
     c[ImGuiCol_ResizeGrip] = ImVec4(0, 0, 0, 0);
@@ -318,7 +372,7 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_InputTextCursor] = p.accent;
     c[ImGuiCol_Tab] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_TabHovered] = wash(0.06F);
-    c[ImGuiCol_TabSelected] = light ? rgb(0xFFFFFF) : wash(0.12F);
+    c[ImGuiCol_TabSelected] = p.pill;
     c[ImGuiCol_TabSelectedOverline] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_TabDimmed] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_TabDimmedSelected] = wash(0.06F);
@@ -329,7 +383,7 @@ void apply_theme(UiTheme theme, float dpi_scale) {
     c[ImGuiCol_PlotHistogramHovered] = mix(p.accent, p.text, 0.2F);
     c[ImGuiCol_TableHeaderBg] = wash(0.04F);
     c[ImGuiCol_TableBorderStrong] = wash(0.10F);
-    c[ImGuiCol_TableBorderLight] = light ? rgb(0xECECF0) : rgb(0x2C2C30);
+    c[ImGuiCol_TableBorderLight] = p.divider;
     c[ImGuiCol_TableRowBg] = ImVec4(0, 0, 0, 0);
     c[ImGuiCol_TableRowBgAlt] = wash(0.03F);
     c[ImGuiCol_TextSelectedBg] = tint(0.30F);
@@ -437,7 +491,47 @@ bool icon_cell(const char* glyph, ImVec4 color, float size) {
     return true;
 }
 
-bool icon_button(const char* id, const char* glyph, const std::string& tooltip, bool active) {
+void tooltip_with_keys(std::string_view text, std::string_view keys) {
+    if (!ImGui::BeginTooltip()) return;
+    ImGui::PushTextWrapPos(280.0F * ImGui::GetStyle().FontScaleDpi);
+    ImGui::TextUnformatted(text.data(), text.data() + text.size());
+    ImGui::PopTextWrapPos();
+    if (!keys.empty()) {
+        ImGui::SameLine(0.0F, 10.0F * ImGui::GetStyle().FontScaleDpi);
+        key_chips(keys);
+    }
+    ImGui::EndTooltip();
+}
+
+void key_chips(std::string_view keys) {
+    // "Ctrl+Shift+T" -> [Ctrl] [Shift] [T]; a lone "+" stays a key.
+    const auto& p = current_palette;
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    ImGui::PushFont(current_fonts.regular, current_fonts.small);
+    std::size_t start = 0;
+    bool first = true;
+    while (start < keys.size()) {
+        auto end = keys.find('+', start + 1);
+        if (end == std::string_view::npos) end = keys.size();
+        const auto key = keys.substr(start, end - start);
+        if (!first) ImGui::SameLine(0.0F, 3.0F * scale);
+        first = false;
+        const ImVec2 text = ImGui::CalcTextSize(key.data(), key.data() + key.size());
+        const ImVec2 pad(5.0F * scale, 1.0F * scale);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        const ImVec2 size(std::max(text.x + pad.x * 2.0F, text.y + pad.y * 2.0F), text.y + pad.y * 2.0F);
+        auto* draw = ImGui::GetWindowDrawList();
+        draw->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(p.track), 4.0F * scale);
+        draw->AddRect(pos, ImVec2(pos.x + size.x, pos.y + size.y), ImGui::GetColorU32(p.border), 4.0F * scale);
+        draw->AddText(ImVec2(pos.x + (size.x - text.x) * 0.5F, pos.y + pad.y), ImGui::GetColorU32(p.text_muted), key.data(),
+                      key.data() + key.size());
+        ImGui::Dummy(size);
+        start = end + 1;
+    }
+    ImGui::PopFont();
+}
+
+bool icon_button(const char* id, const char* glyph, const std::string& tooltip, bool active, std::string_view keys) {
     const auto& p = current_palette;
     const bool has_glyph = current_fonts.icons && glyph != nullptr;
     const auto label = std::string{has_glyph ? glyph : tooltip.c_str()} + "##" + id;
@@ -462,7 +556,7 @@ bool icon_button(const char* id, const char* glyph, const std::string& tooltip, 
             ImVec2(std::round(min.x + (side - extent.x) * 0.5F), std::round(min.y + (side - extent.y) * 0.5F)),
             ImGui::GetColorU32(with_alpha(tint, tint.w * alpha)), glyph);
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip.c_str());
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) tooltip_with_keys(tooltip, keys);
     return clicked;
 }
 
@@ -679,7 +773,7 @@ int footer_buttons(std::initializer_list<FooterButton> buttons, std::string_view
 }
 
 void draw_meter(ImDrawList* draw, ImVec2 min, ImVec2 max, float fraction, ImVec4 fill, float alpha) {
-    const bool light = current_palette.background.x > 0.5F;
+    const bool light = current_palette.light;
     const float rounding = (max.y - min.y) * 0.5F;
     draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, 0.08F * alpha) : ImVec4(1, 1, 1, 0.10F * alpha)),
                         rounding);
@@ -721,7 +815,7 @@ bool nav_item(const char* id, std::string_view label, bool selected) {
     auto* draw = ImGui::GetWindowDrawList();
     const ImVec2 end(pos.x + width, pos.y + height);
     const float rounding = 7.0F * scale;
-    const bool light = p.background.x > 0.5F;
+    const bool light = p.light;
     if (selected) {
         draw->AddRectFilled(pos, end, ImGui::GetColorU32(held ? mix(p.accent, ImVec4(0, 0, 0, 1), 0.15F) : p.accent), rounding);
     } else if (hovered) {
@@ -775,7 +869,7 @@ static float segmented_width(std::span<const std::string> labels, float pad_x, f
 
 bool segmented_control(const char* id, std::span<const std::string> labels, int& selected, bool compact) {
     const auto& p = current_palette;
-    const bool light = p.background.x > 0.5F;
+    const bool light = p.light;
     const float scale = ImGui::GetStyle().FontScaleDpi;
     const float inset = 2.0F * scale;
     const float pad_x = (compact ? 11.0F : 14.0F) * scale;
@@ -809,8 +903,8 @@ bool segmented_control(const char* id, std::span<const std::string> labels, int&
             // Raised pill: 1 px soft shadow, the face, a hairline.
             draw->AddRectFilled(ImVec2(min.x, min.y + 1.0F * scale), ImVec2(max.x, max.y + 1.0F * scale),
                                 ImGui::GetColorU32(ImVec4(0, 0, 0, light ? 0.06F : 0.25F)), rounding - inset);
-            draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? rgb(0xFFFFFF) : rgb(0x3A3A40)), rounding - inset);
-            draw->AddRect(min, max, ImGui::GetColorU32(light ? p.border : rgb(0x45454B)), rounding - inset);
+            draw->AddRectFilled(min, max, ImGui::GetColorU32(p.pill), rounding - inset);
+            draw->AddRect(min, max, ImGui::GetColorU32(p.pill_border), rounding - inset);
         } else if (hovered || held) {
             draw->AddRectFilled(min, max, ImGui::GetColorU32(light ? ImVec4(0, 0, 0, held ? 0.08F : 0.04F)
                                                                     : ImVec4(1, 1, 1, held ? 0.09F : 0.05F)),
@@ -845,6 +939,30 @@ bool choice_control(const char* id, std::span<const std::string> labels, int& se
     return changed;
 }
 
+bool vertical_splitter(const char* id, float& size, float min_size, float max_size, float default_size, float height) {
+    const auto& p = current_palette;
+    const float scale = ImGui::GetStyle().FontScaleDpi;
+    const float thick = 8.0F * scale;
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImGui::InvisibleButton(id, ImVec2(thick, height));
+    const bool hovered = ImGui::IsItemHovered();
+    const bool active = ImGui::IsItemActive();
+    bool changed = false;
+    if (hovered || active) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    if (active && ImGui::GetIO().MouseDelta.x != 0.0F) {
+        size = std::clamp(size + ImGui::GetIO().MouseDelta.x / scale, min_size, max_size);
+        changed = true;
+    }
+    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        size = default_size;
+        changed = true;
+    }
+    const float x = std::round(pos.x + thick * 0.5F);
+    ImGui::GetWindowDrawList()->AddLine(ImVec2(x, pos.y), ImVec2(x, pos.y + height),
+                                        ImGui::GetColorU32(hovered || active ? p.accent : p.divider), hovered || active ? 2.0F : 1.0F);
+    return changed;
+}
+
 bool begin_group(const char* id) {
     const float scale = ImGui::GetStyle().FontScaleDpi;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, current_palette.surface);
@@ -864,7 +982,7 @@ void end_group() {
 
 bool toggle_switch(const char* label, bool* value) {
     const auto& p = current_palette;
-    const bool light = p.background.x > 0.5F;
+    const bool light = p.light;
     const float height = std::round(ImGui::GetFrameHeight() * 0.8F);
     const float width = std::round(height * 1.75F);
     // Text before "##" is shown to the right and clicks like the switch.
@@ -956,7 +1074,7 @@ void form_row(std::string_view label, std::string_view help) {
         if (cut) line += "\xE2\x80\xA6";
         ImGui::TextColored(current_palette.text_muted, "%s", line.c_str());
         ImGui::PopFont();
-        if (cut && ImGui::IsItemHovered()) ImGui::SetTooltip("%.*s", static_cast<int>(help.size()), help.data());
+        if (cut && ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%.*s", static_cast<int>(help.size()), help.data());
     }
     ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(-FLT_MIN);
