@@ -191,7 +191,8 @@ Every push to `main` is built, tested and published by GitHub Actions ([`.github
 
 - **[Latest release](https://github.com/jstdlee/pasteit/releases/latest)** and **[all releases](https://github.com/jstdlee/pasteit/releases)**
 - `pasteit-linux-x86_64.zip`: unzip, run `./pasteit` on an X11 desktop, then press `Ctrl+Alt+F`
-- `pasteit-windows-x64.zip`: attached when the Windows build succeeds (best effort)
+- `pasteit-linux-arm64.zip`: the same for 64-bit ARM Linux (aarch64)
+- `pasteit-windows-x64.zip`: unzip, run `pasteit.exe`
 
 ## Quick start
 

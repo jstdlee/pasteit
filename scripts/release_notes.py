@@ -41,6 +41,8 @@ def main():
         lines.append("- No new commits.")
     lines += ["", "## Downloads", "",
               "- `pasteit-linux-x86_64.zip`: unzip, then run `./pasteit` (X11 desktop; press Ctrl+Alt+F)."]
+    if os.path.exists(os.path.join(artifacts, "pasteit-linux-arm64.zip")):
+        lines.append("- `pasteit-linux-arm64.zip`: the same for 64-bit ARM Linux (aarch64).")
     if os.path.exists(os.path.join(artifacts, "pasteit-windows-x64.zip")):
         lines.append("- `pasteit-windows-x64.zip`: unzip, then run `pasteit.exe`.")
     print("\n".join(lines))

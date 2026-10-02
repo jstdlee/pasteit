@@ -1,6 +1,6 @@
 name: Build and release
 
-# Every push to main is compiled, tested (Linux and Windows) and published as
+# Every push to main is compiled, tested (Linux x86_64 and arm64, Windows x64) and published as
 # a GitHub release with downloadable zips; the release notes list the commits
 # since the previous build release. Pushes to ci/** branches build and test
 # only, without a release.
@@ -18,8 +18,16 @@ concurrency:
 
 jobs:
   linux:
-    name: Linux x86_64
-    runs-on: ubuntu-24.04
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
@@ -58,12 +66,12 @@ jobs:
           Terminal=false
           Categories=Utility;
           EOF
-          (cd dist && zip -r pasteit-linux-x86_64.zip pasteit)
+          (cd dist && zip -r pasteit-linux-${{ matrix.arch }}.zip pasteit)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pasteit-linux-x86_64
-          path: dist/pasteit-linux-x86_64.zip
+          name: pasteit-linux-${{ matrix.arch }}
+          path: dist/pasteit-linux-${{ matrix.arch }}.zip
 
   windows:
     name: Windows x64
