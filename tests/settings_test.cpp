@@ -145,5 +145,8 @@ int main() {
     assert(malformed.settings.schema_version == pasteit::default_settings().schema_version);
     assert(pasteit::DjevClient::normalize_endpoint("http://localhost:8011") == "http://localhost:8011/v1/systemone");
     assert(pasteit::DjevClient::normalize_endpoint("http://localhost:8011/v1/systemone") == "http://localhost:8011/v1/systemone");
+    // Workers AI model URLs are used as they are.
+    const std::string clef = "https://api.cloudflare.com/client/v4/accounts/abc/ai/run/@cf/cloudflare/clef";
+    assert(pasteit::DjevClient::normalize_endpoint(clef + "/") == clef);
     pasteit_test::remove_tree(root);
 }

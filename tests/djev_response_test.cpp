@@ -1,11 +1,23 @@
 #include "actions/action_catalog.hpp"
 #include "djev/decision_ranker.hpp"
 #include "djev/djev_client.hpp"
+#include "net/http_client.hpp"
 
 #include <cassert>
+#include <memory>
 #include <string>
 
 namespace {
+
+// Records the request and answers like Workers AI does.
+struct RecordingTransport final : pasteit::HttpTransport {
+    pasteit::HttpRequest last;
+    pasteit::HttpResponse post_json(const pasteit::HttpRequest& request) override {
+        last = request;
+        return {.status = 200,
+                .body = R"({"result":{"model":"clef","answers":{"best_action":{"choice":"a1","confidence":0.9,"probabilities":{"a1":0.9}}}},"success":true})"};
+    }
+};
 
 pasteit::ActionInstance action(std::string id, pasteit::ActionKind kind, double index) {
     pasteit::ActionInstance out;
@@ -103,6 +115,25 @@ int main() {
     for (const auto& ranked_action : top_five) {
         assert(ranked_action.action.id != "a6");
     }
+
+    // Workers AI (Cloudflare Clef) takes only model, state and questions: a
+    // top-level request_id would be read as an async queue lookup.
+    auto recorder = std::make_shared<RecordingTransport>();
+    const DjevClient clef("https://api.cloudflare.com/client/v4/accounts/abc/ai/run/@cf/cloudflare/clef", "clef",
+                          std::chrono::seconds{5}, recorder, "token");
+    const auto clef_answer = clef.decide(request);
+    assert(recorder->last.url.ends_with("/ai/run/@cf/cloudflare/clef"));
+    assert(recorder->last.body.find("\"request_id\"") == std::string::npos);
+    assert(recorder->last.body.find("\"snapshot\"") == std::string::npos);
+    assert(recorder->last.body.find("\"questions\"") != std::string::npos);
+    assert(recorder->last.headers.at("Authorization") == "Bearer token");
+    assert(clef_answer.valid && clef_answer.choice == "a1");
+
+    // Workers AI (Cloudflare Clef) wraps the same body in a result envelope.
+    const auto workers_ai = DjevClient::parse_response(
+        R"({"result":{"model":"clef","answers":{"best_action":{"type":"choice","choice":"a3","confidence":0.5,"probabilities":{"a3":0.8,"a1":0.2}}}},"success":true,"errors":[]})",
+        request);
+    assert(workers_ai.valid && workers_ai.choice == "a3" && workers_ai.probabilities.at("a3") == 0.8);
 
     const auto malformed = DjevClient::parse_response(R"({"answers":{}})", request);
     assert(!malformed.valid);

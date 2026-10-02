@@ -332,6 +332,10 @@ std::string response_error_message(std::string_view body) {
     if (const auto* error = root->get("error")) {
         if (const auto* message = error->get("message"); message && message->string()) return *message->string();
     }
+    // Cloudflare API envelope: {"success":false,"errors":[{"code":..,"message":".."}]}.
+    if (const auto* errors = root->get("errors"); errors && errors->array() && !errors->array()->empty()) {
+        if (const auto* message = errors->array()->front().get("message"); message && message->string()) return *message->string();
+    }
     const auto* detail = root->get("detail");
     if (detail == nullptr || detail->array() == nullptr) return {};
     std::ostringstream out;
@@ -548,8 +552,11 @@ DjevClient::DjevClient(std::string url, std::string model, std::chrono::millisec
                        std::shared_ptr<HttpTransport> transport, std::string api_key)
     : url_(normalize_endpoint(url)), model_(std::move(model)), timeout_(timeout),
       transport_(transport ? std::move(transport) : make_default_http_transport()), api_key_(std::move(api_key)),
-      autojev_mode_(is_autojev_endpoint(url) || model_ == "autojev" || model_ == "jev-latest" ||
-                    model_ == "jev-preview" || model_ == "jev-1.13.0") {
+      // Strict SystemOne servers accept only model, state and questions: AutoJev,
+      // and Workers AI models such as @cf/cloudflare/clef, which also reads a
+      // top-level request_id as an async queue lookup.
+      autojev_mode_(is_autojev_endpoint(url) || url.find("/ai/run/") != std::string::npos || model_ == "autojev" ||
+                    model_ == "jev-latest" || model_ == "jev-preview" || model_ == "jev-1.13.0") {
     if (api_key_.empty()) {
         if (const char* key = api_key_from_env()) api_key_ = key;
     }
@@ -606,7 +613,10 @@ DecisionResponse DjevClient::parse_response(std::string_view body, const Decisio
 
     response.request_id = extract_string(body, "request_id");
     const auto root = parse_json(body);
-    const JsonValue* answers = root ? root->get("answers") : nullptr;
+    // Workers AI (e.g. @cf/cloudflare/clef) wraps the Jev body in {"result": ..., "success": true}.
+    const JsonValue* envelope = root ? root->get("result") : nullptr;
+    const JsonValue* document = envelope && envelope->object() && envelope->get("answers") ? envelope : root ? &*root : nullptr;
+    const JsonValue* answers = document ? document->get("answers") : nullptr;
     const JsonValue* best = answers ? answers->get("best_action") : nullptr;
     if (best != nullptr && best->object()) {
         // Multi-question responses: read each answer by name, never by the
@@ -674,6 +684,9 @@ std::string DjevClient::normalize_endpoint(std::string url) {
     while (!url.empty() && url.back() == '/') {
         url.pop_back();
     }
+    // A Workers AI model URL (.../ai/run/@cf/cloudflare/clef) is the decision
+    // endpoint itself; it takes the same Jev body.
+    if (url.find("/ai/run/") != std::string::npos) return url;
     if (url.size() >= std::string{"/v1/systemone"}.size() &&
         url.substr(url.size() - std::string{"/v1/systemone"}.size()) == "/v1/systemone") {
         return url;
