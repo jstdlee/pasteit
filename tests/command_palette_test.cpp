@@ -31,6 +31,14 @@ int main() {
     ranked = rank_commands(commands, "", {"go.history"});
     assert(ranked.size() == 3 && ranked[0] == 2 && ranked[1] == 0 && ranked[2] == 1);
 
+    // Long entries need the query as one piece, not scattered letters.
+    const std::vector<PaletteCommand> history{
+        {.id = "h1", .label = "Hi team, please call Jane at +1 555 0100 or email her", .english = "Hi team, please call Jane at +1 555 0100 or email her"},
+        {.id = "a1", .label = "Copy as YAML", .english = "Copy as YAML"}};
+    ranked = rank_commands(history, "yaml", {});
+    assert(ranked.size() == 1 && history[ranked[0]].id == "a1");
+    assert(rank_commands(history, "please call", {}).size() == 1);
+
     CommandPaletteState state;
     for (int index = 0; index < 10; ++index) remember_command(state, "c" + std::to_string(index));
     remember_command(state, "c5");

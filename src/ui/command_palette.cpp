@@ -84,11 +84,23 @@ std::vector<std::size_t> rank_commands(const std::vector<PaletteCommand>& comman
         return order;
     }
     std::vector<std::pair<int, std::size_t>> scored;
+    // The query as typed (spaces kept), trimmed at both ends.
+    auto needle = folded(query);
+    while (!needle.empty() && needle.back() == ' ') needle.pop_back();
+    while (!needle.empty() && needle.front() == ' ') needle.erase(needle.begin());
+    const auto contains = [&](std::string_view text) {
+        const auto haystack = folded(text);
+        return std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end()) != haystack.end();
+    };
     for (std::size_t index = 0; index < commands.size(); ++index) {
         const auto& command = commands[index];
+        // Long texts (clipboard items) match letters by chance; they need the
+        // query as one piece.
+        if (command.label.size() > 40 && !contains(command.label) && !contains(command.english)) continue;
         int best = std::max(fuzzy_score(query, command.label), fuzzy_score(query, command.english));
         if (const int in_group = fuzzy_score(query, command.group + " " + command.label); in_group >= 0) best = std::max(best, in_group - 5);
-        if (const int in_detail = fuzzy_score(query, command.detail); in_detail >= 0) best = std::max(best, in_detail / 2);
+        // Descriptions count only when they contain the query as one piece.
+        if (const int in_detail = fuzzy_score(query, command.detail); in_detail >= 0 && contains(command.detail)) best = std::max(best, in_detail / 2);
         if (best >= 0) scored.emplace_back(best, index);
     }
     std::stable_sort(scored.begin(), scored.end(), [](const auto& left, const auto& right) { return left.first > right.first; });

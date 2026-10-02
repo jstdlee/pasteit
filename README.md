@@ -8,27 +8,35 @@ PasteIt is a clipboard action popup for Linux (X11) and Windows. Press `Ctrl+Alt
 
 ## Gallery
 
-**Main input types.** The same hotkey adapts to what you copied, and Jev ranks the likely next step first.
+**Main input types.** The same hotkey adapts to what you copied, and Jev (or Cloudflare Clef) ranks the likely next step first. Search, tasks, help and settings sit at the top right on every tab.
 
-| CSV table | JSON | URL |
+| CSV table | JSON (preview / compare on the card) | URL |
 |---|---|---|
-| ![CSV clipboard: view as table, Markdown table, pipeline](docs/images/popup-csv.png) | ![JSON clipboard: pretty, YAML, save, jq pipeline](docs/images/popup-json.png) | ![URL clipboard: clean tracking, GitHub remote, summarize page](docs/images/popup-url.png) |
+| ![CSV clipboard: view as table, Markdown table, pipeline, Base64 chip](docs/images/popup-csv.png) | ![JSON clipboard: pretty, YAML, save, jq; preview and compare icons on the selected card](docs/images/popup-json.png) | ![URL clipboard: clean tracking, open, download, Markdown link, QR](docs/images/popup-url.png) |
 | **Subnet / IP** | **Personal data** | **Image** |
-| ![Subnet clipboard: details, split, ping, DNS](docs/images/popup-subnet.png) | ![Text with contacts and a password: anonymize first](docs/images/popup-pii.png) | ![Image clipboard: save, annotate, copy temporary path](docs/images/popup-image.png) |
+| ![Subnet clipboard: ping, report, details, split, DNS](docs/images/popup-subnet.png) | ![Text with contacts, an IBAN and an API key: extract or anonymize first](docs/images/popup-pii.png) | ![Image clipboard: annotate, save, copy temporary path](docs/images/popup-image.png) |
+
+**Find anything, compare before you act, and keep an eye on background work.**
+
+| Command palette (`Ctrl+P`) | Compare (side by side) |
+|---|---|
+| ![Command palette: theme commands with key chips](docs/images/command-palette.png) | ![Compare: the one-line JSON against its pretty-printed result, changes marked](docs/images/compare-view.png) |
+| **Tasks and logs (`Ctrl+J`)** | **Help (`F1`)** |
+| ![Tasks popover on Tokyo Night: two downloads with progress, speed and time left](docs/images/tasks-popover.png) | ![Help: concept cards with where to find each one](docs/images/help-view.png) |
 
 **Sub-windows.** Actions open focused tools owned by the popup.
 
 | Table view | Chart (X / Y / Agg) |
 |---|---|
-| ![Sortable, filterable table with Summarize and Formula](docs/images/table-view.png) | ![Chart with X, Y and aggregate operator](docs/images/chart-view.png) |
+| ![Table with type icons in the headers and light icon tools: header row, columns, find and replace, statistics, chart, summarize, formula](docs/images/table-view.png) | ![Bar chart of sales, cost and units by region](docs/images/chart-view.png) |
 | **Anonymize** | **Image annotation** |
-| ![Findings list, placeholder output and Ask LLM](docs/images/anonymize-view.png) | ![Rectangle, arrow and circle marks with the tool bar](docs/images/annotation-view.png) |
+| ![Findings with toggles, placeholder output and Ask LLM](docs/images/anonymize-view.png) | ![Annotation window with tools, colours, undo and Save SVG](docs/images/annotation-view.png) |
 
-**Settings.**
+**Settings, themes and languages.**
 
-| Home | General LLM and prompt optimizer |
-|---|---|
-| ![Settings home: principles, providers, stats](docs/images/settings-home.png) | ![General LLM endpoint, model and prompt optimizer instructions](docs/images/settings-llm.png) |
+| Home | Prompt templates and optimizer | 日本語 · Tokyo Night |
+|---|---|---|
+| ![Settings home: principles, providers, stats](docs/images/settings-home.png) | ![Prompt templates with toggles, actions and the prompt optimizer below](docs/images/settings-prompts.png) | ![The popup in Japanese on the Tokyo Night theme](docs/images/popup-ja-tokyo.png) |
 
 ## Principles
 
