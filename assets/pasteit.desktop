@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PasteIt
+GenericName=Clipboard actions
+Comment=Copy anything, press Ctrl+Alt+F, pick what to do with it
+Exec=pasteit
+Icon=pasteit
+Terminal=false
+Categories=Utility;
+Keywords=clipboard;paste;json;table;
+StartupNotify=false

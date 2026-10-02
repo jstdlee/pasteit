@@ -43,6 +43,9 @@
 #include "ui/diff_view.hpp"
 #include "ui/command_palette.hpp"
 #include "ui/ui_state.hpp"
+#include "ui/task_panel.hpp"
+#include "ui/help_view.hpp"
+#include "app/task_center.hpp"
 #include "executor/utility_executor.hpp"
 #include "ui/pipeline_view.hpp"
 #include "ui/privacy_view.hpp"
@@ -92,7 +95,9 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <cstring>
 #include <sstream>
+#include <unordered_map>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -553,6 +558,12 @@ int run_desktop_runtime() {
     DownloadManager download_manager({}, {.keep_part_files_on_cancel = settings.downloads.keep_part_files});
     FastActionExecutor fast_action_executor(platform->fast_actions(), settings.renderers);
     glfwSetErrorCallback(glfw_error_callback);
+#if !defined(_WIN32)
+    if (const char* software = std::getenv("PASTEIT_SOFTWARE_GL"); software != nullptr && std::strcmp(software, "0") != 0) {
+        setenv("LIBGL_ALWAYS_SOFTWARE", "1", 1);
+        setenv("__GLX_VENDOR_LIBRARY_NAME", "mesa", 1);
+    }
+#endif
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
         return 1;
@@ -590,6 +601,14 @@ int run_desktop_runtime() {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    // Window positions and sizes live with the other app data, not in the
+    // directory PasteIt happens to start from.
+    static const std::string imgui_ini = path_to_utf8_string(app_data_dir() / "imgui.ini");
+    {
+        std::error_code ini_error;
+        std::filesystem::create_directories(app_data_dir(), ini_error);
+    }
+    ImGui::GetIO().IniFilename = imgui_ini.c_str();
     // Dear ImGui 1.92 rasterizes glyphs on demand, so CJK text needs no
     // pre-baked glyph ranges and any font size can be pushed per widget.
     load_ui_fonts(platform->preferred_ui_fonts(), executable_directory() / "fa-solid-900.ttf");
@@ -675,6 +694,16 @@ int run_desktop_runtime() {
     DiffViewState diff_view;
     CommandPaletteState command_palette;
     bool hide_popup_requested = false;
+    // Long work: the Tasks view mirrors downloads, async actions and LLM calls.
+    TaskCenter task_center;
+    TaskPanelState task_panel;
+    HelpViewState help_view;
+    std::string pending_help_command;  // "Show me" from Help, run in the popup's frame
+    std::vector<std::string> tracked_downloads;  // download manager job ids
+    std::uint64_t log_lines_written = 0;
+    const auto task_queue_file = path_to_utf8_string(app_data_dir() / "tasks.json");
+    const auto log_file = app_data_dir() / "logs" / "pasteit.log";
+    load_task_queue(task_queue_file, task_center, current_time_ms());
     int popup_resize_edge = 0;  // -1 left, 1 right while the popup's side is dragged
     std::string diff_action_id;
     std::string previewing_action_id;
@@ -1364,6 +1393,13 @@ int run_desktop_runtime() {
 
     const auto record_execution_result = [&](const ExecutionResult& result) {
         last_execution = result;
+        if (!result.message.empty()) {
+            task_center.log(result.status == ExecutionStatus::Failed ? LogLevel::Error : LogLevel::Info, result.message, current_time_ms());
+        }
+        if (result.download_job_id.has_value() &&
+            std::find(tracked_downloads.begin(), tracked_downloads.end(), *result.download_job_id) == tracked_downloads.end()) {
+            tracked_downloads.push_back(*result.download_job_id);
+        }
         execution_status = result.message;
         if (result.output_path.has_value()) execution_status += ": " + result.output_path->string();
         if (result.download_job_id.has_value()) execution_status += " [" + *result.download_job_id + "]";
@@ -1378,7 +1414,7 @@ int run_desktop_runtime() {
         std::string path_save_error;
         (void)path_history_store.save(path_history, path_save_error);
         if (!publish_clipboard_result(result)) {
-            execution_status = "Action completed, but publishing the clipboard result failed";
+            execution_status = tr(UiTextKey::PublishFailed);
         }
     };
 
@@ -1387,7 +1423,7 @@ int run_desktop_runtime() {
     const auto start_text_job = [&](ActionInstance action, std::string system_message, std::string user_message,
                                     double temperature, bool restore, bool thinking) {
         if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
-            execution_status = "General LLM provider is not configured";
+            execution_status = tr(UiTextKey::LlmNotConfigured);
             return;
         }
         TextGenerationRequest request{
@@ -1451,7 +1487,7 @@ int run_desktop_runtime() {
                                       std::optional<PromptVariables> supplied_prompt_variables = std::nullopt) {
         const auto action = active_batch.catalog.find(action_id);
         if (!action.has_value() || !action->enabled) {
-            execution_status = "Action is unavailable";
+            execution_status = tr(UiTextKey::ActionUnavailable);
             return;
         }
         // A root-list click is an explicit preference signal. File-confirmation
@@ -1485,7 +1521,7 @@ int run_desktop_runtime() {
                 table = parse_delimited_table(text, delimiter, header);
             }
             if (!table) {
-                execution_status = "Could not read this clipboard as a table";
+                execution_status = tr(UiTextKey::NotATable);
                 return;
             }
             open_table_view(table_view, std::move(*table), tr(UiTextKey::ViewTable));
@@ -1547,7 +1583,7 @@ int run_desktop_runtime() {
         if (needs_file_confirmation(action->kind) && !action->parameters.contains("confirmation_complete")) {
             const auto item = clipboard_store.item(action->source_ref);
             if (!item) {
-                execution_status = "Clipboard source is no longer available";
+                execution_status = tr(UiTextKey::SourceGone);
                 return;
             }
             const auto source_text = mime_is_image(*item) ? std::string{} : clipboard_store.read_text(item->ref);
@@ -1589,7 +1625,7 @@ int run_desktop_runtime() {
         }
         if (mermaid_action_requires_generation(*action)) {
             if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
-                execution_status = "General LLM provider is not configured";
+                execution_status = tr(UiTextKey::LlmNotConfigured);
                 return;
             }
             const auto source_text = clipboard_store.read_text(action->source_ref);
@@ -1604,12 +1640,12 @@ int run_desktop_runtime() {
                 return llm_client.generate(request);
             }));
             generation_jobs.push_back(std::move(job));
-            execution_status = "Mermaid source generation is running...";
+            execution_status = tr(UiTextKey::MermaidRunning);
             return;
         }
         if (action->kind == ActionKind::TransformText) {
             if (active_batch.general_llm.endpoint.empty() || active_batch.general_llm.model_id.empty()) {
-                execution_status = "General LLM provider is not configured";
+                execution_status = tr(UiTextKey::LlmNotConfigured);
                 return;
             }
             PromptTemplate prompt;
@@ -1665,7 +1701,7 @@ int run_desktop_runtime() {
             };
             launch_streaming_job(*job, request);
             generation_jobs.push_back(std::move(job));
-            execution_status = "Text transformation is running…";
+            execution_status = tr(UiTextKey::TransformRunning);
             return;
         }
         auto context = make_execution_context(active_batch.request.request_id);
@@ -1710,8 +1746,18 @@ int run_desktop_runtime() {
                 catch (const std::exception& error) { target = {.state = ProviderHealthState::Down, .detail = error.what(), .checked_at_ms = current_time_ms()}; }
                 pending.reset();
             };
+            const auto jev_before = jev_health.state;
+            const auto llm_before = llm_health.state;
             take(pending_jev_health, jev_health);
             take(pending_llm_health, llm_health);
+            const auto log_health = [&](const char* name, ProviderHealthState before, const ProviderHealth& now) {
+                if (before == now.state || now.state == ProviderHealthState::Unconfigured) return;
+                task_center.log(now.state == ProviderHealthState::Down ? LogLevel::Warning : LogLevel::Info,
+                                std::string{name} + (now.state == ProviderHealthState::Ok ? " reachable: " : " down: ") + now.detail,
+                                current_time_ms());
+            };
+            log_health("Jev", jev_before, jev_health);
+            log_health("LLM", llm_before, llm_health);
         }
         const bool show_requested = single_instance.take_show_request();
         if (show_on_start || show_requested || platform->global_shortcut_activated()) {
@@ -1754,7 +1800,7 @@ int run_desktop_runtime() {
             const auto page = pending_page->get();
             pending_page.reset();
             if (!page.ok) {
-                execution_status = "Summarize page failed: " + page.error;
+                execution_status = tr(UiTextKey::SummarizeFailed) + " " + page.error;
             } else {
                 const auto document = "Title: " + page.title + "\nURL: " + page.url + (page.truncated ? "\n(Text truncated)" : "") +
                                       "\n\n" + page.text;
@@ -1817,8 +1863,92 @@ int run_desktop_runtime() {
         {
             auto context = make_execution_context(active_batch.request.request_id.empty() ? std::string{"runtime"}
                                                                                           : active_batch.request.request_id);
+            std::unordered_map<std::string, ExecutionResult> finished;
             for (const auto& result : fast_action_executor.poll(context)) {
+                finished[result.action_id] = result;
                 record_execution_result(result);
+            }
+            // Tasks view: mirror the background work every frame.
+            const auto now = current_time_ms();
+            const auto kind_of = [](ActionKind kind) -> std::string {
+                switch (kind) {
+                    case ActionKind::PingIp: case ActionKind::TraceRouteIp: case ActionKind::ReverseDnsIp:
+                    case ActionKind::DigIp: case ActionKind::NetworkDiagnosticReport: return "network";
+                    case ActionKind::CloneGithubHttps: case ActionKind::CloneGithubSsh: return "clone";
+                    case ActionKind::HashSha256: case ActionKind::HashSha512: return "hash";
+                    case ActionKind::DrawMermaidDiagram: case ActionKind::GenerateQr: return "render";
+                    default: return "action";
+                }
+            };
+            const auto pending = fast_action_executor.pending_jobs();
+            for (const auto& job : pending) {
+                const auto id = "job:" + job.job_id;
+                if (task_center.find(id) == nullptr) {
+                    task_center.start(id, kind_of(job.action.kind), job.action.label, now).retry_action = job.action.id;
+                }
+            }
+            for (const auto& task : std::vector<TaskEntry>(task_center.tasks())) {
+                if (!task.id.starts_with("job:") || task.state != TaskState::Running) continue;
+                const auto job_id = task.id.substr(4);
+                if (std::any_of(pending.begin(), pending.end(), [&](const auto& job) { return job.job_id == job_id; })) continue;
+                const auto result = finished.find(task.retry_action);
+                if (result == finished.end()) task_center.set_state(task.id, TaskState::Canceled, now);
+                else task_center.set_state(task.id, result->second.status == ExecutionStatus::Failed ? TaskState::Failed : TaskState::Done,
+                                           now, result->second.message);
+            }
+            // Downloads: real progress, pause, resume and cancel.
+            for (const auto& job_id : tracked_downloads) {
+                const auto job = download_manager.get(job_id);
+                if (!job) continue;
+                const auto id = "download:" + job_id;
+                if (task_center.find(id) == nullptr) {
+                    auto& task = task_center.start(id, "download", path_to_utf8_string(job->final_path.filename()), now, true, true,
+                                                   job->total > 0 ? std::max(1.0, static_cast<double>(job->total) / (1024.0 * 1024.0)) : 1.0);
+                    task.resume_url = job->url;
+                    task.resume_path = path_to_utf8_string(job->final_path);
+                }
+                task_center.progress(id, job->downloaded, job->total, now);
+                const auto state = job->status == DownloadStatus::Queued    ? TaskState::Queued
+                                 : job->status == DownloadStatus::Running   ? TaskState::Running
+                                 : job->status == DownloadStatus::Paused    ? TaskState::Paused
+                                 : job->status == DownloadStatus::Completed ? TaskState::Done
+                                 : job->status == DownloadStatus::Cancelled ? TaskState::Canceled
+                                                                            : TaskState::Failed;
+                const auto* before = task_center.find(id);
+                if (before != nullptr && before->state != state) {
+                    task_center.set_state(id, state, now, state == TaskState::Failed ? job->error : std::string{});
+                    (void)save_task_queue(task_queue_file, task_center);
+                }
+            }
+            // LLM answers and diagrams, page fetches, prompt optimizing, provider tests.
+            const auto watch = [&](const std::string& id, const char* kind, const std::string& title, bool busy) {
+                const auto* task = task_center.find(id);
+                if (busy && (task == nullptr || task_finished(task->state))) task_center.start(id, kind, title, now, false, false);
+                if (!busy && task != nullptr && task->state == TaskState::Running) task_center.set_state(id, TaskState::Done, now);
+            };
+            for (const auto& job : generation_jobs) {
+                char id[48];
+                std::snprintf(id, sizeof id, "llm:%p", static_cast<const void*>(job.get()));
+                watch(id, job->kind == GenerationJob::Kind::MermaidDiagram ? "render" : "llm", job->action.label, job->pending.has_value());
+            }
+            watch("fetch:page", "fetch", tr(UiTextKey::FetchingPage), pending_page.has_value());
+            watch("llm:optimize", "llm", tr(UiTextKey::OptimizingPrompt), pending_prompt_optimize.has_value());
+            watch("test:provider", "test", pending_provider_test_is_djev ? tr(UiTextKey::TestDjev) : tr(UiTextKey::TestGeneralLlm),
+                  pending_provider_test.has_value());
+            // New log lines go to data/logs/pasteit.log as well.
+            if (task_center.log_serial() > log_lines_written) {
+                std::error_code error;
+                std::filesystem::create_directories(log_file.parent_path(), error);
+                if (std::filesystem::exists(log_file, error) && std::filesystem::file_size(log_file, error) > 1024 * 1024) {
+                    std::filesystem::rename(log_file, log_file.string() + ".1", error);
+                }
+                std::ofstream out(log_file, std::ios::app);
+                const auto fresh = static_cast<std::size_t>(std::min<std::uint64_t>(task_center.log_serial() - log_lines_written, task_center.logs().size()));
+                static constexpr const char* kLevelNames[] = {"DEBUG", "INFO", "WARN", "ERROR"};
+                for (auto it = task_center.logs().end() - static_cast<std::ptrdiff_t>(fresh); it != task_center.logs().end(); ++it) {
+                    out << it->time_ms << ' ' << kLevelNames[static_cast<int>(it->level)] << ' ' << it->message << '\n';
+                }
+                log_lines_written = task_center.log_serial();
             }
         }
         if (pending_provider_test.has_value() &&
@@ -1970,6 +2100,36 @@ int run_desktop_runtime() {
             const auto at = std::find(std::begin(kThemeCycle), std::end(kThemeCycle), settings_draft.theme);
             return at == std::end(kThemeCycle) || at + 1 == std::end(kThemeCycle) ? kThemeCycle[0] : *(at + 1);
         };
+        // One runner for the palette, Help's "Show me" and future menus.
+        const auto run_command = [&](const std::string& chosen) {
+                const auto suffix = [&](std::string_view prefix) { return chosen.substr(prefix.size()); };
+                if (chosen == "go.smart") main_tab = static_cast<int>(MainTab::Smart);
+                else if (chosen == "go.paths") main_tab = static_cast<int>(MainTab::Paths);
+                else if (chosen == "go.history") main_tab = static_cast<int>(MainTab::History);
+                else if (chosen == "go.settings") main_tab = static_cast<int>(MainTab::Settings);
+                else if (chosen.starts_with("settings.")) {
+                    main_tab = static_cast<int>(MainTab::Settings);
+                    settings_page = static_cast<SettingsPage>(std::stoi(suffix("settings.")));
+                } else if (chosen.starts_with("action.")) {
+                    main_tab = static_cast<int>(MainTab::Smart);
+                    activated_action = suffix("action.");
+                } else if (chosen == "theme.cycle") save_appearance(next_theme(), std::nullopt);
+                else if (chosen.starts_with("theme.")) save_appearance(static_cast<UiTheme>(std::stoi(suffix("theme."))), std::nullopt);
+                else if (chosen.starts_with("language.")) save_appearance(std::nullopt, static_cast<UiLanguage>(std::stoi(suffix("language."))));
+                else if (chosen.starts_with("history.")) {
+                    main_tab = static_cast<int>(MainTab::History);
+                    (void)view_clipboard_history_item(clipboard_history_state, suffix("history."));
+                } else if (chosen == "app.check") health_recheck_requested = true;
+                else if (chosen == "app.hide") hide_popup_requested = true;
+                else if (chosen == "app.palette") open_command_palette(command_palette);
+                else if (chosen == "app.tasks") task_panel.open = true;
+                else if (chosen == "app.help") { help_view.open = true; help_view.focus_pending = true; help_view.tab = 0; }
+                else if (chosen == "app.shortcuts") { help_view.open = true; help_view.focus_pending = true; help_view.tab = 2; }
+        };
+        if (!pending_help_command.empty()) {
+            run_command(pending_help_command);
+            pending_help_command.clear();
+        }
         // App shortcuts (the global hotkey only opens the popup).
         if (!modal_open && !hotkey_editor_state.capturing) {
             if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_P) || ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_K) ||
@@ -1977,6 +2137,9 @@ int run_desktop_runtime() {
                 open_command_palette(command_palette);
             }
             if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Comma)) main_tab = static_cast<int>(MainTab::Settings);
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_J)) task_panel.open = !task_panel.open;
+            if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) run_command("app.help");
+            if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Slash)) run_command("app.shortcuts");
             if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_T)) save_appearance(next_theme(), std::nullopt);
             if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_L)) {
                 const auto ask = std::find_if(active_batch.catalog.actions.begin(), active_batch.catalog.actions.end(),
@@ -2027,7 +2190,8 @@ int run_desktop_runtime() {
                                     .enabled = settings_draft.theme != theme});
             }
             const std::pair<UiLanguage, const char*> languages[] = {
-                {UiLanguage::System, "System"}, {UiLanguage::English, "English"}, {UiLanguage::SimplifiedChinese, "简体中文"}};
+                {UiLanguage::System, "System"}, {UiLanguage::English, "English"}, {UiLanguage::SimplifiedChinese, "简体中文"},
+                {UiLanguage::Japanese, "日本語"}, {UiLanguage::Korean, "한국어"}};
             for (const auto& [language, name] : languages) {
                 commands.push_back({.id = "language." + std::to_string(static_cast<int>(language)),
                                     .label = tr(ui_language, UiTextKey::Language) + ": " + name, .english = std::string{"Language "} + name,
@@ -2041,29 +2205,19 @@ int run_desktop_runtime() {
                                     .group = tr(ui_language, UiTextKey::GroupHistory), .glyph = icon::kHistory,
                                     .detail = human_size(item.size_bytes)});
             }
+            add("app.tasks", UiTextKey::TaskQueue, icon::kListCheck, "Ctrl+J", UiTextKey::GroupApp);
+            add("app.help", UiTextKey::HelpCommand, icon::kHelp, "F1", UiTextKey::GroupApp);
+            add("app.shortcuts", UiTextKey::ShortcutShortcuts, icon::kKeyboard, "Ctrl+/", UiTextKey::GroupApp);
+            // Help topics and glossary terms are searchable here too.
+            for (const auto& concept_entry : help_concepts()) {
+                commands.push_back({.id = "app.help", .label = tr(ui_language, UiTextKey::HelpCommand) + ": " + tr(ui_language, concept_entry.title),
+                                    .english = "Help " + tr(UiLanguage::English, concept_entry.title),
+                                    .group = tr(ui_language, UiTextKey::HelpCommand), .glyph = concept_entry.glyph,
+                                    .detail = tr(ui_language, concept_entry.where)});
+            }
             add("app.check", UiTextKey::CheckProvidersNow, icon::kRefresh, "", UiTextKey::GroupApp);
             add("app.hide", UiTextKey::HidePopup, icon::kClose, "Esc", UiTextKey::GroupApp);
-            if (const auto chosen = draw_command_palette(command_palette, commands, ui_language); !chosen.empty()) {
-                const auto suffix = [&](std::string_view prefix) { return chosen.substr(prefix.size()); };
-                if (chosen == "go.smart") main_tab = static_cast<int>(MainTab::Smart);
-                else if (chosen == "go.paths") main_tab = static_cast<int>(MainTab::Paths);
-                else if (chosen == "go.history") main_tab = static_cast<int>(MainTab::History);
-                else if (chosen == "go.settings") main_tab = static_cast<int>(MainTab::Settings);
-                else if (chosen.starts_with("settings.")) {
-                    main_tab = static_cast<int>(MainTab::Settings);
-                    settings_page = static_cast<SettingsPage>(std::stoi(suffix("settings.")));
-                } else if (chosen.starts_with("action.")) {
-                    main_tab = static_cast<int>(MainTab::Smart);
-                    activated_action = suffix("action.");
-                } else if (chosen == "theme.cycle") save_appearance(next_theme(), std::nullopt);
-                else if (chosen.starts_with("theme.")) save_appearance(static_cast<UiTheme>(std::stoi(suffix("theme."))), std::nullopt);
-                else if (chosen.starts_with("language.")) save_appearance(std::nullopt, static_cast<UiLanguage>(std::stoi(suffix("language."))));
-                else if (chosen.starts_with("history.")) {
-                    main_tab = static_cast<int>(MainTab::History);
-                    (void)view_clipboard_history_item(clipboard_history_state, suffix("history."));
-                } else if (chosen == "app.check") health_recheck_requested = true;
-                else if (chosen == "app.hide") hide_popup_requested = true;
-            }
+            if (const auto chosen = draw_command_palette(command_palette, commands, ui_language); !chosen.empty()) run_command(chosen);
         }
         const auto& theme_fonts = ui_fonts();
         const ImVec2 tab_row_pos = ImGui::GetCursorScreenPos();
@@ -2088,13 +2242,24 @@ int run_desktop_runtime() {
             // Utility cluster (top right, same place in every view): search, then settings.
             const float scale = ImGui::GetStyle().FontScaleDpi;
             const float icon_gap = 4.0F * scale;
-            const float cluster_width = icon_buttons_width(2) - ImGui::GetStyle().ItemSpacing.x + icon_gap;
+            const float cluster_width = ImGui::GetFrameHeight() * 4.0F + icon_gap * 3.0F;
             const float cluster_x = tab_row_right - cluster_width;
             float x = cluster_x - 10.0F * scale - total + gap * 1.5F;
             const float row_height = ImGui::GetFrameHeight() + 4.0F * scale;
             ImGui::SetCursorScreenPos(ImVec2(cluster_x, tab_row_pos.y + (row_height - ImGui::GetFrameHeight()) * 0.5F));
             if (icon_button("cluster-search", icon::kSearch, tr(ui_language, UiTextKey::SearchCommand), command_palette.open, "Ctrl+P")) {
                 open_command_palette(command_palette);
+            }
+            ImGui::SameLine(0.0F, icon_gap);
+            if (task_status_button(task_center, task_panel.open, ui_language)) {
+                task_panel.open = !task_panel.open;
+            }
+            task_panel.anchor_x = ImGui::GetItemRectMax().x;
+            task_panel.anchor_y = ImGui::GetItemRectMax().y + 6.0F * scale;
+            ImGui::SameLine(0.0F, icon_gap);
+            if (icon_button("cluster-help", icon::kHelp, tr(ui_language, UiTextKey::HelpCommand), help_view.open, "F1")) {
+                help_view.open = !help_view.open;
+                help_view.focus_pending = help_view.open;
             }
             ImGui::SameLine(0.0F, icon_gap);
             const bool settings_open = main_tab == static_cast<int>(MainTab::Settings);
@@ -2135,6 +2300,63 @@ int run_desktop_runtime() {
             }
             // Back to the row start: the tab bar is the next item (no dangling cursor move).
             ImGui::SetCursorScreenPos(tab_row_pos);
+        }
+        // Tasks and logs popover under its icon.
+        {
+            const auto status_line = task_center.active_count() > 0 ? tr(ui_language, UiTextKey::StatusBusyLine) + " \xC2\xB7 " +
+                                         std::to_string(task_center.active_count()) + " \xC2\xB7 " +
+                                         std::to_string(static_cast<int>(task_center.overall_progress() * 100.0)) + "%"
+                                   : jev_health.state == ProviderHealthState::Down ? tr(ui_language, UiTextKey::StatusOfflineLine)
+                                                                                   : tr(ui_language, UiTextKey::StatusReadyLine);
+            const auto command = draw_task_popover(task_panel, task_center, current_time_ms(), ui_language, status_line, data_view_host.copy_text,
+                                                   [&] { (void)platform->open_path(log_file.parent_path()); });
+            const auto now = current_time_ms();
+            const auto apply = [&](const TaskEntry& task, TaskCommandKind kind) {
+                const bool download = task.id.starts_with("download:");
+                const auto job_id = task.id.substr(task.id.find(':') + 1);
+                switch (kind) {
+                    case TaskCommandKind::Pause:
+                        if (download) download_manager.pause(job_id);
+                        break;
+                    case TaskCommandKind::Resume:
+                    case TaskCommandKind::Retry:
+                        if (download && download_manager.get(job_id)) {
+                            download_manager.resume(job_id);
+                        } else if (!task.resume_url.empty()) {
+                            // From an earlier run (or failed): start it again; partial data is reused.
+                            const auto fresh = download_manager.start(task.resume_url, path_from_utf8_string(task.resume_path));
+                            tracked_downloads.push_back(fresh);
+                            task_center.remove(task.id);
+                        } else if (!task.retry_action.empty()) {
+                            activated_action = task.retry_action;
+                            task_center.remove(task.id);
+                        }
+                        break;
+                    case TaskCommandKind::Cancel:
+                        if (download) download_manager.cancel(job_id);
+                        else if (task.id.starts_with("job:")) fast_action_executor.abandon(job_id);
+                        task_center.set_state(task.id, TaskState::Canceled, now);
+                        break;
+                    case TaskCommandKind::Remove:
+                        task_center.remove(task.id);
+                        break;
+                    default:
+                        break;
+                }
+            };
+            if (command.kind == TaskCommandKind::ClearDone) task_center.clear_finished();
+            const auto all = [&](TaskCommandKind each, auto filter) {
+                for (const auto& task : std::vector<TaskEntry>(task_center.tasks())) {
+                    if (filter(task)) apply(task, each);
+                }
+            };
+            if (command.kind == TaskCommandKind::PauseAll) all(TaskCommandKind::Pause, [](const TaskEntry& t) { return t.pausable && t.state == TaskState::Running; });
+            if (command.kind == TaskCommandKind::ResumeAll) all(TaskCommandKind::Resume, [](const TaskEntry& t) { return t.state == TaskState::Paused; });
+            if (command.kind == TaskCommandKind::CancelAll) all(TaskCommandKind::Cancel, [](const TaskEntry& t) { return t.cancellable && !task_finished(t.state); });
+            if (!command.id.empty()) {
+                if (const auto* task = task_center.find(command.id)) apply(TaskEntry{*task}, command.kind);
+                (void)save_task_queue(task_queue_file, task_center);
+            }
         }
         {
             const std::string tab_labels[] = {
@@ -2691,7 +2913,7 @@ int run_desktop_runtime() {
                     }
                     form_row(tr(ui_language, UiTextKey::Language));
                     int language = static_cast<int>(settings_draft.language);
-                    static const std::string languages[] = {"System", "English", "简体中文"};
+                    static const std::string languages[] = {"System", "English", "简体中文", "日本語", "한국어"};
                     if (choice_control("##language", languages, language)) settings_draft.language = static_cast<UiLanguage>(language);
                     form_row(tr(ui_language, UiTextKey::Theme));
                     // Shown System, Light, Dark, Tokyo Night; stored as UiTheme values.
@@ -2945,7 +3167,7 @@ int run_desktop_runtime() {
                         ImGui::EndDisabled();
                         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
                             ImGui::SetTooltip("%s", llm_ready ? tr(ui_language, UiTextKey::OptimizePromptHelp).c_str()
-                                                              : "Configure the General LLM in Settings first");
+                                                              : tr(ui_language, UiTextKey::ConfigureLlmFirst).c_str());
                         }
                         if (!prompt_optimize_original.empty()) {
                             ImGui::SameLine();
@@ -3214,7 +3436,7 @@ int run_desktop_runtime() {
                 if (clicked == 0) custom_prompt_dialog.open = false;
                 const auto source = clicked == 1 ? clipboard_store.item(custom_prompt_dialog.action.source_ref) : std::nullopt;
                 if (clicked == 1 && !source) {
-                    execution_status = "Clipboard source is no longer available";
+                    execution_status = tr(UiTextKey::SourceGone);
                     custom_prompt_dialog.open = false;
                 } else if (clicked == 1) {
                     const auto source_text = clipboard_store.read_text(source->ref);
@@ -3243,6 +3465,7 @@ int run_desktop_runtime() {
         draw_chart_view(chart_view, data_view_host, ui_language);
         if (chart_view.open) remember_choice("chart.kind", std::to_string(chart_view.kind));
         draw_table_view(table_view, chart_view, data_view_host, ui_language, default_chart_path());
+        draw_help_view(help_view, ui_language, data_view_host.copy_text, [&](const std::string& id) { pending_help_command = id; });
         draw_diff_view(diff_view, ui_language, data_view_host.copy_text, [&] {
             // Preview in input: the compared result replaces the input text.
             if (!preview_editable) return;
@@ -3669,6 +3892,7 @@ int run_desktop_runtime() {
     for (auto& job : generation_jobs) if (job->pending.has_value()) job->pending->wait();
     if (pending_provider_test.has_value()) pending_provider_test->wait();
     if (pending_model_list.has_value()) pending_model_list->wait();
+    (void)save_task_queue(task_queue_file, task_center);
     std::string path_save_error;
     (void)path_history_store.save(path_history, path_save_error);
     const auto final_history = clipboard_history_store.save(

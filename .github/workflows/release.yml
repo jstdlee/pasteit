@@ -39,11 +39,15 @@ jobs:
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libxtst-dev \
             libgl-dev libcurl4-openssl-dev zlib1g-dev
 
+      - name: Check translations
+        # Every UI string needs a Japanese and a Korean entry.
+        run: python3 scripts/gen_cjk_localization.py --check
+
       - name: Configure
         # Optimised, but without -DNDEBUG so the tests' asserts stay active.
         run: >-
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE=-O2
-          -DPASTEIT_BUILD_TESTS=ON -DPASTEIT_BUILD_DESKTOP=ON
+          -DPASTEIT_BUILD_TESTS=ON -DPASTEIT_BUILD_DESKTOP=ON -DPASTEIT_VERSION=0.1.${{ github.run_number }}
 
       - name: Build
         run: cmake --build build --parallel
@@ -68,10 +72,33 @@ jobs:
           EOF
           (cd dist && zip -r pasteit-linux-${{ matrix.arch }}.zip pasteit)
 
+      - name: Package .deb
+        # /opt/pasteit with a /usr/bin link, menu entry and icon.
+        run: |
+          (cd build && cpack -G DEB)
+          mv build/pasteit_*.deb dist/pasteit-linux-${{ matrix.arch }}.deb
+          dpkg-deb -I dist/pasteit-linux-${{ matrix.arch }}.deb
+
+      - name: Package AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/scalable/apps
+          cp build/pasteit build/fa-solid-900.ttf build/mermaid.min.js assets/FONTAWESOME_LICENSE.txt AppDir/usr/bin/
+          cp assets/pasteit.desktop AppDir/ && cp assets/pasteit.desktop AppDir/usr/share/applications/
+          cp assets/pasteit.svg AppDir/ && cp assets/pasteit.svg AppDir/usr/share/icons/hicolor/scalable/apps/
+          printf '#!/bin/sh\nexec "$(dirname "$(readlink -f "$0")")/usr/bin/pasteit" "$@"\n' > AppDir/AppRun
+          chmod +x AppDir/AppRun
+          machine=$(uname -m)
+          curl -fsSL -o appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${machine}.AppImage"
+          chmod +x appimagetool
+          ARCH=${machine} ./appimagetool --appimage-extract-and-run AppDir dist/pasteit-linux-${{ matrix.arch }}.AppImage
+
       - uses: actions/upload-artifact@v4
         with:
           name: pasteit-linux-${{ matrix.arch }}
-          path: dist/pasteit-linux-${{ matrix.arch }}.zip
+          path: |
+            dist/pasteit-linux-${{ matrix.arch }}.zip
+            dist/pasteit-linux-${{ matrix.arch }}.deb
+            dist/pasteit-linux-${{ matrix.arch }}.AppImage
 
   windows:
     name: Windows x64
@@ -83,7 +110,7 @@ jobs:
         # /O2 without /DNDEBUG so the tests' asserts stay active.
         run: >-
           cmake -S . -B build -A x64 "-DCMAKE_CXX_FLAGS_RELEASE=/MD /O2 /Ob2"
-          -DPASTEIT_BUILD_TESTS=ON -DPASTEIT_BUILD_DESKTOP=ON
+          -DPASTEIT_BUILD_TESTS=ON -DPASTEIT_BUILD_DESKTOP=ON -DPASTEIT_VERSION=0.1.${{ github.run_number }}
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -100,10 +127,27 @@ jobs:
           Copy-Item $exe.FullName, assets/fa-solid-900.ttf, assets/mermaid.min.js, README.md, assets/FONTAWESOME_LICENSE.txt dist/pasteit/
           Compress-Archive -Path dist/pasteit -DestinationPath dist/pasteit-windows-x64.zip
 
+      - name: Package installer
+        # NSIS installer: Program Files\PasteIt, Start menu entry, uninstaller.
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+            $env:PATH += ";${env:ProgramFiles(x86)}\NSIS"
+          }
+          Push-Location build
+          cpack -G NSIS -C Release
+          Pop-Location
+          $setup = Get-ChildItem build -Filter "pasteit-*.exe" | Select-Object -First 1
+          if (-not $setup) { throw "NSIS installer was not built" }
+          Move-Item $setup.FullName dist/pasteit-windows-x64-setup.exe
+
       - uses: actions/upload-artifact@v4
         with:
           name: pasteit-windows-x64
-          path: dist/pasteit-windows-x64.zip
+          path: |
+            dist/pasteit-windows-x64.zip
+            dist/pasteit-windows-x64-setup.exe
 
   release:
     name: Publish release
@@ -131,7 +175,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.notes.outputs.tag }}" artifacts/*.zip \
+          gh release create "${{ steps.notes.outputs.tag }}" artifacts/* \
             --target "${GITHUB_SHA}" \
             --title "PasteIt ${{ steps.notes.outputs.tag }} (${GITHUB_SHA::7})" \
             --notes-file notes.md \

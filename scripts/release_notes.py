@@ -43,8 +43,15 @@ def main():
               "- `pasteit-linux-x86_64.zip`: unzip, then run `./pasteit` (X11 desktop; press Ctrl+Alt+F)."]
     if os.path.exists(os.path.join(artifacts, "pasteit-linux-arm64.zip")):
         lines.append("- `pasteit-linux-arm64.zip`: the same for 64-bit ARM Linux (aarch64).")
+    for arch in ("x86_64", "arm64"):
+        if os.path.exists(os.path.join(artifacts, f"pasteit-linux-{arch}.deb")):
+            lines.append(f"- `pasteit-linux-{arch}.deb`: `sudo apt install ./pasteit-linux-{arch}.deb` (menu entry, `pasteit` command).")
+        if os.path.exists(os.path.join(artifacts, f"pasteit-linux-{arch}.AppImage")):
+            lines.append(f"- `pasteit-linux-{arch}.AppImage`: `chmod +x` it and run it.")
     if os.path.exists(os.path.join(artifacts, "pasteit-windows-x64.zip")):
         lines.append("- `pasteit-windows-x64.zip`: unzip, then run `pasteit.exe`.")
+    if os.path.exists(os.path.join(artifacts, "pasteit-windows-x64-setup.exe")):
+        lines.append("- `pasteit-windows-x64-setup.exe`: installer with a Start menu entry and an uninstaller.")
     print("\n".join(lines))
 
 

@@ -493,7 +493,7 @@ bool draw_summarize_popup(TableViewState& state, const std::vector<std::size_t>&
     if (state.group_column >= static_cast<int>(table.headers.size())) state.group_column = -1;
     ImGui::TextColored(palette().text_muted, "%s", tr(language, UiTextKey::SummarizeHelp).c_str());
     ImGui::SetNextItemWidth(200.0F);
-    (void)column_combo((tr(language, UiTextKey::GroupBy) + "##group").c_str(), table, state.group_column, false, "(all rows)");
+    (void)column_combo((tr(language, UiTextKey::GroupBy) + "##group").c_str(), table, state.group_column, false, tr(language, UiTextKey::AllRows).c_str());
     ImGui::TextUnformatted(tr(language, UiTextKey::Operator).c_str());
     for (int index = 1; index < static_cast<int>(std::size(kAggregates)); ++index) {
         ImGui::SameLine();
@@ -552,7 +552,7 @@ bool draw_formula_popup(TableViewState& state, UiLanguage language) {
     if (state.formula_right >= 0 && !is_number_column(state.formula_right)) state.formula_right = -1;
     bool added = false;
     if (state.formula_left < 0) {
-        ImGui::TextColored(palette().warning, "No number columns.");
+        ImGui::TextColored(palette().warning, "%s", tr(language, UiTextKey::NoNumberColumns).c_str());
     } else {
         ImGui::SetNextItemWidth(160.0F);
         (void)column_combo("##formula-a", table, state.formula_left, true);

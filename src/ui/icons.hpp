@@ -91,6 +91,12 @@ inline constexpr const char* kNumber = "\xEF\x8A\x92";  // hashtag
 inline constexpr const char* kCompare = "\xEE\x84\xBA";  // code-compare
 inline constexpr const char* kAnnotate = "\xEF\x81\x84";  // pen-to-square
 
+inline constexpr const char* kListCheck = "\xEF\x82\xAE";  // list-check
+inline constexpr const char* kPause = "\xEF\x81\x8C";  // pause
+inline constexpr const char* kRotateRight = "\xEF\x8B\xB9";  // rotate-right
+inline constexpr const char* kHelp = "\xEF\x81\x99";  // circle-question
+inline constexpr const char* kLightbulb = "\xEF\x83\xAB";  // lightbulb
+inline constexpr const char* kSpellCheck = "\xEF\xA2\x91";  // spell-check
 // Plain-text toggles where Font Awesome Free has no glyph.
 inline constexpr const char* kRegex = ".*";
 inline constexpr const char* kCaseSensitive = "Aa";

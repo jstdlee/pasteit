@@ -223,10 +223,13 @@ add_library(pasteit_core
     src/ui/diff_view.cpp
     src/ui/command_palette.cpp
     src/ui/ui_state.cpp
+    src/ui/task_panel.cpp
+    src/ui/help_view.cpp
     src/ui/pipeline_view.cpp
     src/ui/privacy_view.cpp
     src/ui/prompt_parameters.cpp
     src/ui/localization.cpp
+    src/ui/localization_ja_ko.cpp
     src/ui/clipboard_history_model.cpp
     src/ui/clipboard_history_panel.cpp
     src/ui/recent_paths_model.cpp
@@ -236,6 +239,7 @@ add_library(pasteit_core
     src/ui/provider_test_request.cpp
     src/util/json.cpp
     src/util/text_diff.cpp
+    src/app/task_center.cpp
     src/util/replace_file.cpp
 )
 
@@ -313,6 +317,44 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf
                ${CMAKE_CURRENT_BINARY_DIR}/fa-solid-900.ttf COPYONLY)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/fa-solid-900.ttf DESTINATION bin)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/MERMAID_LICENSE DESTINATION bin)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/FONTAWESOME_LICENSE.txt DESTINATION bin)
+
+# Packages: .deb per Linux architecture (installed to /opt/pasteit with a
+# /usr/bin link, a menu entry and an icon) and an NSIS installer on Windows.
+# Installed copies keep settings and data in per-user folders (app_paths.cpp).
+set(PASTEIT_VERSION "0.1.0" CACHE STRING "Package version")
+set(CPACK_PACKAGE_NAME "pasteit")
+set(CPACK_PACKAGE_VENDOR "jstdlee")
+set(CPACK_PACKAGE_VERSION "${PASTEIT_VERSION}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Clipboard action popup: copy anything, press a key, pick what to do with it")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/jstdlee/pasteit")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "PasteIt")
+set(CPACK_PACKAGE_EXECUTABLES "pasteit" "PasteIt")
+if (UNIX AND NOT APPLE)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/pasteit.desktop DESTINATION /usr/share/applications)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/assets/pasteit.svg DESTINATION /usr/share/icons/hicolor/scalable/apps)
+    install(CODE "execute_process(COMMAND \${CMAKE_COMMAND} -E make_directory \$ENV{DESTDIR}/usr/bin)
+                  execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink /opt/pasteit/bin/pasteit \$ENV{DESTDIR}/usr/bin/pasteit)")
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/opt/pasteit")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "jstdlee <302753485+jstdlee@users.noreply.github.com>")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    # GLFW and the X11 clipboard/paste code load these at run time, so the
+    # dependency scan cannot see them.
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libglx0, libxcursor1, libxrandr2, libxinerama1, libxi6, libxext6, libxtst6")
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "curl, zenity")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+elseif (WIN32)
+    set(CPACK_GENERATOR "NSIS;ZIP")
+    set(CPACK_NSIS_DISPLAY_NAME "PasteIt")
+    set(CPACK_NSIS_PACKAGE_NAME "PasteIt")
+    set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/jstdlee/pasteit")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_EXECUTABLES_DIRECTORY "bin")
+    set(CPACK_NSIS_MUI_FINISHPAGE_RUN "pasteit.exe")
+endif()
+include(CPack)
 
 if (PASTEIT_BUILD_TESTS)
     include(CTest)
@@ -567,6 +609,10 @@ if (PASTEIT_BUILD_TESTS)
     add_executable(content_profile_test tests/content_profile_test.cpp)
     target_link_libraries(content_profile_test PRIVATE pasteit_core)
     add_test(NAME content_profile_test COMMAND content_profile_test)
+
+    add_executable(task_center_test tests/task_center_test.cpp)
+    target_link_libraries(task_center_test PRIVATE pasteit_core)
+    add_test(NAME task_center_test COMMAND task_center_test)
 
     add_executable(command_palette_test tests/command_palette_test.cpp)
     target_link_libraries(command_palette_test PRIVATE pasteit_core)

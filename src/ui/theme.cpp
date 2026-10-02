@@ -137,6 +137,27 @@ UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates, cons
         config.GlyphOffset = ImVec2(0.0F, 1.0F);
         return atlas.AddFontFromFileTTF(path_to_utf8_string(icon_font).c_str(), fonts.body, &config) != nullptr;
     };
+    // Kana and Hangul for Japanese and Korean when the base font lacks them;
+    // a merged font only fills glyphs the fonts before it do not have.
+    std::vector<std::filesystem::path> cjk_fallbacks;
+#if defined(_WIN32)
+    const char* windows = std::getenv("WINDIR");
+    const auto font_dir = std::filesystem::path{windows != nullptr ? windows : "C:\\Windows"} / "Fonts";
+    cjk_fallbacks = {font_dir / "YuGothR.ttc", font_dir / "meiryo.ttc", font_dir / "malgun.ttf"};
+#else
+    cjk_fallbacks = {"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+                     "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc"};
+#endif
+    const auto merge_cjk = [&](const std::filesystem::path& base) {
+        for (const auto& fallback : cjk_fallbacks) {
+            std::error_code error;
+            if (fallback == base || !std::filesystem::is_regular_file(fallback, error)) continue;
+            ImFontConfig config;
+            config.MergeMode = true;
+            config.OversampleH = 2;
+            (void)atlas.AddFontFromFileTTF(path_to_utf8_string(fallback).c_str(), fonts.body, &config);
+        }
+    };
     for (const auto& path : candidates) {
         std::error_code error;
         if (!std::filesystem::is_regular_file(path, error)) continue;
@@ -144,10 +165,14 @@ UiFonts load_ui_fonts(const std::vector<std::filesystem::path>& candidates, cons
         config.OversampleH = 2;
         fonts.regular = atlas.AddFontFromFileTTF(path_to_utf8_string(path).c_str(), fonts.body, &config);
         if (fonts.regular == nullptr) continue;
+        merge_cjk(path);
         fonts.icons = merge_icons();
         if (const auto bold = bold_variant(path); !bold.empty()) {
             fonts.bold = atlas.AddFontFromFileTTF(path_to_utf8_string(bold).c_str(), fonts.body, &config);
-            if (fonts.bold != nullptr) fonts.icons = merge_icons() && fonts.icons;
+            if (fonts.bold != nullptr) {
+                merge_cjk(bold);
+                fonts.icons = merge_icons() && fonts.icons;
+            }
         }
         break;
     }
@@ -699,18 +724,38 @@ ActionCardEvent action_card(const char* id, const ActionCardModel& model) {
 bool begin_tool_window(const std::string& title, bool* open, ImVec2 size, bool* focus_pending, ImGuiWindowFlags extra_flags) {
     const float scale = ImGui::GetStyle().FontScaleDpi;
     const bool focus = focus_pending != nullptr && *focus_pending;
-    if (focus) {
-        ImGui::SetNextWindowFocus();
-        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
-    }
+    // First open: centred over the popup at the given size. Later opens:
+    // where the user left it (position and size are kept per window id).
+    if (focus) ImGui::SetNextWindowFocus();
+    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_FirstUseEver, ImVec2(0.5F, 0.5F));
     const auto window_class = independent_window_class();
     ImGui::SetNextWindowClass(&window_class);
-    ImGui::SetNextWindowSize(ImVec2(size.x * scale, size.y * scale), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(size.x * scale, size.y * scale), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(ImVec2(320.0F * scale, 160.0F * scale), ImVec2(FLT_MAX, FLT_MAX));
-    const bool visible = ImGui::Begin(title.c_str(), open, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse | extra_flags);
+    const bool visible = ImGui::Begin(title.c_str(), open, ImGuiWindowFlags_NoCollapse | extra_flags);
     if (visible && focus) {
         ImGui::SetWindowFocus();
         *focus_pending = false;
+    }
+    if (visible) {
+        const ImVec2 pos = ImGui::GetWindowPos();
+        const ImVec2 window_size = ImGui::GetWindowSize();
+        const auto recenter = [&] { ImGui::SetWindowPos(ImVec2(center.x - window_size.x * 0.5F, center.y - window_size.y * 0.5F)); };
+        // Keep at least the header on a monitor (a display may have gone away).
+        const auto& monitors = ImGui::GetPlatformIO().Monitors;
+        const float header = ImGui::GetFrameHeight() + 8.0F * scale;
+        const bool reachable = monitors.empty() || std::any_of(monitors.begin(), monitors.end(), [&](const ImGuiPlatformMonitor& monitor) {
+            return pos.x + 48.0F * scale < monitor.WorkPos.x + monitor.WorkSize.x && pos.x + window_size.x - 48.0F * scale > monitor.WorkPos.x &&
+                   pos.y + header > monitor.WorkPos.y && pos.y < monitor.WorkPos.y + monitor.WorkSize.y - header;
+        });
+        if (!reachable) recenter();
+        // Double-click on the title bar centres the window again.
+        const bool on_header = (extra_flags & ImGuiWindowFlags_NoTitleBar) == 0 &&
+                               ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + window_size.x, pos.y + ImGui::GetFrameHeight()), false);
+        if (on_header && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            recenter();
+        }
     }
     if (visible && open != nullptr && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
         !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {

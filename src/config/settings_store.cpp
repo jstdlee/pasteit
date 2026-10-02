@@ -78,7 +78,8 @@ SettingsLoadResult SettingsStore::load() const {
     result.loaded_from_disk = true;
     auto& s = result.settings;
     s.schema_version = static_cast<int>(number_value(root->get("schema_version"), s.schema_version));
-    s.language = static_cast<UiLanguage>(static_cast<int>(number_value(root->get("language"), 0)));
+    const auto language = static_cast<int>(number_value(root->get("language"), 0));
+    s.language = language >= 0 && language <= 4 ? static_cast<UiLanguage>(language) : UiLanguage::System;
     s.window_opacity = static_cast<float>(number_value(root->get("window_opacity"), s.window_opacity));
     const auto theme = static_cast<int>(number_value(root->get("theme"), 0));
     s.theme = theme >= 0 && theme <= 3 ? static_cast<UiTheme>(theme) : UiTheme::Dark;

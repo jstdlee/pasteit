@@ -489,11 +489,31 @@ ExecutionResult FastActionExecutor::finish_async(AsyncResult async, ExecutionCon
     return result;
 }
 
+std::vector<FastActionExecutor::PendingJob> FastActionExecutor::pending_jobs() const {
+    std::vector<PendingJob> pending;
+    for (const auto& [id, job] : jobs_) {
+        if (!abandoned_.contains(id)) pending.push_back({id, job.action});
+    }
+    return pending;
+}
+
+void FastActionExecutor::abandon(std::string_view job_id) {
+    if (jobs_.contains(std::string{job_id})) abandoned_.insert(std::string{job_id});
+}
+
 std::vector<ExecutionResult> FastActionExecutor::poll(ExecutionContext& context) {
     std::vector<ExecutionResult> completed;
     for (auto it = jobs_.begin(); it != jobs_.end();) {
         if (it->second.future.wait_for(std::chrono::milliseconds{0}) != std::future_status::ready) {
             ++it;
+            continue;
+        }
+        if (abandoned_.erase(it->first) > 0) {
+            try {
+                (void)it->second.future.get();
+            } catch (...) {
+            }
+            it = jobs_.erase(it);
             continue;
         }
         try {

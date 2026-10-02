@@ -1,5 +1,6 @@
 #include "ui/imgui_widgets.hpp"
 #include "platform/platform_services.hpp"
+#include "ui/localization.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -84,7 +85,7 @@ bool copyable_text(std::string_view value, bool wrapped) {
         ImGui::SetClipboardText(text.c_str());
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-        ImGui::SetTooltip("Click to copy");
+        ImGui::SetTooltip("%s", tr(UiTextKey::ClickToCopy).c_str());
     }
     return clicked;
 #else
@@ -130,7 +131,7 @@ bool input_text_string(const char* label, std::string& value, bool multiline,
                               ImVec2(label_width, 0.0F))) {
             ImGui::SetClipboardText(visible_label.c_str());
         }
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("Click to copy");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", tr(UiTextKey::ClickToCopy).c_str());
         if (!multiline) {
             ImGui::SameLine();
         }

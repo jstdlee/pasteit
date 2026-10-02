@@ -9,7 +9,8 @@
 
 namespace pasteit {
 
-enum class UiLanguage { System, English, SimplifiedChinese };
+// Stored as numbers; keep the order.
+enum class UiLanguage { System, English, SimplifiedChinese, Japanese, Korean };
 
 struct ProviderSettings {
     std::string endpoint;

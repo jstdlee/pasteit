@@ -197,9 +197,18 @@ Any OpenAI-compatible server works: OpenAI, OpenCode, vLLM, llama.cpp, Ollama, o
 Every push to `main` is built, tested and published by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) as a release named `build-<n>`, with the commit messages since the previous build as release notes.
 
 - **[Latest release](https://github.com/jstdlee/pasteit/releases/latest)** and **[all releases](https://github.com/jstdlee/pasteit/releases)**
-- `pasteit-linux-x86_64.zip`: unzip, run `./pasteit` on an X11 desktop, then press `Ctrl+Alt+F`
-- `pasteit-linux-arm64.zip`: the same for 64-bit ARM Linux (aarch64)
-- `pasteit-windows-x64.zip`: unzip, run `pasteit.exe`
+| | Linux x86_64 | Linux arm64 (aarch64) | Windows x64 |
+|---|---|---|---|
+| Installer | `pasteit-linux-x86_64.deb` | `pasteit-linux-arm64.deb` | `pasteit-windows-x64-setup.exe` |
+| Single file | `pasteit-linux-x86_64.AppImage` | `pasteit-linux-arm64.AppImage` | |
+| Portable zip | `pasteit-linux-x86_64.zip` | `pasteit-linux-arm64.zip` | `pasteit-windows-x64.zip` |
+
+- **.deb:** `sudo apt install ./pasteit-linux-<arch>.deb` installs to `/opt/pasteit`, adds a menu entry, an icon and the `pasteit` command.
+- **AppImage:** `chmod +x pasteit-linux-<arch>.AppImage`, then run it.
+- **Windows installer:** installs to Program Files with a Start menu entry and an uninstaller.
+- **Zip:** unzip and run `./pasteit` (X11 desktop) or `pasteit.exe`, then press `Ctrl+Alt+F`.
+- **Where settings live.** A zip copy keeps `settings.json` and `data/` next to the program (portable). An installed copy, an AppImage, or any copy in a read-only folder uses `~/.config/pasteit` and `~/.local/share/pasteit` on Linux (`$XDG_CONFIG_HOME` / `$XDG_DATA_HOME`), or `%APPDATA%\PasteIt` on Windows.
+- **Software rendering:** start with `--software-render` (or `PASTEIT_SOFTWARE_GL=1`) to use Mesa's software OpenGL on ARM boards or virtual machines whose GPU driver misbehaves.
 
 ## Quick start
 
@@ -233,10 +242,13 @@ Prerequisites:
 - **Base64.** Encode / decode chips appear under the text area when those actions are not already among the ranked cards.
 - **Window behaviour.** The popup has no title bar; drag the tab row to move it, and drag its left or right edge to make it wider (the width is remembered; the height follows the content). It is a normal window (not always-on-top). Sub-windows (confirmations, views, results) are owned by the popup and stay in front of it.
 - **Tabs.** Smart Actions, Recent Paths (frecency-ranked) and Clipboard History (newest 50).
-- **Top right.** Provider status, then search and settings, in the same place on every tab:
+- **Top right.** Provider status, then search, tasks, help and settings, in the same place on every tab:
   - Two dots show whether Jev and the general LLM are reachable: green is OK, yellow is down, grey is not configured. They are re-checked every minute (Jev `GET /health`, the LLM `GET /v1/models`, so no tokens are spent) and right after settings change; hover for details, click to check now.
   - **Search** (`Ctrl+P`, also `Ctrl+K`) opens the command palette: every action the current clipboard offers (not only the top eight), the tabs and settings pages, theme and language, the last 15 clipboard items, and app commands. It matches the English name in any language, and an empty search lists recent commands first.
+  - **Tasks and logs** (`Ctrl+J`): downloads, network checks, clones, hashing, renders, LLM answers, page fetches and provider tests run in the background. A ring around the icon shows the overall progress (amber when paused) with a count; a red dot marks a failure, an amber dot a new warning. The popover lists each task with its own bar, size, speed and time left, with pause / resume (downloads), cancel, retry and remove, plus *Pause all*, *Resume all*, *Cancel all* and *Clear done*. Unfinished downloads come back paused after a restart. The **Logs** tab filters by level, searches, copies, and opens the log folder (`data/logs/pasteit.log`).
+  - **Help** (`F1`; `Ctrl+/` for the shortcut list): *Concepts* (clipboard, smart actions, ranking, preview and compare, pipelines and prompts, privacy, tasks), a *Glossary* with "Show me" links into the app, and *Shortcuts* generated from the same list the app uses, with a copy button. Everything is searchable, and help topics also appear in the command palette.
   - **Settings** (`Ctrl+,`) opens the settings pages. The sidebar border drags to resize; double-click resets it.
+- **Sub-windows** (tables, charts, compare, help, confirmations) remember where you put them and their size; the first time they open centred, a double-click on the title bar centres them again, and a window left on a disconnected monitor comes back into view.
 - **Shortcuts.**
 
   | Keys | Action |
@@ -244,6 +256,8 @@ Prerequisites:
   | `Ctrl+Alt+F` (configurable) | Open PasteIt from any application |
   | `1`–`8`, Up/Down, Enter | Run a card |
   | `Ctrl+P` / `Ctrl+K` | Search actions, settings and history |
+  | `Ctrl+J` | Tasks and logs |
+  | `F1` / `Ctrl+/` | Help / keyboard shortcuts |
   | `Ctrl+,` | Settings |
   | `Ctrl+L` | Ask LLM about the clipboard |
   | `Ctrl+Shift+T` | Switch theme (System → Light → Dark → Tokyo Night) |
@@ -320,6 +334,6 @@ The model adds a bounded bonus (≤ 0.20) to both the Jev and the fallback ranki
 - **Windows:** the Win32 clipboard, WinHTTP, and native folder picker and focus adapters.
 - **Fonts:** Noto Sans CJK (regular and bold) with the Font Awesome Free 6 (Solid) icon font merged in.
 - **Themes:** System (follows the desktop's light/dark preference: GNOME `color-scheme` on Linux, `AppsUseLightTheme` on Windows), Light, Dark and Tokyo Night. A theme switch applies at once and is saved.
-- **Languages:** English and Simplified Chinese, or follow the system locale.
-- **Builds:** every release has Windows x64, Linux x86_64 and Linux arm64 zips, each built and tested in CI.
+- **Languages:** English, 简体中文, 日本語 and 한국어, or follow the system locale (`zh*`, `ja*`, `ko*`). Japanese and Korean live in `src/ui/i18n/*.json` and are turned into `src/ui/localization_ja_ko.cpp` by `scripts/gen_cjk_localization.py`; CI fails when a string has no translation. Kana and Hangul come from Noto Sans CJK / Nanum on Linux and Yu Gothic, Meiryo or Malgun Gothic on Windows. Action names from the catalog are still in English.
+- **Builds:** every release has Windows x64, Linux x86_64 and Linux arm64 packages (see Download), each built and tested in CI.
 - **Single instance:** a per-user lock prevents duplicate processes.
